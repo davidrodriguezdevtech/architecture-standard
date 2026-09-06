@@ -106,6 +106,8 @@ project/
 │   │   │   ├── errors.py          # DomainError, ApplicationError base classes
 │   │   │   ├── clock.py           # Clock Protocol
 │   │   │   ├── event_bus.py       # EventBus Protocol
+│   │   │   ├── envelope.py        # EventEnvelope: correlation_id, causation_id, occurred_at,
+│   │   │   │                      #   event_type, event_version, payload (+ correlation contextvar)
 │   │   │   └── unit_of_work.py    # UnitOfWork Protocol (store-agnostic: txn + event collection)
 │   │   └── infrastructure/        # shared framework-bound technical implementations
 │   │       ├── unit_of_work.py    # SqlAlchemyUnitOfWork + InMemoryUnitOfWork (reference impls)
@@ -399,8 +401,9 @@ triggers to split into another module:
 
 `application/integration_events.py` defines the integration events this context
 **publishes** (its outbound contract) and the mapping domain events → integration events
-→ `EventBus`. Consumers never import this module; they see serialized messages only.
-(ARCH-024)
+→ `EventBus`. Every publish wraps the event in the `commons/` `EventEnvelope`
+(correlation/causation IDs, type, version) so async flows stay traceable (ARCH-043).
+Consumers never import this module; they see serialized envelopes only. (ARCH-024)
 
 ### 6.5 Domain logic vs application orchestration
 
@@ -622,7 +625,7 @@ The machine-readable source of truth is `rules/*.yaml`; the Markdown is generate
 | ARCH-026 | External-provider dependencies sit behind a port | SHOULD | partial |
 | ARCH-027 | The domain does not cross the application boundary (mapped to DTO) | SHOULD | manual |
 | ARCH-029 | Use cases express intent, not generic CRUD | SHOULD | manual |
-| ARCH-030 | One general application service class per context by default; one method per use case; split to another module only past ~7 methods or on incohesive dependencies | SHOULD | partial |
+| ARCH-030 | One general application service class per context by default; one method per use case; the AST check fails past 7 public methods, ~200 lines, or 5 constructor params | SHOULD | partial |
 | ARCH-036 | Integration events are published via transactional outbox when a delivery/consistency guarantee is required | MUST* (conditional) | manual |
 | ARCH-042 | Port placement follows the three-homes rule: generic tech Protocols → `commons/types/`; domain-vocabulary contracts → `domain/model/ports.py`; non-domain outbound contracts → colocated `Protocol` in the use-case module (no `application/ports.py` until 3+ shared) | SHOULD | partial |
 | ARCH-045 | A context depends only on consumer-driven contracts it declares for what it needs from another context | MUST | partial |
@@ -632,14 +635,14 @@ The machine-readable source of truth is `rules/*.yaml`; the Markdown is generate
 | ID | Rule | Level | Automation |
 |---|---|---|---|
 | ARCH-038 | Domain objects are never mocked | SHOULD | partial |
-| ARCH-039 | In-memory fakes share the contract test with the real adapter | SHOULD | manual |
+| ARCH-039 | In-memory fakes share the contract test with the real adapter; the repository contract test asserts that events surface in `uow.collect_new_events()` after `add`/`get` | SHOULD | manual |
 | ARCH-040 | Test names follow `given_<state>__when_<action>__then_<result>` | SHOULD | full |
 
 ### 9.5 Cross-cutting
 
 | ID | Rule | Level | Automation |
 |---|---|---|---|
-| ARCH-043 | Cross-context flows carry a correlation ID in the event/message envelope | MUST | partial |
+| ARCH-043 | Every published message uses the `commons/` event envelope (`correlation_id`, `causation_id`, `occurred_at`, `event_type`, `event_version`, `payload`); the correlation id rides a `contextvar` set by the entrypoint | MUST | partial |
 | ARCH-044 | Every integration event has a published schema in the events catalog | MUST | partial |
 
 ### 9.6 Progressive structure
@@ -757,9 +760,11 @@ events. Adapters: round-trip + error translation. E2E: critical business flows o
 `MUST*` = conditional MUST (applies when the stated condition holds; e.g. ARCH-021,
 ARCH-036).
 
-Exception process: an `docs/adr/NNNN-*.md` records the rule waived, the reason, the
-scope, and an expiry/review date. The validator reads an allowlist generated from active
-ADRs.
+Exception process: a `docs/adr/NNNN-*.md` records the rule waived, the reason, the scope,
+and a mandatory `expires:` date (default 90 days). The validator generates its allowlist
+from **non-expired** ADRs only — a lapsed waiver silently re-activates the rule and fails
+the next build, forcing a conscious renew-or-fix. CI prints the count of active waivers
+per rule on every PR.
 
 ---
 
@@ -772,7 +777,8 @@ ADRs.
 | Import contracts (layering, independence, cycles) | import-linter (`.importlinter`) | 001–003, 005, 006, 008, 011–015, 017, 034, 035 | CI + pre-commit |
 | Import-graph queries / bespoke asserts | grimp | 007, cycle detection, "who imports X" | pytest arch suite |
 | Banned symbols/patterns per layer | ruff (`flake8-tidy-imports` banned-api, `TID`, `TCH`) | 003, 004, 028 | CI + pre-commit |
-| AST structural rules | custom `ast` checker shipped with the standard | 023, 031, 018, 019, 030, 040 | CI + pytest |
+| AST structural rules | custom `ast` checker shipped with the standard | 023, 031, 018, 019, 030 (service size: methods/lines/params), 040, 041 (promotion thresholds), 043 (envelope shape) | CI + pytest |
+| ADR waiver expiry | validator date check over `docs/adr/` | 021*, 036, any waived MUST | CI |
 | Package boundaries with a public API | tach (`tach.toml`) | 012, 042, 045 | CI |
 | Event schema / contract testing | pydantic/jsonschema export + consumer fixtures; optionally Pact | 024, 043, 044 | CI (producer & consumer) |
 | Test taxonomy | pytest markers + a conftest rule forbidding infra imports in domain tests | 038 | CI |
@@ -805,8 +811,8 @@ Exit non-zero on any MUST failure; warn on SHOULD.
 | Signal | Threshold (starting point, tune per project) | Action |
 |---|---|---|
 | `domain/model.py` size | > ~400 lines or > 2 aggregates | promote to `domain/model/` package |
-| `domain/model/ports.py` | > ~8 port definitions | split into `ports/` (`repositories.py`, `services.py`) |
-| Application service class | > ~7 methods, or incohesive constructor deps, or a second aggregate appears | split the general service into a second service module |
+| `domain/model/ports.py` | > ~8 port definitions, or 3+ aggregates | split into `ports/` package, one module per aggregate |
+| Application service class | > 7 public methods, > ~200 lines, > 5 constructor params, or a second aggregate appears (AST check fails the build) | split the general service into a second module (move methods + their colocated commands; only `providers.py` changes) |
 | Reads through the aggregate | complex joins, reporting, dashboard shapes | introduce a dedicated read model outside the domain |
 | Context sub-areas | 2+ separable areas each with its own aggregates | activate the `<module>/` level |
 | Cross-context integration | > 1 team, or independent deployability needed | move from in-process gateway to async events + ACL as the default |
@@ -851,7 +857,7 @@ Authoring constraints for agent-consumability:
 3.  Bounded Contexts — ownership; isolation; communication; Published Language; extraction path
 4.  Entry points — the flow; entrypoint-as-adapter; providers; allowed/forbidden; exceptions
 5.  Domain — model/ contents; tactical patterns (when yes/no); ports; exceptions; projections
-6.  Application — service per capability; one method per use case; commands; UoW; integration events; domain-vs-application
+6.  Application — one general service per context; one method per use case; commands; UoW; integration events; domain-vs-application
 7.  Infrastructure — outbound adapters; data mapper; UoW; outbox
 8.  commons/ and shared_kernel/ — the two tiers; allow/forbid; the "encodes policy?" test; governance
 9.  Dependency Rules — full catalog from rules/*.yaml
@@ -910,29 +916,23 @@ Resolved in this spec (see Section 0). Remaining items for v1.1+:
 
 ---
 
-## 18. Known risks (from the design review)
+## 18. Risks and mitigations (from the design review)
 
-1. **One general service per context** can accrete unrelated use cases and drift toward
-   logical cohesion — mitigated by ARCH-030 split guardrails + lint on method count /
-   file length; still needs review discipline.
-2. **Semantic erosion of `domain/model/ports.py`** — resolved by the three-homes rule
-   (§6.3, ARCH-042): only domain-vocabulary contracts stay there; generic tech Protocols
-   move to `commons/types/`, non-domain outbound contracts are colocated in `application/`.
-3. **Hot files** (`domain/model/ports.py`, the general service) create merge contention —
-   accepted cost of fewer files vs one-handler-per-file; the three-homes split keeps
-   integration-contract churn out of the domain ports file.
-4. **ACL on both ends of cross-context interaction** is real ongoing mapping cost —
-   mitigated by Progressive Structure (in-process gateway until >1 team) and the
-   Published Language catalog.
-5. **ARCH-021 as MUST-with-justification** — if routinely waived, the extraction path
-   silently closes; the ADR expiry/review keeps waivers visible.
-6. **Cross-context debugging through a broker** (when async) requires correlation IDs and
-   event tracing as mandatory infrastructure — ARCH-043.
-7. **The SQLAlchemy reference impl uses imperative mapping**, which couples `mapping.py`
-   to the aggregate's internal shape and instruments the classes at startup (a footgun for
-   domain tests, guarded by a fixture). It is a *reference implementation*, not normative —
-   the manual-mapper form covers aggregates hostile to imperative mapping and non-SQL
-   stores, and the normative contract (§7.2) is store-agnostic.
+**Principle:** every mitigation is a lint rule, a convention, a CI report line, a
+checklist item, or a small `commons/` primitive (< ~50 lines) — never a new layer, a
+framework, or an abstraction added before its second use.
+
+| # | Risk | Low-ceremony mitigation | Enforced by | Scalability property |
+|---|---|---|---|---|
+| 1 | The general service accretes unrelated use cases → drift from functional to logical cohesion | AST check fails the build when a service class has > 7 public methods, > ~200 lines, or a constructor with > 5 params. Splitting is mechanical (move methods + their colocated commands to a new module; only `providers.py` changes) | ARCH-030 (AST checker) + review-checklist item "does each method use most of the injected deps?" | Split cost stays flat whether done early or late → no reason to pre-split |
+| 2 | Semantic erosion of `domain/model/ports.py` | **Resolved** — three-homes rule (§6.3): only domain-vocabulary contracts stay; generic Protocols → `commons/types/`; non-domain outbound → colocated | ARCH-042 (import-linter + AST) | Domain ports file grows only with aggregates, not with integrations |
+| 3 | Hot files (`domain/model/ports.py`, the general service) → merge contention | Past 3 aggregates, `ports.py` → `ports/` package, one module per aggregate; the service splits per aggregate the same way | ARCH-041 / §15 thresholds (AST checker) | Contention scales with team members on one aggregate (irreducible and correct), not with codebase size |
+| 4 | ACL on both ends of every cross-context interaction → mapping-code volume | Progressive Structure for integration: one team + one deployable → sync call through a **thin in-process gateway** (a ~5-line translation fn), not serialized events + dual ACL. Full machinery only past > 1 team or independent-deployability need. Published Language = a folder of schema files checked in CI, not a running registry | §15 integration threshold + ARCH-025 note; contract tests read the schema files | ACL volume tracks the number of cross-context integration points; if it explodes, the boundaries are wrong — the pain is diagnostic |
+| 5 | ARCH-021 waivers accumulate invisibly → extraction path silently closes | Every ARCH-021 waiver ADR carries `expires:` (default 90 days); the validator's allowlist is generated from non-expired ADRs, so a lapsed waiver re-activates the rule and fails the build. CI prints the count of active waivers + their aggregates on every PR | ADR schema + validator date check (§13) | Waivers each carry a clock; the trend is visible in every PR |
+| 6 | Async cross-context flows are hard to trace through a broker | One `commons/` primitive: an **event envelope** (`correlation_id`, `causation_id`, `occurred_at`, `event_type`, `event_version`, `payload`) that every publish wraps and every consumer reads; the correlation id rides a `contextvar` set by the entrypoint. ~40 lines. Full OpenTelemetry is a MAY, wired in `bootstrap/` when needed | ARCH-043 (envelope shape checked in contract tests) | Every message is self-describing from day one; OTel later is purely additive |
+| 7 | The SQLAlchemy reference impl's imperative mapping couples `mapping.py` to the aggregate shape and instruments classes at startup | Reference impl ships the autouse fixture guarding domain tests; blast radius is one `mapping.py` per context; the manual-mapper escape hatch is documented with an explicit trigger. **Not normative** — a context in pain switches that one file to a manual mapper | §7.2 + §11.4 (fixture in the template) | Mapping complexity is isolated per aggregate and per context; no global coupling |
+| 8 | A manual `UnitOfWork` impl forgets `track()` → domain events silently not published | The repository contract test (run against both the fake and the real adapter, ARCH-039) asserts that after `add()`/`get()` the aggregate's events surface in `uow.collect_new_events()`. With the SQLAlchemy reference impl `track()` is implicit (session identity map), so this only bites custom stores, and the shared test catches it | ARCH-039 (shared contract test) | New store adapters inherit the test; the guarantee does not regress |
+| 9 | `bootstrap/` becomes a god-module that knows everything | `bootstrap/` is composition only: a list of factory functions, config-driven wiring, no branching on domain state. Nothing imports it (ARCH-017) | ARCH-017 + review-checklist item "no `if` on domain state in `bootstrap/`" | Grows linearly with contexts/adapters (one factory each), stays flat in complexity |
 
 ---
 
