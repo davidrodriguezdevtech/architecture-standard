@@ -872,7 +872,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 | ID | Rule | Level | Automation |
 |---|---|---|---|
-| ARCH-024 | Integration events have a versioned schema and live in application/integration_events.py | MUST* | partial |
+| ARCH-024 | When published, integration events have a versioned schema at the context root | MUST* | partial |
 | ARCH-025 | Cross-context communication is through a declared contract, never imports | MUST | full |
 | ARCH-026 | External-provider dependencies sit behind a port | SHOULD | partial |
 | ARCH-027 | The domain does not cross the application boundary | SHOULD | manual |
@@ -1305,13 +1305,13 @@ Binding from day one. `arch-standard check --core` runs exactly these.
       def apply(self) -> None: ...
   ```
 
-#### ARCH-024 — Integration events have a versioned schema and live in application/integration_events.py
+#### ARCH-024 — When published, integration events have a versioned schema at the context root
 - **Level:** MUST* · **Automation:** partial · **Tier:** full · **Category:** application
-- **Description:** Every integration event a context publishes is defined in application/integration_events.py with an explicit version field, and its wire schema is exported to the events catalog; consumers never import the event class.
-- **Rationale:** Integration events are a cross-team contract; expressed as importable classes they would couple producer and consumer lifecycles.
+- **Description:** A context does not publish integration events by default. When it starts being consumed by another context, the promoted event moves out of its aggregate module's domain/model/events.py into a dedicated <context>/integration_events.py with an explicit version field, and its wire schema is exported to the events catalog; consumers never import the event class.
+- **Rationale:** Integration events are a cross-team contract; expressed as importable classes they would couple producer and consumer lifecycles. There is no context-level application/ package (ARCH-048), so the promoted module lives at the context root, not under any aggregate module.
 - **Correct:**
   ```
-  # sales/application/integration_events.py
+  # sales/integration_events.py
   @dataclass(frozen=True)
   class OrderPlacedV1:
       event_version: int = 1
@@ -1319,8 +1319,8 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # billing/application/consume.py
-  from sales.application.integration_events import OrderPlacedV1
+  # billing/invoices/application/consume.py
+  from sales.orders.domain.model.events import OrderPlaced
   ```
 - **Related:** ARCH-025, ARCH-044
 

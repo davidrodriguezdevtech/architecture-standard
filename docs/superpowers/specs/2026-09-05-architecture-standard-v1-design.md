@@ -609,7 +609,7 @@ class UnitOfWork(Protocol):
 - `InMemoryUnitOfWork` (dict-backed, explicit `track()`) ships alongside for tests.
 
 ```python
-# sales/infrastructure/order_repository.py     — thin, intention-revealing
+# sales/orders/infrastructure/order_repository.py     — thin, intention-revealing
 class SqlAlchemyOrderRepository:                  # implements OrderRepository (domain port)
     def __init__(self, uow: SqlAlchemyUnitOfWork) -> None:
         self._uow = uow
@@ -622,14 +622,11 @@ class SqlAlchemyOrderRepository:                  # implements OrderRepository (
         if order is None:
             raise OrderNotFound(order_id)
         return order
-
-    def find_open_for_customer(self, customer_id: CustomerId) -> list[Order]:
-        return (
-            self._uow.session.query(Order)
-            .filter_by(customer_id=customer_id.value, status="OPEN")
-            .all()
-        )
 ```
+
+A reporting-shaped method (`find_open_for_customer`, or anything else that filters/lists
+rather than retrieves one aggregate root by identity) does not belong here — per ARCH-051,
+that query lives in `sales/read/`, not on the repository (Section 2.5).
 
 ```python
 # sales/entrypoints/providers.py
@@ -655,10 +652,8 @@ hostile to imperative mapping (deeply immutable structures, computed state).
 #### Test note
 
 Domain unit tests run without the store's mapping/translation configuration so aggregate
-classes stay uninstrumented (guarded by a fixture). (§11.4) Every use-case write goes
-through a UoW; the service never commits repositories individually. (ARCH-033)
-- Every use-case write goes through a UoW; the service never commits repositories
-  individually. (ARCH-033)
+classes stay uninstrumented (guarded by a fixture). (Section 11.4) Every use-case write
+goes through a UoW; the service never commits repositories individually. (ARCH-033)
 
 ### 7.3 Transactional outbox
 
@@ -1115,10 +1110,10 @@ rationale: >
   context cannot break another; the contract between teams stays explicit.
 correct: |
   # sales needs a credit check
-  # sales/domain/model/ports.py declares CreditCheckPort (consumer-driven)
+  # sales/orders/domain/model/ports.py declares CreditCheckPort (consumer-driven)
   # bootstrap/ wires an adapter backed by billing's application service
 incorrect: |
-  from billing.domain.invoice import Invoice   # in sales/
+  from billing.invoices.domain.model.invoice import Invoice   # in sales/
 validation:
   tool: import-linter
   contract: independence
