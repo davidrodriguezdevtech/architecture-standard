@@ -52,6 +52,12 @@ class Catalog:
         return len(self._rules)
 
     def by_category(self) -> dict[str, list[Rule]]:
+        """Group rules by category.
+
+        Rules within each group, and the groups themselves in insertion order,
+        follow ascending rule-id order (``self._rules`` is sorted at construction
+        time) — NOT the order rules appear in their source YAML documents.
+        """
         groups: dict[str, list[Rule]] = {}
         for rule in self._rules:
             groups.setdefault(rule.category, []).append(rule)

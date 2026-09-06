@@ -6,6 +6,10 @@ from arch_standard.checks.adr_waivers import Waiver
 from arch_standard.checks.base import Check, CheckReport, Finding, Outcome, ProjectLayout
 from arch_standard.rules.catalog import Catalog
 
+# Cap findings printed per rule so a handful of MUST failures aren't buried
+# under e.g. dozens of ARCH-040 test-naming findings.
+_MAX_FINDINGS_PER_RULE = 10
+
 
 @dataclass(frozen=True)
 class Report:
@@ -57,9 +61,15 @@ class Report:
             except KeyError:
                 name = ""
             lines.append(f"{report.rule_id}  {report.outcome.value:<5} {name}")
-            for finding in report.findings:
+            shown, rest = (
+                report.findings[:_MAX_FINDINGS_PER_RULE],
+                report.findings[_MAX_FINDINGS_PER_RULE:],
+            )
+            for finding in shown:
                 loc = f"{finding.path}:{finding.line}" if finding.line is not None else finding.path
                 lines.append(f"    {loc}  {finding.message}")
+            if rest:
+                lines.append(f"    ... and {len(rest)} more")
         lines.append("")
         lines.append(
             f"{counts[Outcome.PASS]} passed, {counts[Outcome.FAIL]} failed, "

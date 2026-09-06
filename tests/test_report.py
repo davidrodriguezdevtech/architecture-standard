@@ -45,3 +45,20 @@ def test_format_text_has_summary_footer() -> None:
     text = report.format_text(catalog)
     assert "ARCH-001" in text
     assert "passed" in text
+
+
+def test_format_text_caps_findings_per_rule_at_ten() -> None:
+    # A rule with many findings (e.g. ARCH-040 across a big test suite) must not
+    # bury the rest of the report — cap the listed findings and summarize the rest.
+    from arch_standard.checks.base import Finding
+
+    findings = tuple(
+        Finding("ARCH-040", f"tests/test_{i}.py", 1, "not given/when/then") for i in range(15)
+    )
+    catalog = Catalog.load(RULES)
+    report = Report(
+        reports=(CheckReport(rule_id="ARCH-040", outcome=Outcome.WARN, findings=findings),)
+    )
+    text = report.format_text(catalog)
+    assert text.count("not given/when/then") == 10
+    assert "... and 5 more" in text

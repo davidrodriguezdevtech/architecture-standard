@@ -10,6 +10,7 @@ from arch_standard.rules.catalog import Catalog
 from arch_standard.rules.model import Level
 
 _NON_CONTEXT_DIRS = {"commons", "shared_kernel", "bootstrap"}
+_CONTEXT_LAYER_DIRS = ("domain", "application", "infrastructure", "entrypoints")
 _SKIP_DIRS = {".venv", "venv", "__pycache__", ".git", ".mypy_cache", ".ruff_cache"}
 
 
@@ -65,6 +66,7 @@ class ProjectLayout:
                     if p.is_dir()
                     and p.name not in _NON_CONTEXT_DIRS
                     and not p.name.startswith((".", "_"))
+                    and any((p / layer).is_dir() for layer in _CONTEXT_LAYER_DIRS)
                 )
             )
         return cls(root=root, src=src, contexts=contexts)

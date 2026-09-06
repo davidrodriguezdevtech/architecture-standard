@@ -8,7 +8,7 @@ class InMemoryOrderRepository:
         self._store: dict[str, Order] = {}
 
     def add(self, order: Order) -> None:
-        self._store[order.order_id] = order
+        self._store[order.id] = order
 
     def get(self, order_id: str) -> Order | None:
         return self._store.get(order_id)
