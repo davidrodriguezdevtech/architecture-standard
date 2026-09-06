@@ -11,6 +11,7 @@ from arch_standard.rules.catalog import Catalog
 
 FIX = Path(__file__).parent.parent / "fixtures"
 RULES = Path(__file__).parent.parent.parent / "rules"
+MODULAR = FIX / "modular_project"
 
 
 def test_build_contracts_names_contracts_after_rule_ids() -> None:
@@ -86,6 +87,90 @@ def test_non_ddd_tree_skips_instead_of_erroring(tmp_path: Path) -> None:
     reports = ImportContractsCheck().run(layout, Catalog.load(RULES))
     assert reports
     assert all(r.outcome is Outcome.SKIP for r in reports)
+
+
+def test_given_the_modular_fixture__when_building_contracts__then_module_layers_are_emitted() -> (
+    None
+):
+    ini = build_contracts(ProjectLayout.detect(MODULAR))
+    assert "sales.users.domain" in ini
+    assert "[importlinter:contract:ARCH-046-sales]" in ini
+    assert "[importlinter:contract:ARCH-052-sales]" in ini
+    # entrypoints is no longer part of a module-scoped `layers` contract: it is a
+    # context-level sibling of the modules, covered separately by ARCH-006-<ctx>.
+    assert "[importlinter:contract:ARCH-006-sales]" in ini
+    assert "[importlinter:contract:ARCH-006-billing]" in ini
+    # billing has only one module, so ARCH-046 (cross-module isolation) does not apply.
+    assert "[importlinter:contract:ARCH-046-billing]" not in ini
+    # billing has no read/ dir.
+    assert "[importlinter:contract:ARCH-052-billing]" not in ini
+    # Legacy single-context layers contract must not appear: both fixture contexts
+    # have aggregate modules.
+    assert "[importlinter:contract:ARCH-001]" not in ini
+
+
+def test_given_the_modular_fixture__when_checked__then_every_rule_passes() -> None:
+    layout = ProjectLayout.detect(MODULAR)
+    reports = ImportContractsCheck().run(layout, Catalog.load(RULES))
+    assert all(r.outcome is Outcome.PASS for r in reports), [
+        (r.rule_id, [f.message for f in r.findings])
+        for r in reports
+        if r.outcome is not Outcome.PASS
+    ]
+    # All 9 rules must be present and accounted for.
+    assert {r.rule_id for r in reports} == set(ImportContractsCheck.rule_ids)
+
+
+def test_legacy_fixtures_keep_their_exact_existing_outcomes() -> None:
+    # Guardrail for this task: legacy contexts (no aggregate modules) must not
+    # regress now that build_contracts() branches on project.modules(context).
+    good = ImportContractsCheck().run(
+        ProjectLayout.detect(FIX / "good_project"), Catalog.load(RULES)
+    )
+    assert all(r.outcome is Outcome.PASS for r in good)
+
+    bad = {
+        r.rule_id: r
+        for r in ImportContractsCheck().run(
+            ProjectLayout.detect(FIX / "bad_project"), Catalog.load(RULES)
+        )
+    }
+    assert bad["ARCH-001"].outcome is Outcome.FAIL
+    assert bad["ARCH-006"].outcome is Outcome.FAIL
+    assert bad["ARCH-012"].outcome is Outcome.PASS
+    assert bad["ARCH-034"].outcome is Outcome.PASS
+    # New rules must SKIP-free PASS for a legacy project (no modules to isolate,
+    # no read/ dir): there is nothing for ARCH-046/052 to check, and no contract
+    # is emitted for them, so they stay uncovered-but-not-broken -> PASS.
+    assert bad["ARCH-046"].outcome is Outcome.PASS
+    assert bad["ARCH-052"].outcome is Outcome.PASS
+
+
+def test_two_module_context_with_a_cross_module_import_fails_arch_046(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    for module in ("orders", "users"):
+        (src / "sales" / module / "domain" / "model").mkdir(parents=True)
+        (src / "sales" / module / "domain" / "model" / "__init__.py").write_text("")
+        (src / "sales" / module / "domain" / "__init__.py").write_text("")
+        (src / "sales" / module / "application").mkdir(parents=True)
+        (src / "sales" / module / "application" / "__init__.py").write_text("")
+        (src / "sales" / module / "__init__.py").write_text("")
+    (src / "sales" / "__init__.py").write_text("")
+    (src / "__init__.py").write_text("")
+
+    # Deliberate ARCH-046 violation: orders' application reaches into users' application.
+    (src / "sales" / "orders" / "application" / "service.py").write_text(
+        "from sales.users.application import UserService\n"
+    )
+    (src / "sales" / "users" / "application" / "__init__.py").write_text("class UserService: ...\n")
+
+    layout = ProjectLayout.detect(tmp_path)
+    assert layout.contexts == ("sales",)
+    assert layout.modules("sales") == ("orders", "users")
+
+    reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, Catalog.load(RULES))}
+    assert reports["ARCH-046"].outcome is Outcome.FAIL
+    assert reports["ARCH-046"].findings
 
 
 def test_timeout_fails_all(monkeypatch: pytest.MonkeyPatch) -> None:

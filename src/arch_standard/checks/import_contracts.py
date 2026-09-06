@@ -16,10 +16,20 @@ from arch_standard.rules.catalog import Catalog
 # the layers contract does not error when a context omits one of them.
 _LAYERED: tuple[str, ...] = ("entrypoints", "infrastructure", "application", "domain")
 
-# The layering rules encoded by the single ``layers`` contract. The v1 mapping is
-# coarse: a broken layered contract fails all four (the exact culprit edge is a
-# v1.1 refinement, tracked in the plan follow-ups and spec section 17).
+# The layering rules encoded by the single ``layers`` contract used for LEGACY
+# contexts (no aggregate modules): a broken layered contract fails all four (the
+# exact culprit edge is a v1.1 refinement, tracked in the plan follow-ups and
+# spec section 17).
 _LAYER_RULES: tuple[str, ...] = ("ARCH-001", "ARCH-002", "ARCH-005", "ARCH-006")
+
+# Layer packages within a single aggregate module. ``entrypoints`` sits above all
+# modules (a context-level sibling, not nested under a module) so it is not part
+# of this contract; ARCH-006 (application does not depend on entrypoints) is
+# covered separately by a per-context ``forbidden`` contract instead.
+_MODULE_LAYERS: tuple[str, ...] = ("infrastructure", "application", "domain")
+
+# The layering rules encoded by the per-module ``layers`` contract.
+_MODULE_LAYER_RULES: tuple[str, ...] = ("ARCH-001", "ARCH-002", "ARCH-005")
 
 # Frameworks that must never reach ``commons.types`` (ARCH-035).
 _FRAMEWORK_MODULES: tuple[str, ...] = ("sqlalchemy", "fastapi", "pydantic")
@@ -37,6 +47,122 @@ def _roots(project: ProjectLayout) -> list[str]:
     ]
 
 
+def _module_contracts(project: ProjectLayout, context: str) -> list[str]:
+    """Render the per-module contracts for a context that HAS aggregate modules.
+
+    - One ``layers`` contract per module, covering ARCH-001/002/005 within that
+      module's own domain/application/infrastructure (no ``entrypoints`` layer:
+      entrypoints sits above all modules, not nested under one).
+    - One ``forbidden`` contract (ARCH-006) when the context has an
+      ``entrypoints/`` dir: no module's application may import it.
+    - One ``forbidden`` contract (ARCH-046) when the context has 2+ modules: no
+      module may import another module's application/infrastructure. Source and
+      forbidden modules deliberately overlap for a module's OWN layers (e.g.
+      source ``sales.orders`` vs forbidden ``sales.orders.application``) —
+      import-linter's ``forbidden`` contract treats overlapping source/forbidden
+      pairs (one a subpackage of the other) as not describing a forbiddable
+      import and skips them, so a module is never reported as forbidden from
+      itself; verified by hand against the real tool (see task report).
+    - One ``forbidden`` contract (ARCH-052) when the context has a ``read/`` dir:
+      the read side may not import any module's domain/application.
+    """
+    modules = project.modules(context)
+    if not modules:
+        return []
+
+    lines: list[str] = []
+    for module in modules:
+        lines += [
+            f"[importlinter:contract:ARCH-layers-{context}-{module}]",
+            f"name = {' '.join(_MODULE_LAYER_RULES)} layered ({context}.{module})",
+            "type = layers",
+            "layers =",
+            *(f"    ({context}.{module}.{layer})" for layer in _MODULE_LAYERS),
+            "",
+        ]
+
+    if project.entrypoints_dir(context).is_dir():
+        app_modules = [
+            f"    {context}.{module}.application"
+            for module in modules
+            if project.module_application_dir(context, module).is_dir()
+        ]
+        if app_modules:
+            lines += [
+                f"[importlinter:contract:ARCH-006-{context}]",
+                f"name = ARCH-006 application does not depend on entrypoints ({context})",
+                "type = forbidden",
+                "source_modules =",
+                *app_modules,
+                "forbidden_modules =",
+                f"    {context}.entrypoints",
+                "",
+            ]
+
+    if len(modules) > 1:
+        forbidden_046 = [
+            f"    {context}.{other}.{layer}"
+            for other in modules
+            for layer in ("application", "infrastructure")
+            if (project.src / context / other / layer).is_dir()
+        ]
+        if forbidden_046:
+            lines += [
+                f"[importlinter:contract:ARCH-046-{context}]",
+                f"name = ARCH-046 aggregate module isolation ({context})",
+                "type = forbidden",
+                "source_modules =",
+                *(f"    {context}.{module}" for module in modules),
+                "forbidden_modules =",
+                *forbidden_046,
+                "",
+            ]
+
+    if project.read_dir(context).is_dir():
+        forbidden_052 = [
+            f"    {context}.{module}.{layer}"
+            for module in modules
+            for layer in ("domain", "application")
+            if (project.src / context / module / layer).is_dir()
+        ]
+        if forbidden_052:
+            lines += [
+                f"[importlinter:contract:ARCH-052-{context}]",
+                f"name = ARCH-052 read layer does not import the write side ({context})",
+                "type = forbidden",
+                "source_modules =",
+                f"    {context}.read",
+                "forbidden_modules =",
+                *forbidden_052,
+                "",
+            ]
+
+    return lines
+
+
+def _domain_application_modules(project: ProjectLayout) -> list[str]:
+    """Every existing domain/application package, for ARCH-034's source list.
+
+    Covers both legacy contexts (``<ctx>.domain``, ``<ctx>.application``) and
+    contexts with aggregate modules (``<ctx>.<mod>.domain``,
+    ``<ctx>.<mod>.application``), since commons.infrastructure isolation must
+    hold regardless of which shape a context uses.
+    """
+    result: list[str] = []
+    for context in project.contexts:
+        modules = project.modules(context)
+        if modules:
+            for module in modules:
+                for layer in ("domain", "application"):
+                    if (project.src / context / module / layer).is_dir():
+                        result.append(f"    {context}.{module}.{layer}")
+        else:
+            for layer in ("domain", "application"):
+                if (project.src / context / layer).is_dir():
+                    result.append(f"    {context}.{layer}")
+    return result
+
+
 def build_contracts(project: ProjectLayout) -> str:
     """Render an ``.importlinter`` INI for the layering, independence and commons rules."""
     roots = _roots(project)
@@ -49,15 +175,30 @@ def build_contracts(project: ProjectLayout) -> str:
     ]
 
     if project.contexts:
+        # Legacy contexts (no aggregate modules yet) keep the single
+        # context-scoped layers contract exactly as it worked before aggregate
+        # modules existed. Contexts WITH aggregate modules are covered instead
+        # by the per-module contracts from ``_module_contracts`` below —
+        # ``entrypoints`` is a context-level sibling of the modules, not nested
+        # under one, so it can no longer share a ``containers``-based layers
+        # contract with them.
+        legacy_contexts = [context for context in project.contexts if not project.modules(context)]
+        if legacy_contexts:
+            lines += [
+                "[importlinter:contract:ARCH-001]",
+                f"name = {' '.join(_LAYER_RULES)} layered",
+                "type = layers",
+                "containers =",
+                *(f"    {context}" for context in legacy_contexts),
+                "layers =",
+                *(f"    ({layer})" for layer in _LAYERED),
+                "",
+            ]
+
+        for context in project.contexts:
+            lines += _module_contracts(project, context)
+
         lines += [
-            "[importlinter:contract:ARCH-001]",
-            f"name = {' '.join(_LAYER_RULES)} layered",
-            "type = layers",
-            "containers =",
-            *(f"    {context}" for context in project.contexts),
-            "layers =",
-            *(f"    ({layer})" for layer in _LAYERED),
-            "",
             "[importlinter:contract:ARCH-012]",
             "name = ARCH-012 bounded-context independence",
             "type = independence",
@@ -66,12 +207,7 @@ def build_contracts(project: ProjectLayout) -> str:
             "",
         ]
 
-    domain_app = [
-        f"    {context}.{layer}"
-        for context in project.contexts
-        for layer in ("domain", "application")
-        if (project.src / context / layer).is_dir()
-    ]
+    domain_app = _domain_application_modules(project)
     if domain_app and (project.src / "commons").is_dir():
         lines += [
             "[importlinter:contract:ARCH-034]",
@@ -147,6 +283,8 @@ class ImportContractsCheck:
         "ARCH-012",
         "ARCH-034",
         "ARCH-035",
+        "ARCH-046",
+        "ARCH-052",
     )
 
     def _fail_all(self, project: ProjectLayout, message: str) -> list[CheckReport]:
