@@ -24,7 +24,9 @@ def _classes(path: Path) -> list[ast.ClassDef]:
 
 def _mutates_self(cls: ast.ClassDef) -> bool:
     for node in ast.walk(cls):
-        if isinstance(node, ast.FunctionDef) and not node.name.startswith("__"):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not node.name.startswith(
+            "__"
+        ):
             for stmt in ast.walk(node):
                 if isinstance(stmt, ast.Assign):
                     for tgt in stmt.targets:
@@ -138,7 +140,7 @@ def _check_repositories_are_not_queries(project: ProjectLayout) -> list[Finding]
             if not cls.name.endswith("Repository"):
                 continue
             for stmt in cls.body:
-                if not isinstance(stmt, ast.FunctionDef):
+                if not isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue
                 if not stmt.name.startswith(_QUERY_PREFIXES):
                     continue

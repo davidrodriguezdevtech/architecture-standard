@@ -71,6 +71,24 @@ def test_good_service_size_passes() -> None:
     assert _reports("good_project")["ARCH-030"].outcome is Outcome.PASS
 
 
+def test_given_a_service_with_8_async_public_methods__when_checked__then_arch_030_warns(
+    tmp_path: Path,
+) -> None:
+    # I6: async def methods were invisible to ARCH-030's method-count
+    # threshold before (ast.AsyncFunctionDef is not a subclass of
+    # ast.FunctionDef) — an all-async service of any size silently PASSed.
+    root = tmp_path / "p"
+    app_dir = root / "src/sales/orders/application"
+    app_dir.mkdir(parents=True)
+    methods = "\n".join(f"    async def op_{i}(self): ...\n" for i in range(8))
+    (app_dir / "order_service.py").write_text(f"class OrderService:\n{methods}", encoding="utf-8")
+    layout = ProjectLayout.detect(root)
+    reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
+    r = reports["ARCH-030"]
+    assert r.outcome is Outcome.WARN
+    assert any("8 public methods" in f.message for f in r.findings)
+
+
 def test_given_the_modular_fixture__when_checked__then_all_ast_rules_pass() -> None:
     layout = ProjectLayout.detect(FIX / "modular_project")
     reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}

@@ -125,7 +125,7 @@ def _check_encapsulation_in_file(agg_file: Path, rel: str) -> list[Finding]:
                             f"{cls.name}.{name} exposes a mutable collection",
                         )
                     )
-            if isinstance(stmt, ast.FunctionDef):
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 for deco in stmt.decorator_list:
                     if (
                         isinstance(deco, ast.Attribute)
@@ -179,7 +179,10 @@ def _check_service_size_in_dir(project: ProjectLayout, app_dir: Path) -> list[Fi
             if not cls.name.endswith("Service"):
                 continue
             methods = [
-                n for n in cls.body if isinstance(n, ast.FunctionDef) and not n.name.startswith("_")
+                n
+                for n in cls.body
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and not n.name.startswith("_")
             ]
             if len(methods) > 7:
                 findings.append(
@@ -196,7 +199,12 @@ def _check_service_size_in_dir(project: ProjectLayout, app_dir: Path) -> list[Fi
                     Finding("ARCH-030", rel, cls.lineno, f"{cls.name} spans {span} lines (> 200)")
                 )
             init = next(
-                (n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "__init__"),
+                (
+                    n
+                    for n in cls.body
+                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and n.name == "__init__"
+                ),
                 None,
             )
             if init and len(init.args.args) - 1 > 5:
@@ -232,7 +240,7 @@ def _check_test_naming(project: ProjectLayout) -> list[Finding]:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if (
-                isinstance(node, ast.FunctionDef)
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                 and node.name.startswith("test_")
                 and not _GWT_RE.match(node.name)
             ):

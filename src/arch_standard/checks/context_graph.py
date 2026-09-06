@@ -59,7 +59,22 @@ class ContextGraphCheck:
             )
             return [CheckReport("ARCH-050", outcome_for(catalog.get("ARCH-050").level, True), (f,))]
 
-        graph = _load_manifest(manifest)
+        try:
+            graph = _load_manifest(manifest)
+        except (tomllib.TOMLDecodeError, AttributeError, TypeError) as exc:
+            # I5: contexts.toml is the one file in the whole system a human
+            # hand-authors directly. A TOML syntax error or a wrong-shaped
+            # entry (e.g. ``sales = "nope"`` instead of a table) must not
+            # crash the entire check run — every other rule still needs to
+            # report normally in the same invocation.
+            f = Finding(
+                "ARCH-050",
+                _MANIFEST,
+                None,
+                f"{_MANIFEST} could not be parsed: {exc}",
+            )
+            return [CheckReport(rule_id="ARCH-050", outcome=Outcome.FAIL, findings=(f,))]
+
         findings: list[Finding] = []
         for name in sorted(set(graph) - detected):
             findings.append(
