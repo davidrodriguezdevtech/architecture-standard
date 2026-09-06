@@ -73,6 +73,21 @@ def test_minimal_project_with_no_commons_or_bootstrap_passes() -> None:
     assert all(r.outcome is Outcome.PASS for r in reports)
 
 
+def test_non_ddd_tree_skips_instead_of_erroring(tmp_path: Path) -> None:
+    # Follow-through from C1 + I5: with no contexts and no commons/bootstrap,
+    # there is no root package at all for import-linter to build a graph from
+    # (it errors on an empty root_packages list). That must SKIP, not FAIL —
+    # otherwise running arch-standard against a tree it doesn't understand
+    # invents findings instead of reporting "nothing to check here".
+    (tmp_path / "src" / "somepkg").mkdir(parents=True)
+    (tmp_path / "src" / "somepkg" / "foo.py").write_text("x = 1\n")
+    layout = ProjectLayout.detect(tmp_path)
+    assert layout.contexts == ()
+    reports = ImportContractsCheck().run(layout, Catalog.load(RULES))
+    assert reports
+    assert all(r.outcome is Outcome.SKIP for r in reports)
+
+
 def test_timeout_fails_all(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
         raise subprocess.TimeoutExpired(cmd="lint-imports", timeout=120)

@@ -28,12 +28,18 @@ _STATUS_RE = re.compile(r"^(?P<name>.+?)\s+(?P<status>KEPT|BROKEN)\s*$")
 _RULE_RE = re.compile(r"ARCH-\d+")
 
 
-def build_contracts(project: ProjectLayout) -> str:
-    """Render an ``.importlinter`` INI for the layering, independence and commons rules."""
-    roots = [
+def _roots(project: ProjectLayout) -> list[str]:
+    """Root packages import-linter should know about: real contexts plus commons/
+    bootstrap, but only when those directories actually exist (C1)."""
+    return [
         *project.contexts,
         *(d for d in ("commons", "bootstrap") if (project.src / d).is_dir()),
     ]
+
+
+def build_contracts(project: ProjectLayout) -> str:
+    """Render an ``.importlinter`` INI for the layering, independence and commons rules."""
+    roots = _roots(project)
     lines: list[str] = [
         "[importlinter]",
         "root_packages =",
@@ -170,6 +176,14 @@ class ImportContractsCheck:
         ]
 
     def run(self, project: ProjectLayout, catalog: Catalog) -> list[CheckReport]:
+        if not _roots(project):
+            # I5 follow-through: a non-DDD tree (no contexts, no commons/,
+            # no bootstrap/) has nothing for import-linter to build a graph
+            # from at all — `root_packages =` with nothing under it errors
+            # ("build_graph() missing 1 required positional argument"), which
+            # _fail_all would turn into a spurious FAIL for every rule. There
+            # is nothing to check, so SKIP instead of inventing findings.
+            return [CheckReport(rule_id=rid, outcome=Outcome.SKIP) for rid in self.rule_ids]
         ini = build_contracts(project)
         handle, name = tempfile.mkstemp(suffix=".importlinter.ini", text=True)
         os.close(handle)
