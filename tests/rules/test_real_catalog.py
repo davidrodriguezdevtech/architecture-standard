@@ -75,9 +75,9 @@ CORE_IDS = {
     "ARCH-006",
     "ARCH-008",
     "ARCH-012",
-    "ARCH-021",
     "ARCH-023",
     "ARCH-031",
+    "ARCH-033",
     "ARCH-046",
     "ARCH-051",
 }
@@ -130,15 +130,6 @@ def test_given_the_catalog__when_reading_conditional_rules__then_they_are_must_s
 
 
 def test_given_a_core_rule__when_read__then_it_is_machine_checkable() -> None:
-    # ARCH-021 is a documented, pre-existing exception: its `automation: partial`
-    # validation is "PR checklist plus ADR waiver expiry check" (tool: review) because
-    # the one-aggregate-per-transaction rule has a deliberate ADR-justified escape
-    # hatch. It is still required in the 12-rule core set (see CORE_IDS) and its
-    # `level`/`validation` were left untouched per this task's scope. See
-    # task-3-report.md "Concerns" for the trade-off this leaves open.
-    known_review_exceptions = {"ARCH-021"}
     cat = Catalog.load(RULES_DIR)
     for rule in cat.core():
-        if rule.id in known_review_exceptions:
-            continue
         assert rule.validation.tool != "review", rule.id

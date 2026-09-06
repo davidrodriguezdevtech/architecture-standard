@@ -730,9 +730,14 @@ Every rule carries the full schema:
 tagged `tier: core` or `tier: full`.
 
 - **Core (12 rules)** -- binding from day one, all machine-checkable, and enough on their
-  own to keep the architecture honest: **ARCH-001, 002, 003, 005, 006, 008, 012, 021, 023,
-  031, 046, 051**. That is the dependency rule, context isolation, aggregate-module
+  own to keep the architecture honest: **ARCH-001, 002, 003, 005, 006, 008, 012, 023, 031,
+  033, 046, 051**. That is the dependency rule, context isolation, aggregate-module
   isolation, the transaction boundary, model immutability, and the repository/read split.
+  ARCH-021 (one aggregate per transaction) is deliberately **not** in the core set even
+  though it states the same principle ARCH-033 mechanically enforces: ARCH-021 is
+  MUST*-with-ADR-justification and its own validation is `review`, which would break the
+  "all core rules are machine-checkable" guarantee. ARCH-033 (every use-case write goes
+  through a Unit of Work, `ast-checker`) is the checkable proxy for it in the core set.
 - **Full** -- everything else. It matters at maturity, and CI enforces it, but it is not
   what a new project must read first.
 

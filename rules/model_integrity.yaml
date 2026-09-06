@@ -77,7 +77,6 @@ rules:
     name: One transaction modifies one aggregate (UoW boundary)
     level: MUST*
     automation: partial
-    tier: core
     category: model_integrity
     description: >
       A single unit-of-work block loads and mutates exactly one aggregate
@@ -234,6 +233,7 @@ rules:
     name: Every use-case write goes through a Unit of Work
     level: MUST
     automation: partial
+    tier: core
     category: model_integrity
     description: >
       Every application service method that changes state opens a UnitOfWork
