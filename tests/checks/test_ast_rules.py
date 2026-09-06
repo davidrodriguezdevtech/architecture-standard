@@ -69,3 +69,24 @@ def test_bad_service_size_warns_arch_030() -> None:
 
 def test_good_service_size_passes() -> None:
     assert _reports("good_project")["ARCH-030"].outcome is Outcome.PASS
+
+
+def test_given_the_modular_fixture__when_checked__then_all_ast_rules_pass() -> None:
+    layout = ProjectLayout.detect(FIX / "modular_project")
+    reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
+    for rid in ("ARCH-018", "ARCH-019", "ARCH-023", "ARCH-031", "ARCH-049"):
+        assert reports[rid].outcome is Outcome.PASS, rid
+
+
+def test_given_a_module_with_two_aggregate_files__when_checked__then_arch_049_fails(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "p"
+    model = root / "src/sales/users/domain/model"
+    model.mkdir(parents=True)
+    (root / "src/sales/users/application").mkdir(parents=True)
+    (model / "user.py").write_text("class User:\n    pass\n", encoding="utf-8")
+    (model / "profile.py").write_text("class Profile:\n    pass\n", encoding="utf-8")
+    layout = ProjectLayout.detect(root)
+    reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
+    assert reports["ARCH-049"].outcome is Outcome.FAIL
