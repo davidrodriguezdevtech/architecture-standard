@@ -913,6 +913,7 @@ Resolved in this spec (see Section 0). Remaining items for v1.1+:
 | D | Async runtime variant | Deferred; v1 is synchronous. An async appendix may follow |
 | E | Standard-owned base classes vs pure conventions | Lean toward minimal base classes in `commons/` + conventions elsewhere |
 | F | ADR allowlist format consumed by the validator | To be designed with `checks/` |
+| G | Import-contract edge attribution | The validator generates one import-linter `layers` contract per project and maps a broken layered contract to **all four** edge rules (ARCH-001/002/005/006) at once. v1.1: parse the broken-import lines and attribute the exact forbidden edge. |
 
 ---
 

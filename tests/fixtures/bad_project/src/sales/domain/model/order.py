@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from sales.infrastructure.order_repository import PostgresOrderRepository  # ARCH-001 violation
 
 
-@dataclass
 class Order:
-    order_id: str
+    repository_type = PostgresOrderRepository
