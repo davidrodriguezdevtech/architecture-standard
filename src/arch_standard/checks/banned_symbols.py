@@ -60,8 +60,6 @@ def _domain_files(project: ProjectLayout) -> list[Path]:
         files.extend(iter_python_files(project.module_domain_dir(context, module)))
     for context in project.contexts:
         files.extend(iter_python_files(project.shared_dir(context)))
-        # legacy single-level layout, removed in Task 10
-        files.extend(iter_python_files(project.domain_dir(context)))
     return files
 
 

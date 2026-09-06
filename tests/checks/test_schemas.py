@@ -38,8 +38,11 @@ def test_heuristic_finding_skips_a_must_rule_instead_of_failing_or_warning(
     # shallow heuristic. A heuristic finding must SKIP with the finding attached
     # as an informational note — never WARN-on-a-MUST, never FAIL a MUST off a
     # low-confidence signal.
-    src = tmp_path / "src" / "sales" / "application"
-    src.mkdir(parents=True)
+    # Post-Task-10, integration_events.py lives at the context root (there is no
+    # context-level application/ anymore) — the module below just needs to exist
+    # so "sales" is detected as a context at all.
+    (tmp_path / "src" / "sales" / "orders" / "domain").mkdir(parents=True)
+    src = tmp_path / "src" / "sales"
     (src / "integration_events.py").write_text(
         "from dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass OrderPlaced:\n"
         "    order_id: str\n",

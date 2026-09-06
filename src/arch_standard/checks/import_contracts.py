@@ -11,17 +11,6 @@ from pathlib import Path
 from arch_standard.checks.base import CheckReport, Finding, Outcome, ProjectLayout, outcome_for
 from arch_standard.rules.catalog import Catalog
 
-# Layer packages, top (least depended-upon) to bottom, within each bounded context.
-# Every layer is wrapped in parens in the rendered INI (see ``build_contracts``) so
-# the layers contract does not error when a context omits one of them.
-_LAYERED: tuple[str, ...] = ("entrypoints", "infrastructure", "application", "domain")
-
-# The layering rules encoded by the single ``layers`` contract used for LEGACY
-# contexts (no aggregate modules): a broken layered contract fails all four (the
-# exact culprit edge is a v1.1 refinement, tracked in the plan follow-ups and
-# spec section 17).
-_LAYER_RULES: tuple[str, ...] = ("ARCH-001", "ARCH-002", "ARCH-005", "ARCH-006")
-
 # Layer packages within a single aggregate module. ``entrypoints`` sits above all
 # modules (a context-level sibling, not nested under a module) so it is not part
 # of this contract; ARCH-006 (application does not depend on entrypoints) is
@@ -143,23 +132,15 @@ def _module_contracts(project: ProjectLayout, context: str) -> list[str]:
 def _domain_application_modules(project: ProjectLayout) -> list[str]:
     """Every existing domain/application package, for ARCH-034's source list.
 
-    Covers both legacy contexts (``<ctx>.domain``, ``<ctx>.application``) and
-    contexts with aggregate modules (``<ctx>.<mod>.domain``,
-    ``<ctx>.<mod>.application``), since commons.infrastructure isolation must
-    hold regardless of which shape a context uses.
+    Every context now has aggregate modules, so this walks
+    ``<ctx>.<mod>.domain`` / ``<ctx>.<mod>.application`` for each module.
     """
     result: list[str] = []
     for context in project.contexts:
-        modules = project.modules(context)
-        if modules:
-            for module in modules:
-                for layer in ("domain", "application"):
-                    if (project.src / context / module / layer).is_dir():
-                        result.append(f"    {context}.{module}.{layer}")
-        else:
+        for module in project.modules(context):
             for layer in ("domain", "application"):
-                if (project.src / context / layer).is_dir():
-                    result.append(f"    {context}.{layer}")
+                if (project.src / context / module / layer).is_dir():
+                    result.append(f"    {context}.{module}.{layer}")
     return result
 
 
@@ -175,26 +156,11 @@ def build_contracts(project: ProjectLayout) -> str:
     ]
 
     if project.contexts:
-        # Legacy contexts (no aggregate modules yet) keep the single
-        # context-scoped layers contract exactly as it worked before aggregate
-        # modules existed. Contexts WITH aggregate modules are covered instead
-        # by the per-module contracts from ``_module_contracts`` below —
-        # ``entrypoints`` is a context-level sibling of the modules, not nested
-        # under one, so it can no longer share a ``containers``-based layers
-        # contract with them.
-        legacy_contexts = [context for context in project.contexts if not project.modules(context)]
-        if legacy_contexts:
-            lines += [
-                "[importlinter:contract:ARCH-001]",
-                f"name = {' '.join(_LAYER_RULES)} layered",
-                "type = layers",
-                "containers =",
-                *(f"    {context}" for context in legacy_contexts),
-                "layers =",
-                *(f"    ({layer})" for layer in _LAYERED),
-                "",
-            ]
-
+        # Every context now has aggregate modules, so layering is covered
+        # entirely by the per-module contracts from ``_module_contracts``
+        # below — ``entrypoints`` is a context-level sibling of the modules,
+        # not nested under one, so it cannot share a ``containers``-based
+        # layers contract with them.
         for context in project.contexts:
             lines += _module_contracts(project, context)
 

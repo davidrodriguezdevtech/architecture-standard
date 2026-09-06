@@ -29,10 +29,14 @@ def test_detect_finds_no_contexts_on_a_non_ddd_tree(tmp_path: Path) -> None:
     assert layout.contexts == ()
 
 
-def test_layer_dirs() -> None:
+def test_module_dirs_resolve_under_good_project() -> None:
+    # domain_dir/application_dir/infrastructure_dir were removed in Task 10: every
+    # fixture now has aggregate modules, so only the module-scoped accessors resolve
+    # real paths.
     layout = ProjectLayout.detect(GOOD)
-    assert layout.domain_dir("sales") == GOOD / "src" / "sales" / "domain"
-    assert layout.application_dir("sales") == GOOD / "src" / "sales" / "application"
+    assert layout.module_domain_dir("sales", "orders") == GOOD / "src/sales/orders/domain"
+    assert layout.module_application_dir("sales", "orders") == GOOD / "src/sales/orders/application"
+    assert layout.entrypoints_dir("sales") == GOOD / "src/sales/entrypoints"
 
 
 def test_iter_python_files_skips_pycache(tmp_path: Path) -> None:

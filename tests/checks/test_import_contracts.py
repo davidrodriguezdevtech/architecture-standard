@@ -17,7 +17,12 @@ MODULAR = FIX / "modular_project"
 def test_build_contracts_names_contracts_after_rule_ids() -> None:
     layout = ProjectLayout.detect(FIX / "good_project")
     ini = build_contracts(layout)
-    assert "[importlinter:contract:ARCH-001]" in ini
+    # good_project has an aggregate module (sales.orders) since Task 10's fixture
+    # migration, so it is covered by the per-module layers contract, not the
+    # legacy single-context ``ARCH-001`` contract (which no fixture triggers
+    # anymore, since every fixture now has aggregate modules).
+    assert "[importlinter:contract:ARCH-layers-sales-orders]" in ini
+    assert "[importlinter:contract:ARCH-001]" not in ini
     assert "[importlinter:contract:ARCH-012]" in ini
     assert "type = layers" in ini
     assert "type = independence" in ini
@@ -36,9 +41,16 @@ def test_bad_project_fails_arch_001() -> None:
     assert reports["ARCH-001"].findings
     # Fails because import-linter reported a broken contract, not because it errored.
     assert reports["ARCH-001"].findings[0].message == "import-linter contract broken"
-    # A clean edge (application layer) still passes under the coarse v1 mapping only
-    # when the contract is kept; here the layered contract is broken so all four fail.
-    assert reports["ARCH-006"].outcome is Outcome.FAIL
+    # ARCH-002/ARCH-005 share the same per-module ``layers`` contract as ARCH-001
+    # (sales.orders' domain importing its own infrastructure breaks all three).
+    assert reports["ARCH-002"].outcome is Outcome.FAIL
+    assert reports["ARCH-005"].outcome is Outcome.FAIL
+    # ARCH-006 is its own ``forbidden`` contract post-Task-10, only emitted when
+    # the context has an entrypoints/ dir. bad_project has none, so ARCH-006 has
+    # nothing to break and PASSes (uncovered, not a genuine violation) — unlike
+    # pre-migration, when it artificially FAILed as collateral from sharing one
+    # coarse ``layers`` contract with ARCH-001/002/005.
+    assert reports["ARCH-006"].outcome is Outcome.PASS
     # Contracts unrelated to the violation stay green.
     assert reports["ARCH-012"].outcome is Outcome.PASS
     assert reports["ARCH-034"].outcome is Outcome.PASS
@@ -121,9 +133,11 @@ def test_given_the_modular_fixture__when_checked__then_every_rule_passes() -> No
     assert {r.rule_id for r in reports} == set(ImportContractsCheck.rule_ids)
 
 
-def test_legacy_fixtures_keep_their_exact_existing_outcomes() -> None:
-    # Guardrail for this task: legacy contexts (no aggregate modules) must not
-    # regress now that build_contracts() branches on project.modules(context).
+def test_migrated_fixtures_report_the_expected_outcomes() -> None:
+    # Guardrail for Task 10: good_project/bad_project migrated into the
+    # aggregate-module shape and now go entirely through the per-module contract
+    # path (the legacy single-context branch is gone). good_project must still be
+    # all-green; bad_project must still trip its genuine violations.
     good = ImportContractsCheck().run(
         ProjectLayout.detect(FIX / "good_project"), Catalog.load(RULES)
     )
@@ -136,12 +150,14 @@ def test_legacy_fixtures_keep_their_exact_existing_outcomes() -> None:
         )
     }
     assert bad["ARCH-001"].outcome is Outcome.FAIL
-    assert bad["ARCH-006"].outcome is Outcome.FAIL
+    # bad_project has no entrypoints/ dir, so no ARCH-006 contract is emitted for
+    # it (there's nothing for the rule to check) -> uncovered-but-not-broken PASS.
+    assert bad["ARCH-006"].outcome is Outcome.PASS
     assert bad["ARCH-012"].outcome is Outcome.PASS
     assert bad["ARCH-034"].outcome is Outcome.PASS
-    # New rules must SKIP-free PASS for a legacy project (no modules to isolate,
-    # no read/ dir): there is nothing for ARCH-046/052 to check, and no contract
-    # is emitted for them, so they stay uncovered-but-not-broken -> PASS.
+    # bad_project has only one module and no read/ dir: nothing for ARCH-046/052
+    # to check, and no contract is emitted for them, so they stay
+    # uncovered-but-not-broken -> PASS.
     assert bad["ARCH-046"].outcome is Outcome.PASS
     assert bad["ARCH-052"].outcome is Outcome.PASS
 

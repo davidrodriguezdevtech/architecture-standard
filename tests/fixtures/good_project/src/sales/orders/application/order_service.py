@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from sales.domain.model.aggregates import Order
-from sales.domain.model.ports import OrderRepository
+from sales.orders.domain.model.order import Order
+from sales.orders.domain.model.ports import OrderRepository
+from sales.shared.ids import OrderId
 
 
 class OrderService:
@@ -9,12 +10,12 @@ class OrderService:
         self._orders = orders
 
     def create_order(self, order_id: str) -> None:
-        self._orders.add(Order(id=order_id))
+        self._orders.add(Order(id=OrderId(order_id)))
 
     def add_line(self, order_id: str, sku: str) -> None:
-        order = self._orders.get(order_id)
+        order = self._orders.get(OrderId(order_id))
         if order is not None:
             order.add_line(sku)
 
     def find_order(self, order_id: str) -> Order | None:
-        return self._orders.get(order_id)
+        return self._orders.get(OrderId(order_id))

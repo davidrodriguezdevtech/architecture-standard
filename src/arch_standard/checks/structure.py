@@ -39,13 +39,6 @@ def _mutates_self(cls: ast.ClassDef) -> bool:
 def _check_no_context_application(project: ProjectLayout) -> list[Finding]:
     findings: list[Finding] = []
     for context in project.contexts:
-        if not project.modules(context):
-            # A legacy, single-aggregate context (domain/application/infrastructure
-            # directly under the context, no aggregate-module split yet) is not
-            # in the new aggregate-module shape this rule targets: the coordination
-            # layer it warns about only exists once a context has split into
-            # sibling aggregate modules.
-            continue
         path = project.src / context / "application"
         if path.is_dir():
             findings.append(

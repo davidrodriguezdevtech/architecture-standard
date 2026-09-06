@@ -34,7 +34,7 @@ class IntegrationEventSchemaCheck:
         any_events = False
 
         for context in project.contexts:
-            ie_file = project.application_dir(context) / "integration_events.py"
+            ie_file = project.src / context / "integration_events.py"
             if not ie_file.exists():
                 continue
             any_events = True

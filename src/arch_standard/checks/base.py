@@ -10,7 +10,6 @@ from arch_standard.rules.catalog import Catalog
 from arch_standard.rules.model import Level
 
 _NON_CONTEXT_DIRS = {"commons", "shared_kernel", "bootstrap"}
-_CONTEXT_LAYER_DIRS = ("domain", "application", "infrastructure", "entrypoints")
 _SKIP_DIRS = {".venv", "venv", "__pycache__", ".git", ".mypy_cache", ".ruff_cache"}
 _CONTEXT_RESERVED = frozenset({"entrypoints", "shared", "read"})
 _MODULE_LAYER_DIRS = ("domain", "application", "infrastructure")
@@ -73,7 +72,7 @@ class ProjectLayout:
                     and p.name not in _NON_CONTEXT_DIRS
                     and not p.name.startswith((".", "_"))
                     and (
-                        any((p / layer).is_dir() for layer in _CONTEXT_LAYER_DIRS)
+                        (p / "entrypoints").is_dir()
                         or any(
                             c.is_dir() and c.name not in _CONTEXT_RESERVED and _has_module_layer(c)
                             for c in p.iterdir()
@@ -82,15 +81,6 @@ class ProjectLayout:
                 )
             )
         return cls(root=root, src=src, contexts=contexts)
-
-    def domain_dir(self, context: str) -> Path:
-        return self.src / context / "domain"
-
-    def application_dir(self, context: str) -> Path:
-        return self.src / context / "application"
-
-    def infrastructure_dir(self, context: str) -> Path:
-        return self.src / context / "infrastructure"
 
     def entrypoints_dir(self, context: str) -> Path:
         return self.src / context / "entrypoints"

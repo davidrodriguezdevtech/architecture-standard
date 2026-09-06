@@ -74,8 +74,6 @@ def _check_domain_events(project: ProjectLayout) -> list[Finding]:
     event_files: list[Path] = []
     for context, module in project.iter_modules():
         event_files.append(project.module_domain_dir(context, module) / "model" / "events.py")
-    for context in project.contexts:
-        event_files.append(project.domain_dir(context) / "model" / "events.py")
     for events_file in event_files:
         if not events_file.exists():
             continue
@@ -99,8 +97,6 @@ def _check_value_objects(project: ProjectLayout) -> list[Finding]:
     vo_files: list[Path] = []
     for context, module in project.iter_modules():
         vo_files.append(project.module_domain_dir(context, module) / "model" / "value_objects.py")
-    for context in project.contexts:
-        vo_files.append(project.domain_dir(context) / "model" / "value_objects.py")
     for vo_file in vo_files:
         if not vo_file.exists():
             continue
@@ -154,12 +150,6 @@ def _check_aggregate_encapsulation(project: ProjectLayout) -> list[Finding]:
         for agg_file in _aggregate_files(model_dir):
             rel = str(agg_file.relative_to(project.root))
             findings.extend(_check_encapsulation_in_file(agg_file, rel))
-    for context in project.contexts:
-        agg_file = project.domain_dir(context) / "model" / "aggregates.py"
-        if not agg_file.exists():
-            continue
-        rel = str(agg_file.relative_to(project.root))
-        findings.extend(_check_encapsulation_in_file(agg_file, rel))
     return findings
 
 
@@ -227,9 +217,6 @@ def _check_service_size(project: ProjectLayout) -> list[Finding]:
     for context, module in project.iter_modules():
         app_dir = project.module_application_dir(context, module)
         findings.extend(_check_service_size_in_dir(project, app_dir))
-    for context in project.contexts:
-        app_dir = project.application_dir(context)
-        findings.extend(_check_service_size_in_dir(project, app_dir))
     return findings
 
 
@@ -262,39 +249,6 @@ def _check_test_naming(project: ProjectLayout) -> list[Finding]:
 
 def _check_promotion_thresholds(project: ProjectLayout) -> list[Finding]:
     findings: list[Finding] = []
-    for context in project.contexts:
-        flat = project.domain_dir(context) / "model.py"
-        if flat.exists():
-            n = len(flat.read_text(encoding="utf-8").splitlines())
-            if n > 400:
-                findings.append(
-                    Finding(
-                        "ARCH-041",
-                        str(flat.relative_to(project.root)),
-                        None,
-                        f"domain/model.py is {n} lines (> 400): promote to a package",
-                    )
-                )
-        ports = project.domain_dir(context) / "model" / "ports.py"
-        if ports.exists() and len(_classes(ports)) > 8:
-            findings.append(
-                Finding(
-                    "ARCH-041",
-                    str(ports.relative_to(project.root)),
-                    None,
-                    "ports.py has > 8 protocols: split into a ports/ package",
-                )
-            )
-        aggs = project.domain_dir(context) / "model" / "aggregates.py"
-        if aggs.exists() and len(_classes(aggs)) > 2:
-            findings.append(
-                Finding(
-                    "ARCH-041",
-                    str(aggs.relative_to(project.root)),
-                    None,
-                    "aggregates.py has > 2 aggregates: consider a module each",
-                )
-            )
     for context, module in project.iter_modules():
         model_dir = project.module_domain_dir(context, module) / "model"
         for agg_file in _aggregate_files(model_dir):
