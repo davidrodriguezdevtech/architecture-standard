@@ -57,7 +57,7 @@ def _domain_files(project: ProjectLayout) -> list[Path]:
 
 
 class BannedSymbolsCheck:
-    rule_ids = ("ARCH-003", "ARCH-004", "ARCH-028")
+    rule_ids: tuple[str, ...] = ("ARCH-003", "ARCH-004", "ARCH-028")
 
     def run(self, project: ProjectLayout, catalog: Catalog) -> list[CheckReport]:
         imports: list[Finding] = []

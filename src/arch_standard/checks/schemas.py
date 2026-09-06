@@ -18,7 +18,7 @@ def _event_classes(path: Path) -> list[str]:
 
 
 class IntegrationEventSchemaCheck:
-    rule_ids = ("ARCH-024", "ARCH-043", "ARCH-044")
+    rule_ids: tuple[str, ...] = ("ARCH-024", "ARCH-043", "ARCH-044")
 
     def run(self, project: ProjectLayout, catalog: Catalog) -> list[CheckReport]:
         arch024: list[Finding] = []

@@ -257,7 +257,15 @@ _IMPLEMENTED: dict[str, object] = {
 
 
 class AstRulesCheck:
-    rule_ids = ("ARCH-018", "ARCH-019", "ARCH-023", "ARCH-030", "ARCH-031", "ARCH-040", "ARCH-041")
+    rule_ids: tuple[str, ...] = (
+        "ARCH-018",
+        "ARCH-019",
+        "ARCH-023",
+        "ARCH-030",
+        "ARCH-031",
+        "ARCH-040",
+        "ARCH-041",
+    )
 
     def run(self, project: ProjectLayout, catalog: Catalog) -> list[CheckReport]:
         reports: list[CheckReport] = []
