@@ -1,0 +1,35 @@
+rules:
+  - id: ARCH-001
+    name: Domain independent of infrastructure
+    level: MUST
+    automation: full
+    category: dependencies
+    description: The domain layer does not import the infrastructure layer.
+    rationale: Keeps the core testable and swappable.
+    correct: "from sales.domain.model.ports import OrderRepository"
+    incorrect: "from sales.infrastructure.postgres import PgOrderRepo"
+    validation:
+      tool: import-linter
+  - id: ARCH-021
+    name: One aggregate per transaction
+    level: MUST*
+    automation: partial
+    category: model_integrity
+    description: A unit of work commits changes to a single aggregate.
+    rationale: Keeps the store portable and the context extractable.
+    correct: "uow.commit() after mutating one Order"
+    incorrect: "mutating Order and Invoice in one uow block"
+    validation:
+      tool: ast-checker
+    related: [ARCH-033]
+  - id: ARCH-033
+    name: Writes go through a Unit of Work
+    level: MUST
+    automation: partial
+    category: model_integrity
+    description: Every use-case write is committed via a UnitOfWork.
+    rationale: Single transaction boundary and event collection point.
+    correct: "with uow: ...; uow.commit()"
+    incorrect: "repo.session.commit() inside the service"
+    validation:
+      tool: ast-checker

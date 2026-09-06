@@ -1,0 +1,4 @@
+rules:
+  - {id: ARCH-001, name: B, level: MUST, automation: full, category: c,
+     description: d, rationale: r, correct: y, incorrect: n,
+     validation: {tool: review}}
