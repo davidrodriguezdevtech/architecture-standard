@@ -342,6 +342,15 @@ class ImportContractsCheck:
                 if is_broken
                 else ()
             )
-            outcome = outcome_for(catalog.get(rule_id).level, is_broken)
+            # I3: a rule whose contract was never emitted (not in `covered` —
+            # e.g. ARCH-046 with only one module, ARCH-052 with no read/ dir,
+            # ARCH-006 with no entrypoints/ dir) was never actually evaluated.
+            # That is a different category from "checked, no violation found",
+            # so it must SKIP rather than report a vacuous PASS.
+            outcome = (
+                Outcome.SKIP
+                if rule_id not in covered
+                else outcome_for(catalog.get(rule_id).level, is_broken)
+            )
             reports.append(CheckReport(rule_id=rule_id, outcome=outcome, findings=findings))
         return reports

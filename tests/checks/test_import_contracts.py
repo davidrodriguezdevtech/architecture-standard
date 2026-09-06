@@ -30,8 +30,13 @@ def test_build_contracts_names_contracts_after_rule_ids() -> None:
 
 def test_good_project_passes() -> None:
     layout = ProjectLayout.detect(FIX / "good_project")
-    reports = ImportContractsCheck().run(layout, Catalog.load(RULES))
-    assert all(r.outcome is Outcome.PASS for r in reports)
+    reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, Catalog.load(RULES))}
+    # good_project has only one module and no read/ dir: ARCH-046/052 have
+    # nothing to check (I3: uncovered means SKIP, not a vacuous PASS).
+    skipped = {"ARCH-046", "ARCH-052"}
+    for rule_id, report in reports.items():
+        expected = Outcome.SKIP if rule_id in skipped else Outcome.PASS
+        assert report.outcome is expected, rule_id
 
 
 def test_bad_project_fails_arch_001() -> None:
@@ -47,10 +52,10 @@ def test_bad_project_fails_arch_001() -> None:
     assert reports["ARCH-005"].outcome is Outcome.FAIL
     # ARCH-006 is its own ``forbidden`` contract post-Task-10, only emitted when
     # the context has an entrypoints/ dir. bad_project has none, so ARCH-006 has
-    # nothing to break and PASSes (uncovered, not a genuine violation) — unlike
-    # pre-migration, when it artificially FAILed as collateral from sharing one
-    # coarse ``layers`` contract with ARCH-001/002/005.
-    assert reports["ARCH-006"].outcome is Outcome.PASS
+    # nothing to check at all — I3: that is SKIP (uncovered), not a vacuous
+    # PASS — unlike pre-migration, when it artificially FAILed as collateral
+    # from sharing one coarse ``layers`` contract with ARCH-001/002/005.
+    assert reports["ARCH-006"].outcome is Outcome.SKIP
     # Contracts unrelated to the violation stay green.
     assert reports["ARCH-012"].outcome is Outcome.PASS
     assert reports["ARCH-034"].outcome is Outcome.PASS
@@ -80,10 +85,17 @@ def test_minimal_project_with_no_commons_or_bootstrap_passes() -> None:
     # C1: build_contracts must not invent commons/bootstrap roots or require every
     # layer to exist — a single-context project with only domain/ must not spuriously
     # FAIL rules it does cover.
+    # I3: minimal_project has no entrypoints/, no commons/, only one module, and no
+    # read/ dir — ARCH-006/034/035/046/052 have nothing to check and SKIP instead of
+    # a vacuous PASS. Only the always-emitted per-module layers contract (001/002/005)
+    # and the independence contract (012) are actually covered here.
     layout = ProjectLayout.detect(FIX / "minimal_project")
-    reports = ImportContractsCheck().run(layout, Catalog.load(RULES))
+    reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, Catalog.load(RULES))}
     assert reports
-    assert all(r.outcome is Outcome.PASS for r in reports)
+    skipped = {"ARCH-006", "ARCH-034", "ARCH-035", "ARCH-046", "ARCH-052"}
+    for rule_id, report in reports.items():
+        expected = Outcome.SKIP if rule_id in skipped else Outcome.PASS
+        assert report.outcome is expected, rule_id
 
 
 def test_non_ddd_tree_skips_instead_of_erroring(tmp_path: Path) -> None:
@@ -122,26 +134,37 @@ def test_given_the_modular_fixture__when_building_contracts__then_module_layers_
 
 
 def test_given_the_modular_fixture__when_checked__then_every_rule_passes() -> None:
+    # modular_project has no commons/ dir, so ARCH-034/035 (which both require
+    # commons/) have nothing to check and SKIP (I3) rather than a vacuous PASS.
+    # Every other rule's contract is genuinely emitted here (sales has 2 modules,
+    # entrypoints, and a read/ dir; billing has entrypoints) and stays PASS.
     layout = ProjectLayout.detect(MODULAR)
-    reports = ImportContractsCheck().run(layout, Catalog.load(RULES))
-    assert all(r.outcome is Outcome.PASS for r in reports), [
-        (r.rule_id, [f.message for f in r.findings])
-        for r in reports
-        if r.outcome is not Outcome.PASS
-    ]
+    reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, Catalog.load(RULES))}
+    skipped = {"ARCH-034", "ARCH-035"}
+    for rule_id, report in reports.items():
+        expected = Outcome.SKIP if rule_id in skipped else Outcome.PASS
+        assert report.outcome is expected, (rule_id, [f.message for f in report.findings])
     # All 9 rules must be present and accounted for.
-    assert {r.rule_id for r in reports} == set(ImportContractsCheck.rule_ids)
+    assert set(reports) == set(ImportContractsCheck.rule_ids)
 
 
 def test_migrated_fixtures_report_the_expected_outcomes() -> None:
     # Guardrail for Task 10: good_project/bad_project migrated into the
     # aggregate-module shape and now go entirely through the per-module contract
     # path (the legacy single-context branch is gone). good_project must still be
-    # all-green; bad_project must still trip its genuine violations.
-    good = ImportContractsCheck().run(
-        ProjectLayout.detect(FIX / "good_project"), Catalog.load(RULES)
-    )
-    assert all(r.outcome is Outcome.PASS for r in good)
+    # green on every rule it actually covers; bad_project must still trip its
+    # genuine violations. good_project has only one module and no read/ dir, so
+    # ARCH-046/052 have nothing to check and SKIP (I3) instead of a vacuous PASS.
+    good = {
+        r.rule_id: r
+        for r in ImportContractsCheck().run(
+            ProjectLayout.detect(FIX / "good_project"), Catalog.load(RULES)
+        )
+    }
+    good_skipped = {"ARCH-046", "ARCH-052"}
+    for rule_id, report in good.items():
+        expected = Outcome.SKIP if rule_id in good_skipped else Outcome.PASS
+        assert report.outcome is expected, rule_id
 
     bad = {
         r.rule_id: r
@@ -151,15 +174,14 @@ def test_migrated_fixtures_report_the_expected_outcomes() -> None:
     }
     assert bad["ARCH-001"].outcome is Outcome.FAIL
     # bad_project has no entrypoints/ dir, so no ARCH-006 contract is emitted for
-    # it (there's nothing for the rule to check) -> uncovered-but-not-broken PASS.
-    assert bad["ARCH-006"].outcome is Outcome.PASS
+    # it (there's nothing for the rule to check) -> SKIP (I3), not a vacuous PASS.
+    assert bad["ARCH-006"].outcome is Outcome.SKIP
     assert bad["ARCH-012"].outcome is Outcome.PASS
     assert bad["ARCH-034"].outcome is Outcome.PASS
     # bad_project has only one module and no read/ dir: nothing for ARCH-046/052
-    # to check, and no contract is emitted for them, so they stay
-    # uncovered-but-not-broken -> PASS.
-    assert bad["ARCH-046"].outcome is Outcome.PASS
-    assert bad["ARCH-052"].outcome is Outcome.PASS
+    # to check, and no contract is emitted for them, so they SKIP (I3).
+    assert bad["ARCH-046"].outcome is Outcome.SKIP
+    assert bad["ARCH-052"].outcome is Outcome.SKIP
 
 
 def test_two_module_context_with_a_cross_module_import_fails_arch_046(tmp_path: Path) -> None:
@@ -226,6 +248,30 @@ def test_context_with_entrypoints_and_an_application_import_of_it_fails_arch_006
     assert reports["ARCH-001"].outcome is Outcome.PASS
     assert reports["ARCH-002"].outcome is Outcome.PASS
     assert reports["ARCH-005"].outcome is Outcome.PASS
+
+
+def test_given_a_single_module_context__when_checked__then_arch_046_skips_not_passes(
+    tmp_path: Path,
+) -> None:
+    # I3: with only one module, no ARCH-046 contract is ever emitted (nothing to
+    # check — a single module cannot import a sibling). That must report SKIP,
+    # not a vacuous PASS: "nothing to check" and "checked, no violation" are
+    # different categories, and ARCH-046 is a core-tier MUST.
+    src = tmp_path / "src"
+    (src / "sales" / "orders" / "domain" / "model").mkdir(parents=True)
+    (src / "sales" / "orders" / "domain" / "model" / "__init__.py").write_text("")
+    (src / "sales" / "orders" / "domain" / "__init__.py").write_text("")
+    (src / "sales" / "orders" / "__init__.py").write_text("")
+    (src / "sales" / "__init__.py").write_text("")
+    (src / "__init__.py").write_text("")
+
+    layout = ProjectLayout.detect(tmp_path)
+    assert layout.modules("sales") == ("orders",)
+    reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, Catalog.load(RULES))}
+    assert reports["ARCH-046"].outcome is Outcome.SKIP
+    assert reports["ARCH-046"].findings == ()
+    # The per-module layers contract IS emitted regardless, so it stays covered.
+    assert reports["ARCH-001"].outcome is Outcome.PASS
 
 
 def test_timeout_fails_all(monkeypatch: pytest.MonkeyPatch) -> None:
