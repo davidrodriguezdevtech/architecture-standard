@@ -330,14 +330,16 @@ class CreateOrder:
     customer_id: str
     lines: tuple[OrderLineInput, ...]
 
-class OrderNotifier(Protocol):           # colocated non-domain outbound contract
+
+class OrderNotifier(Protocol):  # colocated non-domain outbound contract
     def order_placed(self, order_id: OrderId) -> None: ...
+
 
 class OrderService:
     def __init__(
         self,
         uow: UnitOfWork,
-        orders: OrderRepository,        # injected already bound to `uow`
+        orders: OrderRepository,  # injected already bound to `uow`
         bus: EventBus,
         notifier: OrderNotifier,
     ) -> None: ...
@@ -440,10 +442,10 @@ Consumers never import this module; they see serialized envelopes only. (ARCH-02
 ```python
 class UnitOfWork(Protocol):
     def __enter__(self) -> "UnitOfWork": ...
-    def __exit__(self, *exc: object) -> None: ...      # rollback if commit() was not called
+    def __exit__(self, *exc: object) -> None: ...  # rollback if commit() was not called
     def commit(self) -> None: ...
     def rollback(self) -> None: ...
-    def track(self, aggregate: object) -> None: ...    # repositories call this on load/store
+    def track(self, aggregate: object) -> None: ...  # repositories call this on load/store
     def collect_new_events(self) -> Iterable[DomainEvent]: ...
 ```
 
@@ -472,7 +474,7 @@ class UnitOfWork(Protocol):
 
 ```python
 # sales/infrastructure/order_repository.py     — thin, intention-revealing
-class SqlAlchemyOrderRepository:                  # implements OrderRepository (domain port)
+class SqlAlchemyOrderRepository:  # implements OrderRepository (domain port)
     def __init__(self, uow: SqlAlchemyUnitOfWork) -> None:
         self._uow = uow
 
@@ -496,7 +498,7 @@ class SqlAlchemyOrderRepository:                  # implements OrderRepository (
 ```python
 # sales/entrypoints/providers.py
 def order_service() -> OrderService:
-    uow = unit_of_work()                          # from bootstrap/ (mappings already configured)
+    uow = unit_of_work()  # from bootstrap/ (mappings already configured)
     orders = SqlAlchemyOrderRepository(uow)
     return OrderService(uow=uow, orders=orders, bus=event_bus(), notifier=notifier())
 ```

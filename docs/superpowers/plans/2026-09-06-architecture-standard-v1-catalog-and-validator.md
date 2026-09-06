@@ -688,9 +688,51 @@ RULES_DIR = Path(__file__).parent.parent.parent / "rules"
 EXPECTED_IDS = {
     f"ARCH-{n:03d}"
     for n in [
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
-        18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
-        31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
     ]
 }
 
@@ -1363,8 +1405,14 @@ class ImportContractsCheck:
                     CheckReport(
                         rule_id=rid,
                         outcome=Outcome.FAIL,
-                        findings=(Finding(rule_id=rid, path=str(project.src), line=None,
-                                          message="import-linter contract broken"),),
+                        findings=(
+                            Finding(
+                                rule_id=rid,
+                                path=str(project.src),
+                                line=None,
+                                message="import-linter contract broken",
+                            ),
+                        ),
                     )
                 )
             else:
@@ -1549,11 +1597,15 @@ def _check_domain_events(project: ProjectLayout) -> list[Finding]:
         for cls in _classes(events_file):
             rel = str(events_file.relative_to(project.root))
             if not _is_frozen_dataclass(cls):
-                findings.append(Finding("ARCH-023", rel, cls.lineno,
-                                        f"{cls.name} is not a frozen dataclass"))
+                findings.append(
+                    Finding("ARCH-023", rel, cls.lineno, f"{cls.name} is not a frozen dataclass")
+                )
             if not _looks_past_tense(cls.name):
-                findings.append(Finding("ARCH-023", rel, cls.lineno,
-                                        f"{cls.name} is not named in the past tense"))
+                findings.append(
+                    Finding(
+                        "ARCH-023", rel, cls.lineno, f"{cls.name} is not named in the past tense"
+                    )
+                )
     return findings
 
 
@@ -1566,8 +1618,9 @@ def _check_value_objects(project: ProjectLayout) -> list[Finding]:
         for cls in _classes(vo_file):
             rel = str(vo_file.relative_to(project.root))
             if not _is_frozen_dataclass(cls):
-                findings.append(Finding("ARCH-031", rel, cls.lineno,
-                                        f"{cls.name} value object is not frozen"))
+                findings.append(
+                    Finding("ARCH-031", rel, cls.lineno, f"{cls.name} value object is not frozen")
+                )
     return findings
 
 
@@ -1677,6 +1730,7 @@ class OrderService:
 ```python
 # append to tests/checks/test_ast_rules.py
 
+
 def test_good_aggregate_encapsulation_passes():
     reports = _reports("good_project")
     assert reports["ARCH-019"].outcome is Outcome.PASS
@@ -1734,14 +1788,29 @@ def _check_aggregate_encapsulation(project: ProjectLayout) -> list[Finding]:
                     name = stmt.target.id
                     root = _annotation_root(stmt.annotation)
                     if not name.startswith("_") and root in _MUTABLE_CONTAINERS:
-                        findings.append(Finding("ARCH-019", rel, stmt.lineno,
-                                                f"{cls.name}.{name} exposes a mutable collection"))
+                        findings.append(
+                            Finding(
+                                "ARCH-019",
+                                rel,
+                                stmt.lineno,
+                                f"{cls.name}.{name} exposes a mutable collection",
+                            )
+                        )
                 if isinstance(stmt, ast.FunctionDef):
                     for deco in stmt.decorator_list:
-                        if (isinstance(deco, ast.Attribute) and deco.attr == "setter"
-                                and not stmt.name.startswith("_")):
-                            findings.append(Finding("ARCH-018", rel, stmt.lineno,
-                                                    f"{cls.name}.{stmt.name} has a public setter"))
+                        if (
+                            isinstance(deco, ast.Attribute)
+                            and deco.attr == "setter"
+                            and not stmt.name.startswith("_")
+                        ):
+                            findings.append(
+                                Finding(
+                                    "ARCH-018",
+                                    rel,
+                                    stmt.lineno,
+                                    f"{cls.name}.{stmt.name} has a public setter",
+                                )
+                            )
     return findings
 
 
@@ -1754,31 +1823,57 @@ def _check_service_size(project: ProjectLayout) -> list[Finding]:
             for cls in _classes(path):
                 if not cls.name.endswith("Service"):
                     continue
-                methods = [n for n in cls.body
-                           if isinstance(n, ast.FunctionDef) and not n.name.startswith("_")]
+                methods = [
+                    n
+                    for n in cls.body
+                    if isinstance(n, ast.FunctionDef) and not n.name.startswith("_")
+                ]
                 if len(methods) > 7:
-                    findings.append(Finding("ARCH-030", rel, cls.lineno,
-                                            f"{cls.name} has {len(methods)} public methods (> 7)"))
+                    findings.append(
+                        Finding(
+                            "ARCH-030",
+                            rel,
+                            cls.lineno,
+                            f"{cls.name} has {len(methods)} public methods (> 7)",
+                        )
+                    )
                 span = (cls.end_lineno or cls.lineno) - cls.lineno
                 if span > 200:
-                    findings.append(Finding("ARCH-030", rel, cls.lineno,
-                                            f"{cls.name} spans {span} lines (> 200)"))
-                init = next((n for n in cls.body
-                             if isinstance(n, ast.FunctionDef) and n.name == "__init__"), None)
+                    findings.append(
+                        Finding(
+                            "ARCH-030", rel, cls.lineno, f"{cls.name} spans {span} lines (> 200)"
+                        )
+                    )
+                init = next(
+                    (
+                        n
+                        for n in cls.body
+                        if isinstance(n, ast.FunctionDef) and n.name == "__init__"
+                    ),
+                    None,
+                )
                 if init and len(init.args.args) - 1 > 5:
-                    findings.append(Finding("ARCH-030", rel, init.lineno,
-                                            f"{cls.name}.__init__ has {len(init.args.args) - 1} params (> 5)"))
+                    findings.append(
+                        Finding(
+                            "ARCH-030",
+                            rel,
+                            init.lineno,
+                            f"{cls.name}.__init__ has {len(init.args.args) - 1} params (> 5)",
+                        )
+                    )
     return findings
 ```
 
 Register:
 
 ```python
-_IMPLEMENTED.update({
-    "ARCH-018": _check_aggregate_encapsulation,
-    "ARCH-019": _check_aggregate_encapsulation,
-    "ARCH-030": _check_service_size,
-})
+_IMPLEMENTED.update(
+    {
+        "ARCH-018": _check_aggregate_encapsulation,
+        "ARCH-019": _check_aggregate_encapsulation,
+        "ARCH-030": _check_service_size,
+    }
+)
 ```
 
 Update `AstRulesCheck.run` to (a) filter each function's findings to the current `rid`, (b) pick outcome:
@@ -1848,6 +1943,7 @@ def test_add_line_works() -> None:  # ARCH-040: not given/when/then
 ```python
 # append to tests/checks/test_ast_rules.py
 
+
 def test_good_test_naming_passes():
     assert _reports("good_project")["ARCH-040"].outcome is Outcome.PASS
 
@@ -1885,8 +1981,14 @@ def _check_test_naming(project: ProjectLayout) -> list[Finding]:
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
                 if not _GWT_RE.match(node.name):
-                    findings.append(Finding("ARCH-040", str(path.relative_to(project.root)),
-                                            node.lineno, f"{node.name} is not given/when/then"))
+                    findings.append(
+                        Finding(
+                            "ARCH-040",
+                            str(path.relative_to(project.root)),
+                            node.lineno,
+                            f"{node.name} is not given/when/then",
+                        )
+                    )
     return findings
 
 
@@ -1897,23 +1999,43 @@ def _check_promotion_thresholds(project: ProjectLayout) -> list[Finding]:
         if flat.exists():
             n = len(flat.read_text(encoding="utf-8").splitlines())
             if n > 400:
-                findings.append(Finding("ARCH-041", str(flat.relative_to(project.root)), None,
-                                        f"domain/model.py is {n} lines (> 400): promote to a package"))
+                findings.append(
+                    Finding(
+                        "ARCH-041",
+                        str(flat.relative_to(project.root)),
+                        None,
+                        f"domain/model.py is {n} lines (> 400): promote to a package",
+                    )
+                )
         ports = project.domain_dir(context) / "model" / "ports.py"
         if ports.exists() and len(_classes(ports)) > 8:
-            findings.append(Finding("ARCH-041", str(ports.relative_to(project.root)), None,
-                                    "ports.py has > 8 protocols: split into a ports/ package"))
+            findings.append(
+                Finding(
+                    "ARCH-041",
+                    str(ports.relative_to(project.root)),
+                    None,
+                    "ports.py has > 8 protocols: split into a ports/ package",
+                )
+            )
         aggs = project.domain_dir(context) / "model" / "aggregates.py"
         if aggs.exists() and len(_classes(aggs)) > 2:
-            findings.append(Finding("ARCH-041", str(aggs.relative_to(project.root)), None,
-                                    "aggregates.py has > 2 aggregates: consider a module each"))
+            findings.append(
+                Finding(
+                    "ARCH-041",
+                    str(aggs.relative_to(project.root)),
+                    None,
+                    "aggregates.py has > 2 aggregates: consider a module each",
+                )
+            )
     return findings
 
 
-_IMPLEMENTED.update({
-    "ARCH-040": _check_test_naming,
-    "ARCH-041": _check_promotion_thresholds,
-})
+_IMPLEMENTED.update(
+    {
+        "ARCH-040": _check_test_naming,
+        "ARCH-041": _check_promotion_thresholds,
+    }
+)
 _WARN_ONLY_RULES.add("ARCH-040")
 ```
 
@@ -2044,12 +2166,30 @@ from arch_standard.checks.base import (
 from arch_standard.rules.catalog import Catalog
 
 DEFAULT_BANNED_IMPORTS = frozenset(
-    {"sqlalchemy", "fastapi", "pydantic", "requests", "httpx", "boto3",
-     "django", "flask", "kafka", "redis"}
+    {
+        "sqlalchemy",
+        "fastapi",
+        "pydantic",
+        "requests",
+        "httpx",
+        "boto3",
+        "django",
+        "flask",
+        "kafka",
+        "redis",
+    }
 )
 DEFAULT_BANNED_CALLS = frozenset(
-    {"datetime.now", "datetime.utcnow", "uuid.uuid1", "uuid.uuid4",
-     "time.time", "random.random", "random.randint", "open"}
+    {
+        "datetime.now",
+        "datetime.utcnow",
+        "uuid.uuid1",
+        "uuid.uuid4",
+        "time.time",
+        "random.random",
+        "random.randint",
+        "open",
+    }
 )
 _ORM_BASES = {"Base", "Model", "DeclarativeBase"}
 
@@ -2084,30 +2224,47 @@ class BannedSymbolsCheck:
                     for alias in node.names:
                         top = alias.name.split(".")[0]
                         if top in DEFAULT_BANNED_IMPORTS:
-                            imports.append(Finding("ARCH-003", rel, node.lineno,
-                                                   f"domain imports {alias.name}"))
+                            imports.append(
+                                Finding(
+                                    "ARCH-003", rel, node.lineno, f"domain imports {alias.name}"
+                                )
+                            )
                 elif isinstance(node, ast.ImportFrom) and node.module:
                     top = node.module.split(".")[0]
                     if top in DEFAULT_BANNED_IMPORTS:
-                        imports.append(Finding("ARCH-003", rel, node.lineno,
-                                               f"domain imports {node.module}"))
+                        imports.append(
+                            Finding("ARCH-003", rel, node.lineno, f"domain imports {node.module}")
+                        )
                 elif isinstance(node, ast.Call):
                     target = _dotted(node.func)
                     tail = ".".join(target.split(".")[-2:]) if "." in target else target
                     if target in DEFAULT_BANNED_CALLS or tail in DEFAULT_BANNED_CALLS:
-                        calls.append(Finding("ARCH-004", rel, node.lineno,
-                                             f"domain calls {target or tail}"))
+                        calls.append(
+                            Finding("ARCH-004", rel, node.lineno, f"domain calls {target or tail}")
+                        )
                 elif isinstance(node, ast.ClassDef):
-                    if any(isinstance(b, ast.Name) and b.id in _ORM_BASES
-                           or isinstance(b, ast.Attribute) and b.attr in _ORM_BASES
-                           for b in node.bases):
-                        orm.append(Finding("ARCH-028", rel, node.lineno,
-                                           f"{node.name} inherits an ORM base in the domain"))
+                    if any(
+                        isinstance(b, ast.Name)
+                        and b.id in _ORM_BASES
+                        or isinstance(b, ast.Attribute)
+                        and b.attr in _ORM_BASES
+                        for b in node.bases
+                    ):
+                        orm.append(
+                            Finding(
+                                "ARCH-028",
+                                rel,
+                                node.lineno,
+                                f"{node.name} inherits an ORM base in the domain",
+                            )
+                        )
 
         def report(rid: str, findings: list[Finding]) -> CheckReport:
-            return CheckReport(rule_id=rid,
-                               outcome=Outcome.FAIL if findings else Outcome.PASS,
-                               findings=tuple(findings))
+            return CheckReport(
+                rule_id=rid,
+                outcome=Outcome.FAIL if findings else Outcome.PASS,
+                findings=tuple(findings),
+            )
 
         return [report("ARCH-003", imports), report("ARCH-004", calls), report("ARCH-028", orm)]
 ```
@@ -2261,23 +2418,32 @@ class IntegrationEventSchemaCheck:
             rel = str(ie_file.relative_to(project.root))
             text = ie_file.read_text(encoding="utf-8")
             if "EventEnvelope" not in text:
-                arch043.append(Finding("ARCH-043", rel, None,
-                                       f"{context}/integration_events.py does not reference EventEnvelope"))
+                arch043.append(
+                    Finding(
+                        "ARCH-043",
+                        rel,
+                        None,
+                        f"{context}/integration_events.py does not reference EventEnvelope",
+                    )
+                )
             for cls_name in _event_classes(ie_file):
                 schema_json = project.root / "docs" / "events" / f"{_snake(cls_name)}.json"
                 schema_yaml = schema_json.with_suffix(".yaml")
                 if not schema_json.exists() and not schema_yaml.exists():
-                    arch044.append(Finding("ARCH-044", rel, None,
-                                           f"no published schema for {cls_name}"))
+                    arch044.append(
+                        Finding("ARCH-044", rel, None, f"no published schema for {cls_name}")
+                    )
 
         def report(rid: str, findings: list[Finding], *, warn: bool) -> CheckReport:
             if not any_events:
                 return CheckReport(rule_id=rid, outcome=Outcome.SKIP)
             if not findings:
                 return CheckReport(rule_id=rid, outcome=Outcome.PASS)
-            return CheckReport(rule_id=rid,
-                               outcome=Outcome.WARN if warn else Outcome.FAIL,
-                               findings=tuple(findings))
+            return CheckReport(
+                rule_id=rid,
+                outcome=Outcome.WARN if warn else Outcome.FAIL,
+                findings=tuple(findings),
+            )
 
         return [
             report("ARCH-024", arch024, warn=True),
@@ -2379,6 +2545,7 @@ FIX = Path(__file__).parent / "fixtures"
 
 def test_check_on_good_project_exits_zero(capsys):
     from arch_standard.cli import main
+
     code = main(["check", str(FIX / "good_project")])
     assert code == 0
     assert "ARCH-001" in capsys.readouterr().out
@@ -2386,6 +2553,7 @@ def test_check_on_good_project_exits_zero(capsys):
 
 def test_check_on_bad_project_exits_one():
     from arch_standard.cli import main
+
     assert main(["check", str(FIX / "bad_project")]) == 1
 ```
 
@@ -2446,10 +2614,15 @@ class Report:
         for report in self.reports:
             if report.outcome is Outcome.FAIL and report.rule_id in waivers:
                 w = waivers[report.rule_id][0]
-                note = Finding(report.rule_id, w.adr_path, None,
-                               f"waived by {w.adr_path} until {w.expires.isoformat()}")
-                updated.append(replace(report, outcome=Outcome.WARN,
-                                       findings=(*report.findings, note)))
+                note = Finding(
+                    report.rule_id,
+                    w.adr_path,
+                    None,
+                    f"waived by {w.adr_path} until {w.expires.isoformat()}",
+                )
+                updated.append(
+                    replace(report, outcome=Outcome.WARN, findings=(*report.findings, note))
+                )
             else:
                 updated.append(report)
         return Report(reports=tuple(updated))
@@ -2511,12 +2684,12 @@ def _run_check(path: str) -> int:
 And in `main()`:
 
 ```python
-    args = parser.parse_args(argv)
-    if args.command == "check":
-        return _run_check(args.path)
-    if args.command == "docs":
-        return _run_docs(check=args.check)   # implemented in Task 15
-    return 0
+args = parser.parse_args(argv)
+if args.command == "check":
+    return _run_check(args.path)
+if args.command == "docs":
+    return _run_docs(check=args.check)  # implemented in Task 15
+return 0
 ```
 
 (Add a temporary `def _run_docs(check: bool) -> int: return 0` until Task 15.)
@@ -2555,11 +2728,23 @@ from pathlib import Path
 PROSE = Path(__file__).parent.parent / "docs" / "standard"
 
 EXPECTED = {
-    "00-purpose", "01-philosophy", "02-structure", "03-bounded-contexts",
-    "04-entry-points", "05-domain", "06-application", "07-infrastructure",
-    "08-commons-shared-kernel", "09-dependency-rules", "10-ddd-rules",
-    "11-testing-strategy", "12-anti-patterns", "13-must-should-may",
-    "14-architecture-as-code", "15-progressive-structure", "16-reuse",
+    "00-purpose",
+    "01-philosophy",
+    "02-structure",
+    "03-bounded-contexts",
+    "04-entry-points",
+    "05-domain",
+    "06-application",
+    "07-infrastructure",
+    "08-commons-shared-kernel",
+    "09-dependency-rules",
+    "10-ddd-rules",
+    "11-testing-strategy",
+    "12-anti-patterns",
+    "13-must-should-may",
+    "14-architecture-as-code",
+    "15-progressive-structure",
+    "16-reuse",
 }
 
 
@@ -2677,7 +2862,10 @@ def test_render_is_idempotent():
 
 def test_committed_standard_is_current():
     from arch_standard.docgen import render_standard as r
-    committed = (Path(__file__).parent.parent / "ARCHITECTURE_STANDARD.md").read_text(encoding="utf-8")
+
+    committed = (Path(__file__).parent.parent / "ARCHITECTURE_STANDARD.md").read_text(
+        encoding="utf-8"
+    )
     assert committed == r(Catalog.load(RULES), PROSE)
 ```
 
@@ -2766,6 +2954,7 @@ def _run_docs(check: bool) -> int:
     root = Path.cwd()
     if check:
         from arch_standard.docgen import _PACKAGED_RULES
+
         expected = render_standard(Catalog.load(_PACKAGED_RULES), root / "docs" / "standard")
         current = (root / "ARCHITECTURE_STANDARD.md").read_text(encoding="utf-8")
         if current != expected:
