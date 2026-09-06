@@ -1,0 +1,66 @@
+rules:
+  - id: ARCH-038
+    name: Domain objects are never mocked
+    level: SHOULD
+    automation: partial
+    category: testing
+    description: >
+      Tests never replace an aggregate, entity, domain value object, domain
+      service, or shared_kernel value object with a mock or stub; they exercise
+      the real object.
+    rationale: >
+      Mocking the domain couples tests to its implementation and stops them
+      verifying the real invariants.
+    correct: |
+      order = Order.place(customer_id, lines)     # real aggregate
+      order.add_item(item)
+      assert order.total == Money(Decimal("30.00"), "EUR")
+    incorrect: |
+      order = Mock(spec=Order)
+      order.total = Money(Decimal("30.00"), "EUR")
+    validation:
+      tool: review
+      detail: PR checklist plus grep for Mock(spec=<domain type>) in tests
+    related: [ARCH-039]
+  - id: ARCH-039
+    name: In-memory fakes share the contract test with the real adapter
+    level: SHOULD
+    automation: manual
+    category: testing
+    description: >
+      Each in-memory fake (repository, event bus, clock) is exercised by the
+      same contract test as the real adapter, and the repository contract test
+      asserts that domain events surface in uow.collect_new_events() after
+      add/get.
+    rationale: >
+      A fake not held to the real adapter's contract can silently diverge, for
+      instance a custom UnitOfWork that forgets track() and drops events.
+    correct: |
+      @pytest.mark.parametrize("repo", ["in_memory", "sqlalchemy"])
+      def given_added_order__when_get__then_events_surface_in_collect_new_events(repo):
+          ...
+    incorrect: |
+      # InMemoryOrderRepository has its own ad hoc test; the real repo test is unrelated
+    validation:
+      tool: review
+      detail: PR checklist; is the fake bound to the shared contract test?
+  - id: ARCH-040
+    name: Test names follow given_<state>__when_<action>__then_<result>
+    level: SHOULD
+    automation: full
+    category: testing
+    description: >
+      Every test function name matches given_<state>__when_<action>__then_<result>,
+      with double underscores separating the three parts.
+    rationale: >
+      A uniform three-part name states the scenario and the expectation without
+      reading the body and keeps the suite to one test per rule.
+    correct: |
+      def given_shipped_order__when_add_item__then_raises_order_already_shipped():
+          ...
+    incorrect: |
+      def test_add_item_fails():
+          ...
+    validation:
+      tool: ast-checker
+      detail: regex over test function names; ^given_.+__when_.+__then_.+$

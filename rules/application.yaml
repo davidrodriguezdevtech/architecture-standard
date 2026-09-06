@@ -1,0 +1,217 @@
+rules:
+  - id: ARCH-024
+    name: Integration events have a versioned schema and live in application/integration_events.py
+    level: MUST
+    automation: partial
+    category: application
+    description: >
+      Every integration event a context publishes is defined in
+      application/integration_events.py with an explicit version field, and its
+      wire schema is exported to the events catalog; consumers never import the
+      event class.
+    rationale: >
+      Integration events are a cross-team contract; expressed as importable
+      classes they would couple producer and consumer lifecycles.
+    correct: |
+      # sales/application/integration_events.py
+      @dataclass(frozen=True)
+      class OrderPlacedV1:
+          event_version: int = 1
+          order_id: str = ""
+    incorrect: |
+      # billing/application/consume.py
+      from sales.application.integration_events import OrderPlacedV1
+    validation:
+      tool: schema
+      detail: pydantic/jsonschema export per event; version field required
+    related: [ARCH-025, ARCH-044]
+  - id: ARCH-025
+    name: Cross-context communication is through a declared contract, never imports
+    level: MUST
+    automation: full
+    category: application
+    description: >
+      A context reaches another context only through a contract it declares (a
+      consumer-driven port wired in bootstrap/, or a serialized integration
+      event with an ACL), with zero imports between contexts; synchronous by
+      default, asynchronous when the use case tolerates eventual consistency.
+    rationale: >
+      Contract-mediated communication keeps contexts independently deployable
+      and makes the seam explicit for the teams on each side.
+    correct: |
+      # sales/domain/model/ports.py
+      class CreditCheckPort(Protocol):
+          def has_credit(self, customer_id: CustomerId, amount: Money) -> bool: ...
+      # bootstrap/ wires an adapter backed by billing's application service
+    incorrect: |
+      # sales/application/order_service.py
+      from billing.application.billing_service import BillingService
+    validation:
+      tool: import-linter
+      detail: independence contract between context packages
+    related: [ARCH-012, ARCH-045]
+  - id: ARCH-026
+    name: External-provider dependencies sit behind a port
+    level: SHOULD
+    automation: partial
+    category: application
+    description: >
+      Any dependency on an external provider (email, payment, SMS, third-party
+      API) is used through a Protocol injected into the use case, not by
+      importing the vendor SDK into application/.
+    rationale: >
+      A port at the integration seam keeps the use case testable with a fake
+      and lets the provider be swapped without touching orchestration.
+    correct: |
+      class PaymentGateway(Protocol):
+          def charge(self, customer_id: CustomerId, amount: Money) -> ChargeId: ...
+    incorrect: |
+      # sales/application/order_service.py
+      import stripe
+      stripe.Charge.create(amount=total, currency="eur")
+    validation:
+      tool: review
+      detail: PR checklist; is every external provider injected behind a Protocol?
+    related: [ARCH-042]
+  - id: ARCH-027
+    name: The domain does not cross the application boundary
+    level: SHOULD
+    automation: manual
+    category: application
+    description: >
+      An application service method returns a DTO or a primitive, never an
+      aggregate, entity, or domain value object; the mapping happens in the
+      application layer.
+    rationale: >
+      Returning the aggregate couples the transport and its callers to the
+      internal model, so the model can no longer change freely.
+    correct: |
+      def get_order(self, query: GetOrder) -> OrderView:
+          order = self._orders.get(query.order_id)
+          return OrderView(id=str(order.id), total=str(order.total))
+    incorrect: |
+      def get_order(self, query: GetOrder) -> Order:
+          return self._orders.get(query.order_id)
+    validation:
+      tool: review
+      detail: PR checklist; does any service method return a domain type?
+  - id: ARCH-029
+    name: Use cases express intent, not generic CRUD
+    level: SHOULD
+    automation: manual
+    category: application
+    description: >
+      Application service methods are named for the business action
+      (place_order, cancel_order, add_item) and carry an intent-revealing
+      command, not create/update/delete over a data shape.
+    rationale: >
+      CRUD method names hide the business intent, so invariants cannot be
+      verified per change.
+    correct: |
+      def cancel_order(self, command: CancelOrder) -> None: ...
+      def ship_order(self, command: ShipOrder) -> None: ...
+    incorrect: |
+      def update_order(self, order_id: str, fields: dict) -> None: ...
+    validation:
+      tool: review
+      detail: PR checklist; does the method name a business action?
+    related: [ARCH-022]
+  - id: ARCH-030
+    name: One general application service class per context by default
+    level: SHOULD
+    automation: partial
+    category: application
+    description: >
+      A context has one application service class by default with one public
+      method per use case; the checker warns (does not fail) past about 7 public
+      methods, 200 lines, or 5 constructor parameters and adds a
+      review-checklist item.
+    rationale: >
+      A single general service is simpler than pre-split capability services;
+      splitting is mechanical and only pays off once cohesion actually drops.
+    correct: |
+      class OrderService:
+          def create_order(self, c: CreateOrder) -> OrderId: ...
+          def cancel_order(self, c: CancelOrder) -> None: ...
+          def add_item(self, c: AddItemToOrder) -> None: ...
+    incorrect: |
+      class OrderService:   # 14 methods, 9 constructor deps, 600 lines, never split
+          ...
+    validation:
+      tool: ast-checker
+      detail: service size warning at ~7 methods / ~200 lines / 5 constructor params
+  - id: ARCH-036
+    name: Integration events are published via transactional outbox when a guarantee is required
+    level: MUST*
+    automation: manual
+    category: application
+    description: >
+      When a use case requires a delivery or transactional side-effect
+      guarantee, its integration events are written to the outbox table in the
+      same transaction as the state change and published by a separate process;
+      publish-after-commit is allowed only when no such guarantee is required.
+    rationale: >
+      Publishing after commit can lose events if the process dies; the outbox
+      makes the event durable together with the state change.
+    correct: |
+      with uow:
+          self._orders.add(order)
+          self._outbox.add(OrderPlacedV1(order_id=str(order.id)))
+          uow.commit()
+    incorrect: |
+      with uow:
+          self._orders.add(order)
+          uow.commit()
+      self._bus.publish(OrderPlacedV1(order_id=str(order.id)))  # lost on crash here
+    validation:
+      tool: review
+      detail: PR checklist plus ADR check; applies only when a delivery guarantee is declared
+    related: [ARCH-043]
+  - id: ARCH-042
+    name: Port placement follows the three-homes rule
+    level: SHOULD
+    automation: partial
+    category: application
+    description: >
+      A Protocol is placed by the three-homes rule (generic technical Protocols
+      in commons/types/, domain-vocabulary contracts in domain/model/ports.py,
+      non-domain outbound contracts colocated in the use-case module), and there
+      is no application/ports.py until a context has 3+ application ports shared
+      across use-case modules.
+    rationale: >
+      Keeping domain/model/ports.py a faithful list of domain concepts keeps
+      integration-contract churn out of the stable domain file.
+    correct: |
+      # commons/types/clock.py            -> Clock
+      # sales/domain/model/ports.py       -> OrderRepository
+      # sales/application/order_service.py -> class OrderNotifier(Protocol): ...
+    incorrect: |
+      # sales/application/ports.py -> EmailSender, Clock, OrderRepository (one dumping file)
+    validation:
+      tool: ast-checker
+      detail: no application/ports.py until 3+ shared; Clock/EventBus not in domain ports
+    related: [ARCH-008, ARCH-026]
+  - id: ARCH-045
+    name: A context depends only on consumer-driven contracts it declares
+    level: MUST
+    automation: partial
+    category: application
+    description: >
+      For anything a context needs from another context it declares its own
+      narrow port carrying only the fields and operations it uses; it does not
+      consume the other context's full interface or full event shape.
+    rationale: >
+      Consumer-driven contracts mean removing a field the consumer does not use
+      never breaks it, and the contract documents exactly what the boundary
+      carries.
+    correct: |
+      # sales/domain/model/ports.py
+      class CreditCheckPort(Protocol):
+          def has_credit(self, customer_id: CustomerId, amount: Money) -> bool: ...
+    incorrect: |
+      # sales/infrastructure/credit_gateway.py
+      from billing.application.billing_service import BillingService  # calls 8 of 20 methods
+    validation:
+      tool: ast-checker
+      detail: consumer port surface stays within what the consumer calls; ACL present in infrastructure/
+    related: [ARCH-012, ARCH-025]
