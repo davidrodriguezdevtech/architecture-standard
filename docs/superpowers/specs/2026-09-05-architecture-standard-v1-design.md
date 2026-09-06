@@ -19,16 +19,19 @@
 | Deployment topology | **Modular monolith** by default. Bounded-context boundaries and contracts are defined *as if the contexts were separable*; physically it stays one deployable. |
 | Naming language | **English** for all identifiers, folders, rule IDs, and for `ARCHITECTURE_STANDARD.md`. |
 | Session deliverable | This design spec + the outline of `ARCHITECTURE_STANDARD.md`. |
-| Ports | `typing.Protocol` (structural typing; adapters do not inherit). Three homes: `commons/types/` (generic tech), `domain/model/ports.py` (domain vocabulary), colocated in the use-case module (non-domain outbound). No `application/ports.py`. |
+| Ports | `typing.Protocol` (structural typing; adapters do not inherit). Three homes: `commons/types/` (generic tech), the aggregate module's `domain/model/ports.py` (domain vocabulary), colocated in the use-case module (non-domain outbound). No `application/ports.py`. |
 | Persistence | The normative contract (`UnitOfWork` Protocol, repository ports, "translation lives in `infrastructure/`") is **store-agnostic**. **SQLAlchemy** is the shipped reference implementation (+ `InMemoryUnitOfWork` for tests); DynamoDB / sqlite / others provide their own `UnitOfWork` + repositories against the same contract. |
 | Error handling | Exceptions are the standard mechanism. `DomainError` for expected business errors. No `Result`/`Either` type in the core. |
 | Runtime model | **Synchronous.** Ports, repositories, Unit of Work, and handlers are `def`, not `async def`. |
 | Identifier generation | **Application-generated** (`next_identity()`, UUIDv7). Repositories receive aggregates whose identity is already assigned. |
 | Input validation | Pydantic at the edge (entrypoints) only. Business invariants in the domain. Commands are frozen dataclasses. Pydantic MUST NOT appear in `domain/` or `application/`. |
 | Event publication | Transactional outbox is **mandatory** when delivery / transactional side-effect guarantees are required; optional otherwise. |
-| Read models | Domain-derived projections live in `domain/model/projections.py`. Query/dashboard/presentation read models live outside the domain, introduced when complexity justifies it. |
+| Read models | Domain-derived projections live in the aggregate module's `domain/model/projections.py`. Query/dashboard/presentation read models live outside the domain, introduced when complexity justifies it. |
 | Mapping (domain ↔ DTO) | Manual mapping for domain-facing boundaries. Libraries allowed for mechanical mapping at infrastructure/transport boundaries. (Persistence translation is covered by the Persistence row.) |
 | Cross-context communication | Synchronous by default, contract-mediated, wired in `bootstrap/`, zero imports between contexts. Asynchronous integration events when the use case explicitly tolerates eventual consistency. |
+| Structural levels | Two: **bounded context** (`sales/`) then **aggregate module** (`users/`), **1:1 with an aggregate**. No context-level `application/`. `<context>/shared/` is the only context-level code area, strictly limited. |
+| Cross-aggregate flow | Choreography by domain events; one service call per entrypoint handler. No orchestration layer, none in the canonical tree. Synchronous multi-aggregate requests answer with `202 Accepted` or a partial synchronous write. |
+| Integration events | **Conditional.** Not in the default shape. A domain event consumed by another context is promoted to a contract with a versioned schema. |
 | Process wiring | `main.py` is the process entrypoint. `bootstrap/` is the Composition Root. |
 
 ---
@@ -48,11 +51,12 @@ Three load-bearing ideas:
 2. **Business-capability cohesion at the top.** A change to "how orders work" touches
    one context. A change to "how we talk to Postgres" touches one adapter module.
 
-3. **Progressive Structure.** Structure grows when it hurts, not before. A context starts
-   with flat modules (`domain/model.py`, `application/<capability>.py`,
-   `infrastructure/<adapter>.py`). It is promoted to packages only past defined
-   thresholds (Section 15). The standard defines the thresholds; it does not mandate the
-   maximal structure from day one.
+3. **Fixed shape, growing content.** The folder structure is canonical and identical in
+   every project built on this standard; what grows is the set of files inside it. A file
+   does not exist until it has content, but its location is decided in advance. There is
+   no "start flat, restructure later" step and therefore no judgement call about when to
+   restructure — which is the point: the standard exists to make "where does this go?"
+   answerable without judgement.
 
 The standard is **rule-based, deterministic, and verifiable** so that it is consumable
 by humans, by Claude Code, by an architecture-reviewer agent, and by CI.
@@ -65,84 +69,115 @@ by humans, by Claude Code, by an architecture-reviewer agent, and by CI.
 
 ```text
 project/
-├── main.py                        # process entrypoint: starts the app, calls bootstrap/
+├── main.py                          # process entrypoint: starts the app, calls bootstrap/
 ├── pyproject.toml
-├── .importlinter                  # dependency contracts
+├── .importlinter                    # dependency contracts
 ├── src/
-│   ├── <context>/                 # one bounded context
-│   │   ├── entrypoints/
-│   │   │   ├── http.py            # inbound adapter: HTTP/GraphQL
-│   │   │   ├── events.py          # inbound adapter: message/event consumers
-│   │   │   ├── cli.py             # inbound adapter: CLI
-│   │   │   ├── cron.py            # inbound adapter: scheduled jobs
-│   │   │   └── providers.py       # thin: pulls wired services from the container
-│   │   ├── domain/
-│   │   │   ├── model/
-│   │   │   │   ├── aggregates.py  # (or entities.py + aggregates.py once it grows)
-│   │   │   │   ├── value_objects.py
-│   │   │   │   ├── events.py      # domain events (frozen, past tense)
-│   │   │   │   ├── ports.py       # domain-vocabulary ports only (Protocol): repositories,
-│   │   │   │   │                  #   domain-service providers. Generic tech Protocols
-│   │   │   │   │                  #   (Clock, UnitOfWork, EventBus, IdGenerator) → commons/types/.
-│   │   │   │   │                  #   Non-domain outbound contracts → colocated in application/.
-│   │   │   │   ├── projections.py # domain-derived read projections (when they exist)
-│   │   │   │   └── exceptions.py  # concrete domain exceptions (subclass commons DomainError)
-│   │   │   ├── services.py        # domain services (optional; only if needed)
-│   │   │   └── specifications.py  # specifications / policies (optional)
-│   │   ├── application/
-│   │   │   ├── <context>_service.py   # the general service: one method per use case,
-│   │   │   │                          #   command objects + colocated Protocols.
-│   │   │   │                          #   Split to a second module only when a guardrail triggers.
-│   │   │   └── integration_events.py  # integration events this context publishes + mapping
-│   │   └── infrastructure/
-│   │       ├── <adapter>.py       # one module per outbound adapter
-│   │       ├── mapping.py         # aggregate <-> stored-form translation (mechanism per store;
-│   │       │                      #   SQLAlchemy: Tables + map_imperatively, configure_mappings())
-│   │       └── <aggregate>_repository.py  # thin repo impl; takes the UnitOfWork as a param
+│   ├── <context>/                   # LEVEL 1 - one bounded context (e.g. sales)
+│   │   ├── entrypoints/             # inbound adapters, context-wide
+│   │   │   ├── http.py              #   HTTP/GraphQL
+│   │   │   ├── events.py            #   message/event consumers
+│   │   │   ├── cli.py               #   CLI
+│   │   │   ├── cron.py              #   scheduled jobs
+│   │   │   └── providers.py         #   thin: pulls wired services from the container
+│   │   ├── shared/                  # ONLY what crosses this context's aggregates
+│   │   │   ├── ids.py               #   ID types of this context's aggregates
+│   │   │   ├── value_objects.py     #   policy-free VOs used by 2+ aggregates
+│   │   │   └── services.py          #   domain services spanning aggregates (rare)
+│   │   ├── <aggregate_module>/      # LEVEL 2 - 1:1 with an aggregate (e.g. users)
+│   │   │   ├── domain/
+│   │   │   │   ├── model/
+│   │   │   │   │   ├── <aggregate>.py     # the aggregate root + its entities
+│   │   │   │   │   ├── value_objects.py
+│   │   │   │   │   ├── events.py          # domain events (frozen, past tense)
+│   │   │   │   │   ├── ports.py           # domain-vocabulary ports (repository, ...)
+│   │   │   │   │   └── exceptions.py
+│   │   │   │   ├── services.py            # domain services for this aggregate (optional)
+│   │   │   │   └── specifications.py      # optional
+│   │   │   ├── application/
+│   │   │   │   └── <aggregate>_service.py # one method per use case
+│   │   │   └── infrastructure/
+│   │   │       ├── <aggregate>_repository.py
+│   │   │       ├── mapping.py             # aggregate <-> stored form
+│   │   │       └── <adapter>.py           # one module per outbound adapter
+│   │   └── <aggregate_module_2>/    # same shape, one per aggregate
 │   ├── commons/
-│   │   ├── types/                 # dependency-free technical primitives + Protocols. Importable by ALL
-│   │   │   ├── ids.py             # EntityId base, IdGenerator Protocol
+│   │   ├── types/                   # dependency-free primitives + Protocols. Importable by ALL
+│   │   │   ├── ids.py               #   EntityId base, IdGenerator Protocol
 │   │   │   ├── pagination.py
-│   │   │   ├── errors.py          # DomainError, ApplicationError base classes
-│   │   │   ├── clock.py           # Clock Protocol
-│   │   │   ├── event_bus.py       # EventBus Protocol
-│   │   │   ├── envelope.py        # EventEnvelope: correlation_id, causation_id, occurred_at,
-│   │   │   │                      #   event_type, event_version, payload (+ correlation contextvar)
-│   │   │   └── unit_of_work.py    # UnitOfWork Protocol (store-agnostic: txn + event collection)
-│   │   └── infrastructure/        # shared framework-bound technical implementations
-│   │       ├── unit_of_work.py    # SqlAlchemyUnitOfWork + InMemoryUnitOfWork (reference impls)
-│   │       └── outbox.py          # transactional outbox machinery
-│   ├── shared_kernel/             # governed shared domain concepts (policy-bearing VOs).
-│   │                              #   NOT scaffolded until genuinely needed.
-│   └── bootstrap/                 # Composition Root: config, singletons, DI container,
-│                                  #   service/UoW factories, router registration,
-│                                  #   consumer startup
+│   │   │   ├── errors.py            #   DomainError, ApplicationError base classes
+│   │   │   ├── clock.py             #   Clock Protocol
+│   │   │   ├── event_bus.py         #   EventBus Protocol
+│   │   │   └── unit_of_work.py      #   UnitOfWork Protocol (store-agnostic)
+│   │   └── infrastructure/          # shared framework-bound implementations
+│   │       ├── unit_of_work.py      #   SqlAlchemyUnitOfWork + InMemoryUnitOfWork
+│   │       └── outbox.py            #   transactional outbox machinery
+│   ├── shared_kernel/               # governed cross-context domain VOs.
+│   │                                #   NOT scaffolded until genuinely needed.
+│   └── bootstrap/                   # Composition Root: config, singletons, DI container,
+│                                    #   service/UoW factories, router registration,
+│                                    #   consumer startup
 └── tests/
 ```
 
-### 2.2 What goes where
+**The folder shape is fixed and canonical. Files appear when they have content.**
+There is no "flat first, promote later" step: a context does not start as loose modules
+and get restructured. `value_objects.py` does not exist until there is a value object --
+but the moment there is one, its location is already determined. Zero decision, zero
+import refactor, and every project built on this standard has the same shape.
+
+### 2.2 The two structural levels
+
+| Level | Folder | Term | What it is |
+|---|---|---|---|
+| 1 | `sales/` | **Bounded Context** | a business boundary with its own ubiquitous language |
+| 2 | `users/` | **Aggregate module** | 1:1 with an aggregate. **Not** a bounded context and **not** a subdomain |
+
+`subdomain` is a DDD *problem-space* term (core / supporting / generic) and is never a
+folder. A bounded context is the *solution-space* boundary that implements one.
+
+The 1:1 rule is what makes "where does this go?" answerable without judgement: the
+aggregate's name is the folder's name. It also makes ARCH-021 (one transaction, one
+aggregate) visible in the tree -- a use case touching two aggregate modules is visibly
+crossing a line.
+
+**Isolation between aggregate modules is weaker than between contexts.** They share the
+context's ubiquitous language. An aggregate module MUST NOT import another aggregate
+module's `application/` or `infrastructure/`; references between aggregates are by ID,
+and those ID types live in `<context>/shared/ids.py`. (ARCH-046)
+
+### 2.3 What goes where
 
 | You are adding... | It goes in... |
 |---|---|
 | A new business boundary | `src/<context>/` |
-| A rule that protects an invariant across objects | an aggregate method in `<context>/domain/model/` |
-| A calculation that spans aggregates | `<context>/domain/services.py` |
-| A use case (state change) | a method on a service class in `<context>/application/<capability>.py` |
-| A persistence/broker/third-party integration | one module in `<context>/infrastructure/` |
-| A contract the domain needs | `<context>/domain/model/ports.py` |
-| A non-domain outbound contract used by one use case | a `Protocol` colocated in that `application/<capability>.py` |
-| A fact other parts of the same context react to | a domain event in `<context>/domain/model/events.py` |
-| A fact other contexts consume | an integration event in `<context>/application/integration_events.py` |
+| A new aggregate | `src/<context>/<aggregate_module>/` (a new folder, full shape) |
+| A rule that protects an invariant of one aggregate | a method on the aggregate in `<module>/domain/model/<aggregate>.py` |
+| A calculation over one aggregate that is not a method | `<module>/domain/services.py` |
+| A calculation spanning aggregates of the same context | `<context>/shared/services.py` |
+| A use case (state change on one aggregate) | a method on `<module>/application/<aggregate>_service.py` |
+| A persistence/broker/third-party integration | one module in `<module>/infrastructure/` |
+| A contract the domain needs | `<module>/domain/model/ports.py` |
+| A non-domain outbound contract used by one use case | a `Protocol` colocated in that `application/` module |
+| A fact other parts of this context react to | a domain event in `<module>/domain/model/events.py` |
+| An ID type referenced by another aggregate of this context | `<context>/shared/ids.py` |
+| A value object used by 2+ aggregates of this context | `<context>/shared/value_objects.py` |
 | A dependency-free technical primitive | `commons/types/` |
 | A shared framework-bound technical implementation | `commons/infrastructure/` |
 | A domain concept genuinely shared by 2+ contexts, with business policy | `shared_kernel/` (with governance) |
 | Wiring / config / DI | `bootstrap/` |
 
-### 2.3 The optional `module` level
+### 2.4 There is no context-level `application/`
 
-When a single context legitimately owns **two or more separable sub-areas** each with
-its own aggregates, insert a module level:
-`src/<context>/<module>/{domain,application,infrastructure}/`. Off by default.
+DDD has no "application service of the context" -- application services are per use case
+and belong with the model they coordinate. Cross-aggregate flow is handled by the rules in
+Section 3.6, not by a coordinating layer.
+
+`<context>/shared/` is the only context-level code area, and it is strictly limited to the
+three things in the table above: ID types, policy-free value objects used by 2+ aggregates,
+and domain services spanning aggregates. Never a service, never a repository, never an
+aggregate. (ARCH-047)
+
 
 ---
 
@@ -173,11 +208,22 @@ Every inbound translation from another context (sync response or async message) 
 through an ACL in the consumer's `infrastructure/`. The ACL is the only place that knows
 the other context's contract shape; the rest of the consumer sees only its own model.
 
-### 3.4 Published Language
+### 3.4 Published Language — conditional
 
-The vocabulary of integration events is a shared contract expressed as **schema**
-(JSON Schema / Avro / Pydantic export) in an events catalog — never as importable
-classes. Every integration event has a published, versioned schema. (ARCH-024, ARCH-044)
+**Integration events do not exist by default.** Until a context actually publishes to
+another context asynchronously, every event is a domain event living in its aggregate
+module's `domain/model/events.py`. Introducing an integration-event module before there
+is a consumer is speculative.
+
+**The promotion rule (this is the part that matters):** a domain event that starts being
+consumed by another context **stops being internal and becomes a contract**. At that
+moment it is promoted out to a dedicated module and acquires a versioned schema in an
+events catalog — expressed as schema (JSON Schema / Avro / Pydantic export), never as an
+importable class. From then on, changing it is a contract change.
+
+Without this rule, someone subscribes to an internal domain event and every subsequent
+refactor silently becomes a breaking change for another team. (ARCH-024, ARCH-044 — both
+`MUST*`, conditional on the context publishing integration events.)
 
 ### 3.5 Extraction path
 
@@ -185,6 +231,33 @@ Because infrastructure is behind ports and cross-context contracts are already e
 extracting a context to its own service means: replace the in-process gateway adapter
 with an HTTP client, replace the in-process bus with a real broker. `domain/` and
 `application/` are untouched.
+
+### 3.6 Cross-aggregate flow within a context
+
+A use case that spans two aggregates cannot be one transaction (ARCH-021), so there is
+nothing atomic to orchestrate. The rules, in order:
+
+1. **Default — choreography by domain events.** `users` emits `UserRegistered`;
+   `entrypoints/events.py` consumes it and makes **one** call to
+   `subscriptions/application/subscription_service.py`. One service call per entrypoint
+   handler. This is an inbound adapter doing its job, not orchestration.
+2. **Never sequence multi-step flow inside an entrypoint handler.** Sequencing and
+   compensation are logic: they would only be testable through the transport, they get
+   rewritten per transport, and it is the *Fat Controller* anti-pattern (Section 12). It
+   also breaks the hexagonal criterion that the application must be drivable from a test
+   with no adapter attached.
+3. **Synchronous multi-aggregate requests** (an endpoint that must return a result derived
+   from two aggregates) have two sanctioned answers: return `202 Accepted` plus a resource
+   to poll, or make only the first aggregate's write synchronous and return its id, letting
+   the rest happen asynchronously.
+4. **Diagnostic — this is the most valuable check of the four.** If you frequently need
+   atomicity across two aggregates, the aggregate boundaries are drawn wrong. Redraw them
+   before reaching for any coordinating construct.
+
+There is deliberately no orchestration module in the canonical tree. If a genuine
+long-running business process later demands one, the DDD pattern is a **Process Manager**
+(stateful, tracks its own progress, lives in the application layer) — introduced as a
+named exception with its own review, never as a general-purpose coordination layer.
 
 ---
 
@@ -312,19 +385,20 @@ a dedicated read path (Section 15).
 
 ### 6.1 Responsibility
 
-Coordinate use cases: load an aggregate, invoke its business method, persist via the Unit
+Coordinate use cases for **this module's aggregate**: load it, invoke its business method, persist via the Unit
 of Work, publish integration events, map domain ↔ DTO, control the transaction boundary,
 enforce use-case-level authorization. **No business invariants** — those are in the
 domain. (ARCH-005..007, ARCH-027, ARCH-029)
 
 ### 6.2 Shape
 
-**Default: one application service class per context; one public method per use case.**
-Additional service modules are introduced only when a guardrail below triggers — not
-pre-split by capability. (ARCH-030, SHOULD)
+**One application service class per aggregate module; one public method per use case.**
+This follows from the 1:1 aggregate-module rule (Section 2.2) — there is no "general
+service that splits later", and no context-level application layer. The day-1 shape is
+the steady-state shape. (ARCH-030, SHOULD)
 
 ```python
-# application/order_service.py
+# sales/orders/application/order_service.py
 @dataclass(frozen=True)
 class CreateOrder:
     customer_id: str
@@ -354,17 +428,15 @@ class OrderService:
     def add_item(self, command: AddItemToOrder) -> None: ...
 ```
 
-Guardrails (ARCH-030) — a *general* service is the norm; these are the "when it hurts"
-triggers to split into another module:
-- One method = one use case = one transaction.
+Guardrails (ARCH-030):
+- One method = one use case = one transaction, on **this module's aggregate**.
 - Zero business rules in the service. An `if` about business meaning → move to the domain.
-- **Split** when the class exceeds ~5–7 methods, **or** when constructor dependencies stop
-  being cohesive (a method needs something the others do not), **or** when a context grows
-  a second aggregate with its own distinct dependencies.
-- The split line is whatever reduces coupling — usually per aggregate, sometimes command
-  vs query, or a distinct capability (`OrderReturnsService`).
-- `OrderService` is a fine name for the general service. It only becomes the *God Service*
-  anti-pattern when it exceeds these guardrails and is **not** split.
+- A method that needs to change a second aggregate is a design signal, not a licence to
+  reach across: re-read Section 3.6.
+- The checker **warns** past ~7 public methods / ~200 lines / 5 constructor parameters. At
+  that size the aggregate itself is usually doing too much — look at the aggregate before
+  splitting the service.
+- Naming follows the aggregate: `OrderService` in `orders/`, `UserService` in `users/`.
 - Command objects are frozen dataclasses; they may live in the same module as the service.
 
 ### 6.3 Ports
@@ -397,13 +469,17 @@ triggers to split into another module:
 - Rationale: keeps `domain/model/ports.py` a faithful list of domain concepts and keeps
   integration-contract churn out of the stable domain file (§18.1).
 
-### 6.4 Integration events
+### 6.4 Integration events — conditional, not in the default shape
 
-`application/integration_events.py` defines the integration events this context
-**publishes** (its outbound contract) and the mapping domain events → integration events
-→ `EventBus`. Every publish wraps the event in the `commons/` `EventEnvelope`
-(correlation/causation IDs, type, version) so async flows stay traceable (ARCH-043).
-Consumers never import this module; they see serialized envelopes only. (ARCH-024)
+There is no `integration_events.py` in the canonical tree. Until this context publishes
+to another context asynchronously, all events are domain events in their aggregate
+module's `domain/model/events.py`.
+
+When the promotion rule in Section 3.4 fires — another context starts consuming one of
+your events — the promoted event moves to a dedicated module at the context root, gains a
+versioned schema in the events catalog, and every publish wraps it in the `commons/`
+`EventEnvelope` (correlation/causation IDs, type, version) so async flows stay traceable
+(ARCH-043). Consumers never import that module; they see serialized envelopes only.
 
 ### 6.5 Domain logic vs application orchestration
 
@@ -600,6 +676,10 @@ The machine-readable source of truth is `rules/*.yaml`; the Markdown is generate
 | ARCH-034 | `commons/infrastructure/` is not imported by `domain/` or `application/` | MUST | full |
 | ARCH-035 | `commons/types/` does not import any framework | MUST | full |
 | ARCH-037 | Entrypoint wiring is defined in per-context `providers.py`, backed by `bootstrap/` | MUST | partial |
+| ARCH-046 | An aggregate module does not import another aggregate module's `application/` or `infrastructure/`; cross-aggregate references are by ID, and those ID types live in `<context>/shared/ids.py` | MUST | full |
+| ARCH-047 | `<context>/shared/` contains only ID types, policy-free value objects used by 2+ aggregates of that context, and domain services spanning them. Never a service, a repository, or an aggregate | MUST | partial |
+| ARCH-048 | There is no context-level `application/` package; application services live in aggregate modules | MUST | full |
+| ARCH-049 | An aggregate module maps 1:1 to exactly one aggregate root | MUST | partial |
 
 ### 9.2 Model integrity (DDD)
 
@@ -620,7 +700,7 @@ The machine-readable source of truth is `rules/*.yaml`; the Markdown is generate
 
 | ID | Rule | Level | Automation |
 |---|---|---|---|
-| ARCH-024 | Integration events have a versioned schema and live in `application/integration_events.py` | MUST | partial |
+| ARCH-024 | **When a context publishes integration events**, they live in a dedicated context-root module with a versioned schema | MUST* (conditional) | partial |
 | ARCH-025 | Cross-context communication is through a declared contract, never imports; synchronous by default (composition-root-mediated), asynchronous when the use case tolerates eventual consistency | MUST | full |
 | ARCH-026 | External-provider dependencies sit behind a port | SHOULD | partial |
 | ARCH-027 | The domain does not cross the application boundary (mapped to DTO) | SHOULD | manual |
@@ -642,8 +722,8 @@ The machine-readable source of truth is `rules/*.yaml`; the Markdown is generate
 
 | ID | Rule | Level | Automation |
 |---|---|---|---|
-| ARCH-043 | Every published message uses the `commons/` event envelope (`correlation_id`, `causation_id`, `occurred_at`, `event_type`, `event_version`, `payload`); the correlation id rides a `contextvar` set by the entrypoint | MUST | partial |
-| ARCH-044 | Every integration event has a published schema in the events catalog | MUST | partial |
+| ARCH-043 | **When the project uses async integration**, every published message uses the `commons/` `EventEnvelope` (`correlation_id`, `causation_id`, `occurred_at`, `event_type`, `event_version`, `payload`); the correlation id rides a `contextvar` set by the entrypoint | MUST* (conditional) | partial |
+| ARCH-044 | **When a context publishes integration events**, each has a published, versioned schema in the events catalog | MUST* (conditional) | partial |
 
 ### 9.6 Progressive structure
 
@@ -806,17 +886,26 @@ Exit non-zero on any MUST failure; warn on SHOULD.
 
 ---
 
-## 15. Progressive Structure — thresholds
+## 15. Structure thresholds
 
-| Signal | Threshold (starting point, tune per project) | Action |
+The folder shape is fixed (Section 2.1), so there is no promotion step and no
+"when do I restructure?" judgement. What remains are a few size signals that mean a
+*model* problem, not a layout problem:
+
+| Signal | Threshold (starting point, tune per project) | What it actually means |
 |---|---|---|
-| `domain/model.py` size | > ~400 lines or > 2 aggregates | promote to `domain/model/` package |
-| `domain/model/ports.py` | > ~8 port definitions, or 3+ aggregates | split into `ports/` package, one module per aggregate |
-| Application service class | > ~7 public methods, > ~200 lines, > 5 constructor params (checker **warns**), or a second aggregate appears | split the general service into a second module (move methods + their colocated commands; only `providers.py` changes) |
-| Reads through the aggregate | complex joins, reporting, dashboard shapes | introduce a dedicated read model outside the domain |
-| Context sub-areas | 2+ separable areas each with its own aggregates | activate the `<module>/` level |
-| Cross-context integration | > 1 team, or independent deployability needed | move from in-process gateway to async events + ACL as the default |
-| Infrastructure adapters of one kind | many (e.g. 5+ external clients) | sub-folder within `infrastructure/` |
+| `<module>/application/<aggregate>_service.py` | > ~7 public methods, > ~200 lines, or > 5 constructor params (checker **warns**) | The aggregate is probably doing too much. Look at the aggregate boundary before splitting the service. |
+| `<module>/domain/model/<aggregate>.py` | > ~400 lines or > ~7 invariants | *God Aggregate*. Split into two aggregate modules. |
+| `<module>/domain/model/ports.py` | > ~8 protocols in one aggregate module | The aggregate depends on too much of the outside world. |
+| `<context>/shared/` | anything beyond IDs, policy-free VOs, and cross-aggregate domain services | ARCH-047 violation, or the aggregates are wrongly separated. |
+| Cross-aggregate atomicity needed | more than occasionally | **The aggregate boundaries are drawn wrong** (Section 3.6). Redraw before adding any coordinating construct. |
+| Reads through the aggregate | complex joins, reporting, dashboard shapes | Introduce a dedicated read model outside the domain. |
+| Cross-context integration | > 1 team, or independent deployability needed | Move from an in-process gateway to async events + ACL as the default. |
+| Infrastructure adapters of one kind | many (e.g. 5+ external clients) in one module | Sub-folder within that module's `infrastructure/`. |
+
+Note how most of these now point at the **model**, not at the folders. That is the
+intended effect of fixing the shape: when something hurts, the structure is no longer a
+candidate explanation.
 
 ---
 
@@ -918,6 +1007,10 @@ Resolved in this spec (see Section 0). Remaining items for v1.1+:
 | I | ADR waiver parsing gaps (`adr_waivers.py`) | `waives:` is not validated against the catalog (a typo'd rule id is silently ignored rather than flagged), and a quoted `expires:` string (vs. a YAML date) silently drops the whole waiver. Both fail safe today (the rule stays enforced). v1.1: add a diagnostic line for either case. |
 | J | CI wiring for waivers and `arch-standard check` | Spec §13 calls for CI to print the active-waiver count per rule, and for `arch-standard check` to run as a CI step; neither was carried forward by the catalog-and-validator plan. v1.1: wire both into the repo's CI workflow. |
 | K | Import-contract coarse-signal limitations beyond edge attribution | ARCH-012/034/035 vacuously PASS when their contract isn't emitted at all (e.g. no `commons/` root, so the contract is simply absent rather than kept or broken); `_STATUS_RE` does not strip ANSI color codes from import-linter's output, so a colorized run would fail to parse. Both accepted as v1 coarse-signal limitations alongside row G. |
+| L | Validator must learn the aggregate-module level | `ProjectLayout` and all 4 checks assume `<context>/{domain,application,infrastructure}`; the new level 2 requires a follow-up plan |
+| M | Naming of level 2 | "aggregate module" chosen over "subcontext"/"subdomain" to avoid colliding with DDD problem-space vocabulary; revisit if the team prefers a house term |
+| N | Is `domain/model/` still earning its level with one aggregate per module? | Kept for now at the owner's request; revisit if the depth (6 levels) proves annoying |
+| O | Process Manager pattern is documented but has no folder or rule | Deliberate (Section 3.6). If a real long-running process appears, it needs a home and an admission test |
 
 ---
 
