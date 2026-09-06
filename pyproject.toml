@@ -25,6 +25,7 @@ dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "types-pyyaml"]
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
+exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "TID"]
