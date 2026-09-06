@@ -8,7 +8,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from arch_standard.checks.base import CheckReport, Finding, Outcome, ProjectLayout
+from arch_standard.checks.base import CheckReport, Finding, Outcome, ProjectLayout, outcome_for
 from arch_standard.rules.catalog import Catalog
 
 # Layer packages, top (least depended-upon) to bottom, within each bounded context.
@@ -147,6 +147,11 @@ class ImportContractsCheck:
         """Map an errored / timed-out import-linter run to FAIL for every covered rule.
 
         RULING 4: an errored subprocess run must never let a covered rule PASS.
+        This always FAILs (it does not go through ``outcome_for``): a tooling
+        error is not "this SHOULD-rule was violated", it means the rule could
+        not be evaluated at all, which must never look like success. In this
+        catalog every rule ImportContractsCheck covers is MUST/MUST*, so the
+        result is the same either way.
         """
         return [
             CheckReport(
@@ -206,21 +211,19 @@ class ImportContractsCheck:
 
         reports: list[CheckReport] = []
         for rule_id in self.rule_ids:
-            if rule_id in broken:
-                reports.append(
-                    CheckReport(
+            is_broken = rule_id in broken
+            findings = (
+                (
+                    Finding(
                         rule_id=rule_id,
-                        outcome=Outcome.FAIL,
-                        findings=(
-                            Finding(
-                                rule_id=rule_id,
-                                path=str(project.src),
-                                line=None,
-                                message="import-linter contract broken",
-                            ),
-                        ),
-                    )
+                        path=str(project.src),
+                        line=None,
+                        message="import-linter contract broken",
+                    ),
                 )
-            else:
-                reports.append(CheckReport(rule_id=rule_id, outcome=Outcome.PASS))
+                if is_broken
+                else ()
+            )
+            outcome = outcome_for(catalog.get(rule_id).level, is_broken)
+            reports.append(CheckReport(rule_id=rule_id, outcome=outcome, findings=findings))
         return reports

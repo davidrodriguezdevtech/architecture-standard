@@ -6,9 +6,9 @@ from pathlib import Path
 from arch_standard.checks.base import (
     CheckReport,
     Finding,
-    Outcome,
     ProjectLayout,
     iter_python_files,
+    outcome_for,
 )
 from arch_standard.rules.catalog import Catalog
 
@@ -38,7 +38,10 @@ DEFAULT_BANNED_CALLS = frozenset(
         "open",
     }
 )
-_ORM_BASES = {"Base", "Model", "DeclarativeBase"}
+# I3: "Base" and "Model" are common hand-rolled domain base-class names too —
+# flagging them by bare name false-positives ARCH-028 (a MUST) on compliant
+# domain code. Narrowed to the one name that unambiguously means "ORM base".
+_ORM_BASES = {"DeclarativeBase"}
 
 
 def _dotted(node: ast.expr) -> str:
@@ -91,10 +94,8 @@ class BannedSymbolsCheck:
                         )
                 elif isinstance(node, ast.ClassDef):  # noqa: SIM102
                     if any(
-                        isinstance(b, ast.Name)
-                        and b.id in _ORM_BASES
-                        or isinstance(b, ast.Attribute)
-                        and b.attr in _ORM_BASES
+                        (isinstance(b, ast.Name) and b.id in _ORM_BASES)
+                        or (isinstance(b, ast.Attribute) and b.attr in _ORM_BASES)
                         for b in node.bases
                     ):
                         orm.append(
@@ -109,7 +110,7 @@ class BannedSymbolsCheck:
         def report(rid: str, findings: list[Finding]) -> CheckReport:
             return CheckReport(
                 rule_id=rid,
-                outcome=Outcome.FAIL if findings else Outcome.PASS,
+                outcome=outcome_for(catalog.get(rid).level, bool(findings)),
                 findings=tuple(findings),
             )
 

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Protocol
 
 from arch_standard.rules.catalog import Catalog
+from arch_standard.rules.model import Level
 
 _NON_CONTEXT_DIRS = {"commons", "shared_kernel", "bootstrap"}
 _SKIP_DIRS = {".venv", "venv", "__pycache__", ".git", ".mypy_cache", ".ruff_cache"}
@@ -17,6 +18,18 @@ class Outcome(StrEnum):
     FAIL = "FAIL"
     WARN = "WARN"
     SKIP = "SKIP"
+
+
+def outcome_for(level: Level, has_findings: bool) -> Outcome:
+    """Derive an outcome from the catalog's own severity, not a hardcoded rule-ID set.
+
+    MUST / MUST* violations FAIL (they affect the exit code); SHOULD / MAY
+    violations WARN. Every check should route its outcome through this helper
+    instead of maintaining its own warn/fail rule-ID list.
+    """
+    if not has_findings:
+        return Outcome.PASS
+    return Outcome.FAIL if level in (Level.MUST, Level.MUST_CONDITIONAL) else Outcome.WARN
 
 
 @dataclass(frozen=True)

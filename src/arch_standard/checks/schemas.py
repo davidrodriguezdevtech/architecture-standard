@@ -18,10 +18,17 @@ def _event_classes(path: Path) -> list[str]:
 
 
 class IntegrationEventSchemaCheck:
-    rule_ids: tuple[str, ...] = ("ARCH-024", "ARCH-043", "ARCH-044")
+    # I1: ARCH-024 ("integration events live in application/integration_events.py
+    # with a versioned schema") had a dead accumulator here — it was never
+    # appended to, so any project with an integration_events.py file always
+    # PASSed the rule regardless of content, a false PASS on a MUST. Detecting
+    # it properly (walking every module for stray *Published/*Occurred classes
+    # outside integration_events.py) is speculative enough to be its own v1.1
+    # piece of work, so ARCH-024 is dropped from this check's coverage rather
+    # than kept as a rubber-stamp PASS — it now surfaces as uncovered.
+    rule_ids: tuple[str, ...] = ("ARCH-043", "ARCH-044")
 
     def run(self, project: ProjectLayout, catalog: Catalog) -> list[CheckReport]:
-        arch024: list[Finding] = []
         arch043: list[Finding] = []
         arch044: list[Finding] = []
         any_events = False
@@ -50,19 +57,21 @@ class IntegrationEventSchemaCheck:
                         Finding("ARCH-044", rel, None, f"no published schema for {cls_name}")
                     )
 
-        def report(rid: str, findings: list[Finding], *, warn: bool) -> CheckReport:
+        def report(rid: str, findings: list[Finding]) -> CheckReport:
             if not any_events:
                 return CheckReport(rule_id=rid, outcome=Outcome.SKIP)
             if not findings:
                 return CheckReport(rule_id=rid, outcome=Outcome.PASS)
-            return CheckReport(
-                rule_id=rid,
-                outcome=Outcome.WARN if warn else Outcome.FAIL,
-                findings=tuple(findings),
-            )
+            # I2 exception: ARCH-043/044 are level: MUST, but this detection is a
+            # shallow text/filename heuristic ("does the file mention
+            # EventEnvelope", "is there a docs/events/<name>.json"). Failing a
+            # MUST build on that heuristic is too aggressive, and WARNing on a
+            # MUST would silently make it unenforceable. Emit SKIP with the
+            # heuristic finding attached as an informational note instead —
+            # deeper contract testing is the v1.1 path (see spec §17).
+            return CheckReport(rule_id=rid, outcome=Outcome.SKIP, findings=tuple(findings))
 
         return [
-            report("ARCH-024", arch024, warn=True),
-            report("ARCH-043", arch043, warn=True),
-            report("ARCH-044", arch044, warn=True),
+            report("ARCH-043", arch043),
+            report("ARCH-044", arch044),
         ]

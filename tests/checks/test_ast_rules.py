@@ -53,9 +53,11 @@ def test_good_aggregate_encapsulation_passes() -> None:
     assert reports["ARCH-018"].outcome is Outcome.PASS
 
 
-def test_bad_aggregate_public_collection_fails_arch_019() -> None:
+def test_bad_aggregate_public_collection_warns_arch_019() -> None:
+    # ARCH-019 is level: SHOULD in the catalog, so a violation WARNs (does not
+    # affect exit code) rather than FAILing — outcome comes from Rule.level.
     r = _reports("bad_project")["ARCH-019"]
-    assert r.outcome is Outcome.FAIL
+    assert r.outcome is Outcome.WARN
     assert any("lines" in f.message for f in r.findings)
 
 

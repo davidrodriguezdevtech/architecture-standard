@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import re as _re
+from collections.abc import Callable
 from pathlib import Path
 
 from arch_standard.checks.base import (
@@ -10,12 +11,12 @@ from arch_standard.checks.base import (
     Outcome,
     ProjectLayout,
     iter_python_files,
+    outcome_for,
 )
 from arch_standard.rules.catalog import Catalog
 
 _IRREGULAR_PAST = {"Sent", "Paid", "Built", "Made", "Lost", "Found", "Left", "Held", "Set", "Put"}
 _MUTABLE_CONTAINERS = {"list", "set", "dict", "List", "Set", "Dict"}
-_WARN_ONLY_RULES = {"ARCH-030", "ARCH-040", "ARCH-041"}
 _GWT_RE = _re.compile(r"^test_given_.+__when_.+__then_.+$")
 
 
@@ -40,10 +41,6 @@ def _is_frozen_dataclass(node: ast.ClassDef) -> bool:
                 for kw in call.keywords
             )
     return False
-
-
-def _has_method(node: ast.ClassDef, method: str) -> bool:
-    return any(isinstance(n, ast.FunctionDef) and n.name == method for n in node.body)
 
 
 def _classes(path: Path) -> list[ast.ClassDef]:
@@ -254,7 +251,7 @@ def _check_promotion_thresholds(project: ProjectLayout) -> list[Finding]:
     return findings
 
 
-_IMPLEMENTED: dict[str, object] = {
+_IMPLEMENTED: dict[str, Callable[[ProjectLayout], list[Finding]]] = {
     "ARCH-018": _check_aggregate_encapsulation,
     "ARCH-019": _check_aggregate_encapsulation,
     "ARCH-023": _check_domain_events,
@@ -283,12 +280,7 @@ class AstRulesCheck:
             if fn is None:
                 reports.append(CheckReport(rule_id=rid, outcome=Outcome.SKIP))
                 continue
-            findings = tuple(f for f in fn(project) if f.rule_id == rid)  # type: ignore[operator]
-            if not findings:
-                outcome = Outcome.PASS
-            elif rid in _WARN_ONLY_RULES:
-                outcome = Outcome.WARN
-            else:
-                outcome = Outcome.FAIL
+            findings = tuple(f for f in fn(project) if f.rule_id == rid)
+            outcome = outcome_for(catalog.get(rid).level, bool(findings))
             reports.append(CheckReport(rule_id=rid, outcome=outcome, findings=findings))
         return reports
