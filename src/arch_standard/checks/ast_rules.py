@@ -23,7 +23,16 @@ def _is_frozen_dataclass(node: ast.ClassDef) -> bool:
     for deco in node.decorator_list:
         call = deco if isinstance(deco, ast.Call) else None
         name = call.func if call else deco
-        if isinstance(name, ast.Name) and name.id == "dataclass":
+        # ``@dataclass`` is an ast.Name; the qualified ``@dataclasses.dataclass``
+        # form is an ast.Attribute — both must be recognized (C2).
+        ident = (
+            name.id
+            if isinstance(name, ast.Name)
+            else name.attr
+            if isinstance(name, ast.Attribute)
+            else None
+        )
+        if ident == "dataclass":
             if not call:
                 return False
             return any(

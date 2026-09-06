@@ -63,6 +63,16 @@ def test_errored_run_after_a_kept_contract_fails_all(monkeypatch: pytest.MonkeyP
     assert all("exited 1" in r.findings[0].message for r in reports)
 
 
+def test_minimal_project_with_no_commons_or_bootstrap_passes() -> None:
+    # C1: build_contracts must not invent commons/bootstrap roots or require every
+    # layer to exist — a single-context project with only domain/ must not spuriously
+    # FAIL rules it does cover.
+    layout = ProjectLayout.detect(FIX / "minimal_project")
+    reports = ImportContractsCheck().run(layout, Catalog.load(RULES))
+    assert reports
+    assert all(r.outcome is Outcome.PASS for r in reports)
+
+
 def test_timeout_fails_all(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
         raise subprocess.TimeoutExpired(cmd="lint-imports", timeout=120)

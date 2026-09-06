@@ -12,8 +12,8 @@ from arch_standard.checks.base import CheckReport, Finding, Outcome, ProjectLayo
 from arch_standard.rules.catalog import Catalog
 
 # Layer packages, top (least depended-upon) to bottom, within each bounded context.
-# ``entrypoints`` is wrapped in parens in the INI so the contract does not error
-# when a context omits that layer.
+# Every layer is wrapped in parens in the rendered INI (see ``build_contracts``) so
+# the layers contract does not error when a context omits one of them.
 _LAYERED: tuple[str, ...] = ("entrypoints", "infrastructure", "application", "domain")
 
 # The layering rules encoded by the single ``layers`` contract. The v1 mapping is
@@ -30,7 +30,10 @@ _RULE_RE = re.compile(r"ARCH-\d+")
 
 def build_contracts(project: ProjectLayout) -> str:
     """Render an ``.importlinter`` INI for the layering, independence and commons rules."""
-    roots = [*project.contexts, "commons", "bootstrap"]
+    roots = [
+        *project.contexts,
+        *(d for d in ("commons", "bootstrap") if (project.src / d).is_dir()),
+    ]
     lines: list[str] = [
         "[importlinter]",
         "root_packages =",
@@ -47,7 +50,7 @@ def build_contracts(project: ProjectLayout) -> str:
             "containers =",
             *(f"    {context}" for context in project.contexts),
             "layers =",
-            *(f"    ({layer})" if layer == "entrypoints" else f"    {layer}" for layer in _LAYERED),
+            *(f"    ({layer})" for layer in _LAYERED),
             "",
             "[importlinter:contract:ARCH-012]",
             "name = ARCH-012 bounded-context independence",
@@ -63,7 +66,7 @@ def build_contracts(project: ProjectLayout) -> str:
         for layer in ("domain", "application")
         if (project.src / context / layer).is_dir()
     ]
-    if domain_app:
+    if domain_app and (project.src / "commons").is_dir():
         lines += [
             "[importlinter:contract:ARCH-034]",
             "name = ARCH-034 commons.infrastructure isolated from domain and application",
