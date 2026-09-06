@@ -33,8 +33,18 @@ def test_bad_project_value_object_not_frozen() -> None:
     assert any("Email" in f.message for f in r.findings)
 
 
-def test_unimplemented_rules_skip_for_now() -> None:
-    assert _reports("good_project")["ARCH-041"].outcome is Outcome.SKIP
+def test_good_test_naming_passes() -> None:
+    assert _reports("good_project")["ARCH-040"].outcome is Outcome.PASS
+
+
+def test_bad_test_naming_warns() -> None:
+    r = _reports("bad_project")["ARCH-040"]
+    assert r.outcome is Outcome.WARN
+    assert any("test_add_line_works" in f.message for f in r.findings)
+
+
+def test_promotion_thresholds_pass_on_small_fixture() -> None:
+    assert _reports("good_project")["ARCH-041"].outcome is Outcome.PASS
 
 
 def test_good_aggregate_encapsulation_passes() -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import re as _re
 from pathlib import Path
 
 from arch_standard.checks.base import (
@@ -14,7 +15,8 @@ from arch_standard.rules.catalog import Catalog
 
 _IRREGULAR_PAST = {"Sent", "Paid", "Built", "Made", "Lost", "Found", "Left", "Held", "Set", "Put"}
 _MUTABLE_CONTAINERS = {"list", "set", "dict", "List", "Set", "Dict"}
-_WARN_ONLY_RULES = {"ARCH-030", "ARCH-041"}
+_WARN_ONLY_RULES = {"ARCH-030", "ARCH-040", "ARCH-041"}
+_GWT_RE = _re.compile(r"^test_given_.+__when_.+__then_.+$")
 
 
 def _is_frozen_dataclass(node: ast.ClassDef) -> bool:
@@ -178,12 +180,79 @@ def _check_service_size(project: ProjectLayout) -> list[Finding]:
     return findings
 
 
+def _check_test_naming(project: ProjectLayout) -> list[Finding]:
+    findings: list[Finding] = []
+    tests_dir = project.root / "tests"
+    if not tests_dir.exists():
+        return findings
+    skip_fixtures = "fixtures" not in project.root.parts
+    for path in iter_python_files(tests_dir):
+        if skip_fixtures and "fixtures" in path.parts:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.FunctionDef)
+                and node.name.startswith("test_")
+                and not _GWT_RE.match(node.name)
+            ):
+                findings.append(
+                    Finding(
+                        "ARCH-040",
+                        str(path.relative_to(project.root)),
+                        node.lineno,
+                        f"{node.name} is not given/when/then",
+                    )
+                )
+    return findings
+
+
+def _check_promotion_thresholds(project: ProjectLayout) -> list[Finding]:
+    findings: list[Finding] = []
+    for context in project.contexts:
+        flat = project.domain_dir(context) / "model.py"
+        if flat.exists():
+            n = len(flat.read_text(encoding="utf-8").splitlines())
+            if n > 400:
+                findings.append(
+                    Finding(
+                        "ARCH-041",
+                        str(flat.relative_to(project.root)),
+                        None,
+                        f"domain/model.py is {n} lines (> 400): promote to a package",
+                    )
+                )
+        ports = project.domain_dir(context) / "model" / "ports.py"
+        if ports.exists() and len(_classes(ports)) > 8:
+            findings.append(
+                Finding(
+                    "ARCH-041",
+                    str(ports.relative_to(project.root)),
+                    None,
+                    "ports.py has > 8 protocols: split into a ports/ package",
+                )
+            )
+        aggs = project.domain_dir(context) / "model" / "aggregates.py"
+        if aggs.exists() and len(_classes(aggs)) > 2:
+            findings.append(
+                Finding(
+                    "ARCH-041",
+                    str(aggs.relative_to(project.root)),
+                    None,
+                    "aggregates.py has > 2 aggregates: consider a module each",
+                )
+            )
+    return findings
+
+
 _IMPLEMENTED: dict[str, object] = {
     "ARCH-018": _check_aggregate_encapsulation,
     "ARCH-019": _check_aggregate_encapsulation,
     "ARCH-023": _check_domain_events,
     "ARCH-030": _check_service_size,
     "ARCH-031": _check_value_objects,
+    "ARCH-040": _check_test_naming,
+    "ARCH-041": _check_promotion_thresholds,
 }
 
 
