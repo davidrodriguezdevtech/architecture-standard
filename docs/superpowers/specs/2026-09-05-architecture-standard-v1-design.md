@@ -19,14 +19,15 @@
 | Deployment topology | **Modular monolith** by default. Bounded-context boundaries and contracts are defined *as if the contexts were separable*; physically it stays one deployable. |
 | Naming language | **English** for all identifiers, folders, rule IDs, and for `ARCHITECTURE_STANDARD.md`. |
 | Session deliverable | This design spec + the outline of `ARCHITECTURE_STANDARD.md`. |
-| Ports | `typing.Protocol` (structural typing; adapters do not inherit). |
+| Ports | `typing.Protocol` (structural typing; adapters do not inherit). Three homes: `commons/types/` (generic tech), `domain/model/ports.py` (domain vocabulary), colocated in the use-case module (non-domain outbound). No `application/ports.py`. |
+| Persistence | The normative contract (`UnitOfWork` Protocol, repository ports, "translation lives in `infrastructure/`") is **store-agnostic**. **SQLAlchemy** is the shipped reference implementation (+ `InMemoryUnitOfWork` for tests); DynamoDB / sqlite / others provide their own `UnitOfWork` + repositories against the same contract. |
 | Error handling | Exceptions are the standard mechanism. `DomainError` for expected business errors. No `Result`/`Either` type in the core. |
 | Runtime model | **Synchronous.** Ports, repositories, Unit of Work, and handlers are `def`, not `async def`. |
 | Identifier generation | **Application-generated** (`next_identity()`, UUIDv7). Repositories receive aggregates whose identity is already assigned. |
 | Input validation | Pydantic at the edge (entrypoints) only. Business invariants in the domain. Commands are frozen dataclasses. Pydantic MUST NOT appear in `domain/` or `application/`. |
 | Event publication | Transactional outbox is **mandatory** when delivery / transactional side-effect guarantees are required; optional otherwise. |
 | Read models | Domain-derived projections live in `domain/model/projections.py`. Query/dashboard/presentation read models live outside the domain, introduced when complexity justifies it. |
-| Mapping | Manual mapping for domain-facing boundaries. Libraries allowed for mechanical mapping at infrastructure/transport boundaries. |
+| Mapping (domain ↔ DTO) | Manual mapping for domain-facing boundaries. Libraries allowed for mechanical mapping at infrastructure/transport boundaries. (Persistence translation is covered by the Persistence row.) |
 | Cross-context communication | Synchronous by default, contract-mediated, wired in `bootstrap/`, zero imports between contexts. Asynchronous integration events when the use case explicitly tolerates eventual consistency. |
 | Process wiring | `main.py` is the process entrypoint. `bootstrap/` is the Composition Root. |
 
@@ -80,30 +81,34 @@ project/
 │   │   │   │   ├── aggregates.py  # (or entities.py + aggregates.py once it grows)
 │   │   │   │   ├── value_objects.py
 │   │   │   │   ├── events.py      # domain events (frozen, past tense)
-│   │   │   │   ├── ports.py       # ALL domain ports (Protocol): repositories, UoW,
-│   │   │   │   │                  #   EventBus, Clock, IdGenerator, domain-needed gateways
+│   │   │   │   ├── ports.py       # domain-vocabulary ports only (Protocol): repositories,
+│   │   │   │   │                  #   domain-service providers. Generic tech Protocols
+│   │   │   │   │                  #   (Clock, UnitOfWork, EventBus, IdGenerator) → commons/types/.
+│   │   │   │   │                  #   Non-domain outbound contracts → colocated in application/.
 │   │   │   │   ├── projections.py # domain-derived read projections (when they exist)
 │   │   │   │   └── exceptions.py  # concrete domain exceptions (subclass commons DomainError)
 │   │   │   ├── services.py        # domain services (optional; only if needed)
 │   │   │   └── specifications.py  # specifications / policies (optional)
 │   │   ├── application/
-│   │   │   ├── <capability>.py    # service class + its command objects + colocated Protocols
+│   │   │   ├── <context>_service.py   # the general service: one method per use case,
+│   │   │   │                          #   command objects + colocated Protocols.
+│   │   │   │                          #   Split to a second module only when a guardrail triggers.
 │   │   │   └── integration_events.py  # integration events this context publishes + mapping
 │   │   └── infrastructure/
 │   │       ├── <adapter>.py       # one module per outbound adapter
-│   │       ├── <aggregate>_mapper.py  # data mapper aggregate <-> ORM model
-│   │       └── unit_of_work.py    # context UoW implementation
+│   │       ├── mapping.py         # aggregate <-> stored-form translation (mechanism per store;
+│   │       │                      #   SQLAlchemy: Tables + map_imperatively, configure_mappings())
+│   │       └── <aggregate>_repository.py  # thin repo impl; takes the UnitOfWork as a param
 │   ├── commons/
-│   │   ├── types/                 # dependency-free technical primitives. Importable by ALL
-│   │   │   ├── ids.py
+│   │   ├── types/                 # dependency-free technical primitives + Protocols. Importable by ALL
+│   │   │   ├── ids.py             # EntityId base, IdGenerator Protocol
 │   │   │   ├── pagination.py
 │   │   │   ├── errors.py          # DomainError, ApplicationError base classes
 │   │   │   ├── clock.py           # Clock Protocol
-│   │   │   └── unit_of_work.py    # AbstractUnitOfWork Protocol (transaction semantics only)
+│   │   │   ├── event_bus.py       # EventBus Protocol
+│   │   │   └── unit_of_work.py    # UnitOfWork Protocol (store-agnostic: txn + event collection)
 │   │   └── infrastructure/        # shared framework-bound technical implementations
-│   │       ├── sqlalchemy_uow.py  # SqlAlchemyUnitOfWork base
-│   │       ├── in_memory_uow.py   # InMemoryUnitOfWork fake (no DB) for tests
-│   │       ├── sql_repository.py  # optional SQL repository base
+│   │       ├── unit_of_work.py    # SqlAlchemyUnitOfWork + InMemoryUnitOfWork (reference impls)
 │   │       └── outbox.py          # transactional outbox machinery
 │   ├── shared_kernel/             # governed shared domain concepts (policy-bearing VOs).
 │   │                              #   NOT scaffolded until genuinely needed.
@@ -312,11 +317,12 @@ domain. (ARCH-005..007, ARCH-027, ARCH-029)
 
 ### 6.2 Shape
 
-**One application service class per capability (usually per aggregate); one public method
-per use case.** (ARCH-030, SHOULD)
+**Default: one application service class per context; one public method per use case.**
+Additional service modules are introduced only when a guardrail below triggers — not
+pre-split by capability. (ARCH-030, SHOULD)
 
 ```python
-# application/order_placement.py
+# application/order_service.py
 @dataclass(frozen=True)
 class CreateOrder:
     customer_id: str
@@ -325,35 +331,69 @@ class CreateOrder:
 class OrderNotifier(Protocol):           # colocated non-domain outbound contract
     def order_placed(self, order_id: OrderId) -> None: ...
 
-class OrderPlacementService:
+class OrderService:
     def __init__(
-        self, uow: SalesUnitOfWork, bus: EventBus, notifier: OrderNotifier
+        self,
+        uow: UnitOfWork,
+        orders: OrderRepository,        # injected already bound to `uow`
+        bus: EventBus,
+        notifier: OrderNotifier,
     ) -> None: ...
 
     def create_order(self, command: CreateOrder) -> OrderId:
         with self._uow:
             order = Order.place(CustomerId(command.customer_id), command.lines)
-            self._uow.orders.add(order)
+            self._orders.add(order)
             self._uow.commit()
         self._bus.publish_all(self._uow.collect_new_events())
         return order.id
+
+    def cancel_order(self, command: CancelOrder) -> None: ...
+    def add_item(self, command: AddItemToOrder) -> None: ...
 ```
 
-Guardrails (ARCH-030):
+Guardrails (ARCH-030) — a *general* service is the norm; these are the "when it hurts"
+triggers to split into another module:
 - One method = one use case = one transaction.
 - Zero business rules in the service. An `if` about business meaning → move to the domain.
-- Separate read from write into different service classes when reads grow.
-- Split the class past ~5–7 methods, **or** when constructor dependencies stop being
-  cohesive (a method needs something the others do not).
-- Name by capability (`OrderPlacementService`), never a `OrderService` catch-all.
+- **Split** when the class exceeds ~5–7 methods, **or** when constructor dependencies stop
+  being cohesive (a method needs something the others do not), **or** when a context grows
+  a second aggregate with its own distinct dependencies.
+- The split line is whatever reduces coupling — usually per aggregate, sometimes command
+  vs query, or a distinct capability (`OrderReturnsService`).
+- `OrderService` is a fine name for the general service. It only becomes the *God Service*
+  anti-pattern when it exceeds these guardrails and is **not** split.
 - Command objects are frozen dataclasses; they may live in the same module as the service.
 
 ### 6.3 Ports
 
-There is **no** `application/ports.py`. All contracts with a stable shape
-(`OrderRepository`, `SalesUnitOfWork`, `EventBus`, `Clock`, `IdGenerator`) live in
-`domain/model/ports.py`. A peripheral outbound contract used by exactly one use case is a
-**`Protocol` colocated** in that use case's module. (ARCH-042, SHOULD)
+**Inbound vs outbound:**
+
+- **Domain ports** (repositories, domain-service providers): **indispensable**. DIP
+  requires them — the core must not name infrastructure. MUST.
+- **Application inbound port**: it is the use-case / service class itself, exposed to
+  entrypoints. Its public methods *are* the port. No separate interface.
+- **Application outbound ports** that are not domain vocabulary (`EmailSender`,
+  `PaymentGateway`, cross-context gateways): the **explicit `Protocol` is optional**
+  (SHOULD) — write it when the seam benefits from being explicit (testing, type-checking,
+  multiple impls, agent-readability), skip it (duck-typed injection) for a trivial
+  single-implementation dependency. **Injection is never optional**: the concrete adapter
+  is built in `providers.py` and injected; `application/` never imports it.
+
+**Three homes, one rule each:**
+
+| Home | What lives here | The test |
+|---|---|---|
+| `commons/types/` | generic technical Protocols: `Clock`, `UnitOfWork`, `EventBus`, `IdGenerator` | dependency-free, no business meaning, reusable in any project |
+| `domain/model/ports.py` | domain-vocabulary contracts: repositories, domain-service providers (`PricingPolicyProvider`) | you would mention it describing the business; a domain object or the repository abstraction needs it |
+| a `Protocol` colocated in the use-case module | non-domain outbound contracts the orchestration needs: `EmailSender`, `PaymentGateway`, cross-context gateways (`CreditCheckPort`) | only `application/` uses it; it is integration plumbing, not domain language |
+
+- **No `application/ports.py` file** by default — colocated `Protocol`s are the mechanism.
+  (ARCH-042, SHOULD)
+- Promote to `application/ports.py` only when a context has 3+ application ports shared
+  across multiple use-case modules (Progressive Structure, §15).
+- Rationale: keeps `domain/model/ports.py` a faithful list of domain concepts (§18 risk 2)
+  and keeps integration-contract churn out of the stable domain file (§18 risk 3).
 
 ### 6.4 Integration events
 
@@ -380,42 +420,102 @@ There is **no** `application/ports.py`. All contracts with a stable shape
   context accumulates many adapters of one kind (exception, not norm).
 - Adapters **implement** ports declared in `domain/model/ports.py`; the core imports
   abstractions only. (ARCH-008)
-- **No Active Record.** The aggregate does not know its persistence. A
-  `<aggregate>_mapper.py` translates aggregate ↔ ORM model. (ARCH-028)
+- **No Active Record.** The aggregate has no persistence base class, decorator, or import
+  and no `save()`. Translation between the aggregate and its stored form lives entirely in
+  `infrastructure/`, in whatever form the store needs. (ARCH-028)
 - Adapters contain **no business logic** and make **no orchestration decisions**.
 - `infrastructure/` MAY import `commons/infrastructure/`; `domain/` and `application/`
   MUST NOT. (ARCH-034)
 
-### 7.2 Unit of Work
+### 7.2 Unit of Work and persistence
 
-Three responsibilities, no more:
-1. **Transaction boundary** — `__enter__` / `__exit__` (auto-rollback if `commit()` was
-   not called), `commit()`.
-2. **Repository aggregation point** for one context — all its repositories share the same
-   session/transaction.
-3. **Domain event collection** — `collect_new_events()` drains events from the aggregates
-   the repositories loaded/added.
+#### Normative contract (store-agnostic)
+
+- `commons/types/unit_of_work.py` — the `UnitOfWork` Protocol. It owns the transaction and
+  domain-event collection. It says nothing about a specific database.
 
 ```python
-# commons/types/unit_of_work.py
-class AbstractUnitOfWork(Protocol):
-    def __enter__(self) -> "AbstractUnitOfWork": ...
-    def __exit__(self, *exc: object) -> None: ...
+class UnitOfWork(Protocol):
+    def __enter__(self) -> "UnitOfWork": ...
+    def __exit__(self, *exc: object) -> None: ...      # rollback if commit() was not called
     def commit(self) -> None: ...
+    def rollback(self) -> None: ...
+    def track(self, aggregate: object) -> None: ...    # repositories call this on load/store
     def collect_new_events(self) -> Iterable[DomainEvent]: ...
 ```
 
+- Repository ports in `domain/model/ports.py`: collection-style, root-level (`add`, `get`,
+  `next_identity`, specification queries), return aggregates — never rows/DTOs. (ARCH-022)
+- **Repositories receive the UoW** and run against the store handle it exposes; they call
+  `uow.track(aggregate)` on every load and store so events can be drained.
+- **Translation between the aggregate and its stored form lives entirely in `infrastructure/`**,
+  in whatever form the store needs. The aggregate has no persistence knowledge. (ARCH-028)
+- **One transaction modifies one aggregate** (ARCH-021) — this keeps the UoW portable to
+  stores without general multi-item transactions.
+- There is no per-context UoW class. The application layer talks only to named repository
+  ports, never to the UoW's store handle. (protects ARCH-022, ARCH-029)
+
+#### Reference implementation — SQLAlchemy (shipped in `commons/infrastructure/` + the template)
+
+- `SqlAlchemyUnitOfWork` owns a `Session`; `collect_new_events()` iterates
+  `session.new | session.dirty | session.identity_map` and drains each aggregate root's
+  pending events (so `track()` is effectively implicit for this store).
+- Per context: `infrastructure/mapping.py` — `Table` definitions +
+  `map_imperatively(Order, order_table, ...)`. No separate ORM model class, no manual
+  mapper. Domain classes stay free of ORM base classes, decorators, and imports.
+  `bootstrap/` calls each context's `configure_mappings()` once at startup.
+- The thin repository runs against `uow.session` and returns aggregates directly.
+- `InMemoryUnitOfWork` (dict-backed, explicit `track()`) ships alongside for tests.
+
 ```python
-# sales/domain/model/ports.py
-class SalesUnitOfWork(AbstractUnitOfWork, Protocol):
-    orders: OrderRepository
+# sales/infrastructure/order_repository.py     — thin, intention-revealing
+class SqlAlchemyOrderRepository:                  # implements OrderRepository (domain port)
+    def __init__(self, uow: SqlAlchemyUnitOfWork) -> None:
+        self._uow = uow
+
+    def add(self, order: Order) -> None:
+        self._uow.session.add(order)
+
+    def get(self, order_id: OrderId) -> Order:
+        order = self._uow.session.get(Order, order_id.value)
+        if order is None:
+            raise OrderNotFound(order_id)
+        return order
+
+    def find_open_for_customer(self, customer_id: CustomerId) -> list[Order]:
+        return (
+            self._uow.session.query(Order)
+            .filter_by(customer_id=customer_id.value, status="OPEN")
+            .all()
+        )
 ```
 
-- Context UoW interface: `<context>/domain/model/ports.py`.
-- Real implementation: `<context>/infrastructure/unit_of_work.py`
-  (`SqlAlchemySalesUnitOfWork(SqlAlchemyUnitOfWork)`).
-- Test fake: `commons/infrastructure/in_memory_uow.py` provides the generic in-memory
-  transaction fake; the context's test helper composes it with in-memory repositories.
+```python
+# sales/entrypoints/providers.py
+def order_service() -> OrderService:
+    uow = unit_of_work()                          # from bootstrap/ (mappings already configured)
+    orders = SqlAlchemyOrderRepository(uow)
+    return OrderService(uow=uow, orders=orders, bus=event_bus(), notifier=notifier())
+```
+
+#### Other stores
+
+Same `UnitOfWork` Protocol, same repository ports, same `track()` / `collect_new_events()`
+contract — only the implementation changes:
+
+- **DynamoDB:** `DynamoUnitOfWork` buffers writes and flushes on `commit()` as a conditional
+  `PutItem` / `TransactWriteItems`; repositories serialize aggregates to items explicitly.
+- **Raw sqlite / another driver:** the repository hand-writes row ↔ aggregate translation
+  (a `<aggregate>_mapper.py` with pure `to_row` / `to_aggregate` functions when it grows).
+
+The manual-translation form is also the escape hatch for SQL projects whose aggregates are
+hostile to imperative mapping (deeply immutable structures, computed state).
+
+#### Test note
+
+Domain unit tests run without the store's mapping/translation configuration so aggregate
+classes stay uninstrumented (guarded by a fixture). (§11.4) Every use-case write goes
+through a UoW; the service never commits repositories individually. (ARCH-033)
 - Every use-case write goes through a UoW; the service never commits repositories
   individually. (ARCH-033)
 
@@ -436,7 +536,7 @@ class SalesUnitOfWork(AbstractUnitOfWork, Protocol):
 | | `commons/types/` | `commons/infrastructure/` |
 |---|---|---|
 | Content | dependency-free technical primitives, protocols | framework-bound shared technical implementations |
-| Examples | `Result`-free error bases, `EntityId`, `Pagination`, `Clock` Protocol, `AbstractUnitOfWork` | `SqlAlchemyUnitOfWork`, `InMemoryUnitOfWork`, SQL repository base, outbox machinery |
+| Examples | `Result`-free error bases, `EntityId`, `Pagination`, `Clock` / `EventBus` / `IdGenerator` / `UnitOfWork` Protocols | `SqlAlchemyUnitOfWork` / `InMemoryUnitOfWork` (reference impls: session, txn, event collection), outbox machinery |
 | Importable by | everyone, including `domain/` | only `infrastructure/`, `entrypoints/`, `bootstrap/`, tests |
 | Forbidden | any business meaning, any framework import | — |
 
@@ -508,7 +608,7 @@ The machine-readable source of truth is `rules/*.yaml`; the Markdown is generate
 | ARCH-021 | One transaction modifies one aggregate (UoW boundary) | MUST* (justified) | partial |
 | ARCH-022 | Repositories operate at root level and return aggregates, not rows/DTOs | MUST | partial |
 | ARCH-023 | Domain events are immutable and past-tense | MUST | full |
-| ARCH-028 | No Active Record: the aggregate does not know its persistence | MUST | partial |
+| ARCH-028 | No Active Record: the aggregate has no persistence base/decorator/import and no `save()`; translation lives entirely in `infrastructure/` | MUST | partial |
 | ARCH-031 | Value Objects are immutable and validate on construction | MUST | partial |
 | ARCH-032 | The domain raises only exceptions derived from `commons` `DomainError` | SHOULD | partial |
 | ARCH-033 | Every use-case write goes through a Unit of Work | MUST | partial |
@@ -522,9 +622,9 @@ The machine-readable source of truth is `rules/*.yaml`; the Markdown is generate
 | ARCH-026 | External-provider dependencies sit behind a port | SHOULD | partial |
 | ARCH-027 | The domain does not cross the application boundary (mapped to DTO) | SHOULD | manual |
 | ARCH-029 | Use cases express intent, not generic CRUD | SHOULD | manual |
-| ARCH-030 | One application service class per capability; one method per use case; ≤ ~7 methods | SHOULD | partial |
+| ARCH-030 | One general application service class per context by default; one method per use case; split to another module only past ~7 methods or on incohesive dependencies | SHOULD | partial |
 | ARCH-036 | Integration events are published via transactional outbox when a delivery/consistency guarantee is required | MUST* (conditional) | manual |
-| ARCH-042 | Non-domain outbound contracts are colocated `Protocol`s, not in `domain/model/ports.py` | SHOULD | manual |
+| ARCH-042 | Port placement follows the three-homes rule: generic tech Protocols → `commons/types/`; domain-vocabulary contracts → `domain/model/ports.py`; non-domain outbound contracts → colocated `Protocol` in the use-case module (no `application/ports.py` until 3+ shared) | SHOULD | partial |
 | ARCH-045 | A context depends only on consumer-driven contracts it declares for what it needs from another context | MUST | partial |
 
 ### 9.4 Testing
@@ -588,9 +688,10 @@ parts. Example:
 
 - **Never mock:** domain objects (aggregates, VOs, services), the code under test,
   `shared_kernel` VOs. (ARCH-038)
-- **Use in-memory fakes, not mocks:** repositories (`InMemoryOrderRepository` over a
-  dict), `EventBus` (`RecordingEventBus`), `Clock` (`FixedClock`). The same contract test
-  runs against the fake and the real adapter — the fake cannot lie. (ARCH-039)
+- **Use in-memory fakes, not mocks:** repositories (`InMemoryOrderRepository` over a dict,
+  bound to an `InMemoryUnitOfWork`), `EventBus` (`RecordingEventBus`), `Clock`
+  (`FixedClock`). The same contract test runs against the fake and the real adapter — the
+  fake cannot lie. (ARCH-039)
 - **Mock only in adapter tests:** the third party's SDK when testing your adapter — and
   even then prefer a fake server / VCR / testcontainer.
 - **Rule of thumb:** an application test with more than 1–2 mocks means the service does
@@ -600,7 +701,9 @@ parts. Example:
 
 - **Aggregates:** pure objects, never through the repository. Assert new state, emitted
   domain events, and that invalid cases raise the correct domain exception. One test per
-  rule, not per method.
+  rule, not per method. Domain tests run **without** the store's mapping/translation
+  configuration — an autouse fixture ensures aggregate classes stay uninstrumented (with
+  the SQLAlchemy reference impl, `configure_mappings()` is not called).
 - **Application services:** real domain + fakes. Assert the right aggregate was loaded,
   the business method was called, persistence happened, the expected integration events
   were published, the transaction commits/rolls back. Do not re-test domain rules here.
@@ -626,7 +729,7 @@ events. Adapters: round-trip + error translation. E2E: critical business flows o
 |---|---|---|
 | Anemic Domain Model | logic scattered in services, invariants unprotected | behavior on the aggregate |
 | God Aggregate | huge transactions, lock contention, not extractable | split by real consistency boundaries; reference by ID |
-| God / Fat Application Service | logical cohesion, merge contention, test setup explosion | service per capability, ≤7 methods, split on incohesive deps |
+| God / Fat Application Service | a general service that grows unbounded: many methods, many unrelated concerns, many deps | keep one general service per context, but split to another module past ~7 methods or on incohesive deps |
 | Fat Controller / Fat Entrypoint | untestable without transport, logic not reusable | entrypoint only translates + calls one service method |
 | Business logic in adapters | hidden from domain tests, duplicated | adapters only translate; decisions in domain/application |
 | Repository as business service | business queries leak into persistence, repo grows unbounded | repo = collection of roots; complex reads → read model |
@@ -703,7 +806,7 @@ Exit non-zero on any MUST failure; warn on SHOULD.
 |---|---|---|
 | `domain/model.py` size | > ~400 lines or > 2 aggregates | promote to `domain/model/` package |
 | `domain/model/ports.py` | > ~8 port definitions | split into `ports/` (`repositories.py`, `services.py`) |
-| Application service class | > ~7 methods, or incohesive constructor deps | split into a second capability service |
+| Application service class | > ~7 methods, or incohesive constructor deps, or a second aggregate appears | split the general service into a second service module |
 | Reads through the aggregate | complex joins, reporting, dashboard shapes | introduce a dedicated read model outside the domain |
 | Context sub-areas | 2+ separable areas each with its own aggregates | activate the `<module>/` level |
 | Cross-context integration | > 1 team, or independent deployability needed | move from in-process gateway to async events + ACL as the default |
@@ -799,7 +902,7 @@ Resolved in this spec (see Section 0). Remaining items for v1.1+:
 | # | Item | Note |
 |---|---|---|
 | A | Concrete threshold numbers in Section 15 | Starting points given; calibrate against the first 2–3 real projects |
-| B | `EventBus` in `domain/model/ports.py` vs a dedicated messaging contract module | Currently in domain ports for simplicity |
+| B | `IdGenerator` home — `commons/types/` vs repository-internal, since IDs are app-generated and `next_identity()` is on the repo | Currently `commons/types/` as a Protocol |
 | C | Multi-repo (service-per-context) topology | Deferred to v2; v1 contracts are written to make it possible |
 | D | Async runtime variant | Deferred; v1 is synchronous. An async appendix may follow |
 | E | Standard-owned base classes vs pure conventions | Lean toward minimal base classes in `commons/` + conventions elsewhere |
@@ -809,13 +912,15 @@ Resolved in this spec (see Section 0). Remaining items for v1.1+:
 
 ## 18. Known risks (from the design review)
 
-1. **Service-class-per-capability** can drift from functional to logical cohesion —
-   mitigated by ARCH-030 guardrails + lint on method count / file length; still needs
-   review discipline.
-2. **All ports in `domain/model/ports.py`** risks slow semantic erosion of the domain
-   vocabulary — mitigated by ARCH-042 (non-domain contracts are colocated Protocols).
-3. **Hot files** (`ports.py`, capability services) create merge contention — accepted
-   cost of fewer files vs one-handler-per-file.
+1. **One general service per context** can accrete unrelated use cases and drift toward
+   logical cohesion — mitigated by ARCH-030 split guardrails + lint on method count /
+   file length; still needs review discipline.
+2. **Semantic erosion of `domain/model/ports.py`** — resolved by the three-homes rule
+   (§6.3, ARCH-042): only domain-vocabulary contracts stay there; generic tech Protocols
+   move to `commons/types/`, non-domain outbound contracts are colocated in `application/`.
+3. **Hot files** (`domain/model/ports.py`, the general service) create merge contention —
+   accepted cost of fewer files vs one-handler-per-file; the three-homes split keeps
+   integration-contract churn out of the domain ports file.
 4. **ACL on both ends of cross-context interaction** is real ongoing mapping cost —
    mitigated by Progressive Structure (in-process gateway until >1 team) and the
    Published Language catalog.
@@ -823,6 +928,11 @@ Resolved in this spec (see Section 0). Remaining items for v1.1+:
    silently closes; the ADR expiry/review keeps waivers visible.
 6. **Cross-context debugging through a broker** (when async) requires correlation IDs and
    event tracing as mandatory infrastructure — ARCH-043.
+7. **The SQLAlchemy reference impl uses imperative mapping**, which couples `mapping.py`
+   to the aggregate's internal shape and instruments the classes at startup (a footgun for
+   domain tests, guarded by a fixture). It is a *reference implementation*, not normative —
+   the manual-mapper form covers aggregates hostile to imperative mapping and non-SQL
+   stores, and the normative contract (§7.2) is store-agnostic.
 
 ---
 
