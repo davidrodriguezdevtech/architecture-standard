@@ -914,6 +914,10 @@ Resolved in this spec (see Section 0). Remaining items for v1.1+:
 | E | Standard-owned base classes vs pure conventions | Lean toward minimal base classes in `commons/` + conventions elsewhere |
 | F | ADR allowlist format consumed by the validator | To be designed with `checks/` |
 | G | Import-contract edge attribution | The validator generates one import-linter `layers` contract per project and maps a broken layered contract to **all four** edge rules (ARCH-001/002/005/006) at once. v1.1: parse the broken-import lines and attribute the exact forbidden edge. |
+| H | `_PACKAGED_RULES` path resolution (`cli.py`) | Uses `Path(__file__).resolve().parents[2] / "rules"`, which only resolves from a source checkout; `rules/` is not shipped in the wheel and the parent-count is wrong under `site-packages`. v1.1: `importlib.resources` refactor + `pyproject` packaging change to ship the catalog with the package. |
+| I | ADR waiver parsing gaps (`adr_waivers.py`) | `waives:` is not validated against the catalog (a typo'd rule id is silently ignored rather than flagged), and a quoted `expires:` string (vs. a YAML date) silently drops the whole waiver. Both fail safe today (the rule stays enforced). v1.1: add a diagnostic line for either case. |
+| J | CI wiring for waivers and `arch-standard check` | Spec §13 calls for CI to print the active-waiver count per rule, and for `arch-standard check` to run as a CI step; neither was carried forward by the catalog-and-validator plan. v1.1: wire both into the repo's CI workflow. |
+| K | Import-contract coarse-signal limitations beyond edge attribution | ARCH-012/034/035 vacuously PASS when their contract isn't emitted at all (e.g. no `commons/` root, so the contract is simply absent rather than kept or broken); `_STATUS_RE` does not strip ANSI color codes from import-linter's output, so a colorized run would fail to parse. Both accepted as v1 coarse-signal limitations alongside row G. |
 
 ---
 
