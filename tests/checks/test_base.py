@@ -102,3 +102,20 @@ def test_given_dir_without_layers__when_modules__then_not_a_module(tmp_path: Pat
     (root / "src/sales/notes/readme.py").write_text("", encoding="utf-8")
     layout = ProjectLayout.detect(root)
     assert "notes" not in layout.modules("sales")
+
+
+MODULAR = Path(__file__).parent.parent / "fixtures" / "modular_project"
+
+
+def test_given_modular_fixture__when_detect__then_two_contexts() -> None:
+    layout = ProjectLayout.detect(MODULAR)
+    assert layout.contexts == ("billing", "sales")
+
+
+def test_given_modular_fixture__when_iter_modules__then_all_aggregate_modules() -> None:
+    layout = ProjectLayout.detect(MODULAR)
+    assert list(layout.iter_modules()) == [
+        ("billing", "invoices"),
+        ("sales", "orders"),
+        ("sales", "users"),
+    ]
