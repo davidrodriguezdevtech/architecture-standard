@@ -13,7 +13,7 @@ def _rule_block(rule: Rule) -> str:
     parts = [
         f"#### {rule.id} — {rule.name}",
         f"- **Level:** {rule.level.value} · **Automation:** {rule.automation.value} "
-        f"· **Category:** {rule.category}",
+        f"· **Tier:** {rule.tier.value} · **Category:** {rule.category}",
         f"- **Description:** {rule.description.strip()}",
         f"- **Rationale:** {rule.rationale.strip()}",
         "- **Correct:**",
@@ -32,6 +32,15 @@ def _rule_block(rule: Rule) -> str:
 
 def _catalog_markdown(catalog: Catalog) -> str:
     out: list[str] = []
+    out.append("### Core rules")
+    out.append("")
+    out.append("Binding from day one. `arch-standard check --core` runs exactly these.")
+    out.append("")
+    out.append("| ID | Rule | Level | Automation |")
+    out.append("|---|---|---|---|")
+    for r in catalog.core():
+        out.append(f"| {r.id} | {r.name} | {r.level.value} | {r.automation.value} |")
+    out.append("")
     for category, rules in catalog.by_category().items():
         out.append(f"### {category}")
         out.append("")

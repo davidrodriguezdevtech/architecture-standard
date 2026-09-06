@@ -14,11 +14,13 @@ Three load-bearing ideas:
 2. **Business-capability cohesion at the top.** A change to "how orders work" touches
    one context. A change to "how we talk to Postgres" touches one adapter module.
 
-3. **Progressive Structure.** Structure grows when it hurts, not before. A context
-   starts with flat modules (`domain/model.py`, `application/<capability>.py`,
-   `infrastructure/<adapter>.py`). It is promoted to packages only past defined
-   thresholds (Section 15). This standard defines the thresholds; it does not mandate
-   the maximal structure from day one.
+3. **Fixed shape, growing content.** The folder structure is canonical and identical
+   in every project built on this standard; what grows is the set of files inside it.
+   A file does not exist until it has content, but its location is decided in
+   advance. There is no "start flat, restructure later" step and therefore no
+   judgement call about when to restructure - which is the point: the standard exists
+   to make "where does this go?" answerable without judgement. The thresholds in
+   Section 15 flag model problems, not layout problems.
 
 The standard is rule-based, deterministic, and verifiable so that it is consumable by
 humans, by Claude Code, by an architecture-reviewer agent, and by CI.

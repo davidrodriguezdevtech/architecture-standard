@@ -18,9 +18,9 @@ The following framing decisions are fixed for v1:
 - **Naming language.** English for all identifiers, folders, rule IDs, and for this
   standard.
 - **Ports.** `typing.Protocol` (structural typing; adapters do not inherit). Three
-  homes: `commons/types/` (generic technical protocols), `domain/model/ports.py`
-  (domain vocabulary), and colocated in the use-case module (non-domain outbound).
-  There is no `application/ports.py` by default.
+  homes: `commons/types/` (generic technical protocols), the aggregate module's
+  `domain/model/ports.py` (domain vocabulary), and colocated in the use-case module
+  (non-domain outbound). There is no `application/ports.py` by default.
 - **Persistence.** The normative contract (the `UnitOfWork` Protocol, repository ports,
   translation living in `infrastructure/`) is store-agnostic. SQLAlchemy is the shipped
   reference implementation, with an `InMemoryUnitOfWork` for tests. Other stores
@@ -37,16 +37,44 @@ The following framing decisions are fixed for v1:
   `domain/` or `application/`.
 - **Event publication.** A transactional outbox is mandatory when delivery or
   transactional side-effect guarantees are required; optional otherwise.
-- **Read models.** Domain-derived projections live in `domain/model/projections.py`.
-  Query, dashboard, and presentation read models live outside the domain, introduced
-  when complexity justifies them.
+- **Read models.** Domain-derived projections live in the aggregate module's
+  `domain/model/projections.py`. Query, dashboard, and presentation read models live
+  outside the domain, in `<context>/read/`, introduced when complexity justifies them.
 - **Mapping (domain to DTO).** Manual mapping for domain-facing boundaries. Libraries
   are allowed for mechanical mapping at infrastructure and transport boundaries.
 - **Cross-context communication.** Synchronous by default, contract-mediated, wired in
   `bootstrap/`, with zero imports between contexts. Asynchronous integration events
   when the use case explicitly tolerates eventual consistency.
+- **Structural levels.** Two: the bounded context (`sales/`), then the aggregate module
+  (`users/`), which is 1:1 with an aggregate. There is no context-level
+  `application/`. `<context>/shared/` is the only context-level code area, and it is
+  strictly limited.
+- **Cross-aggregate flow.** Choreography by domain events; one service call per
+  entrypoint handler. There is no orchestration layer, and none appears in the
+  canonical tree. A synchronous request that needs two aggregates answers with
+  `202 Accepted` or a partial synchronous write.
+- **Integration events.** Conditional. They do not appear in the default shape. A
+  domain event that starts being consumed by another context is promoted to a
+  contract with a versioned schema.
 - **Process wiring.** `main.py` is the process entrypoint. `bootstrap/` is the
   Composition Root.
+- **Distribution.** The standard is the base of many repositories, one per project.
+  Three semver'd artifacts exist: the standard (`arch-standard`), the shared technical
+  package (`arch-commons`), and the project template. Projects carry a
+  `.arch-standard` version stamp. A new MUST lands as a SHOULD in a minor release
+  first, and becomes a MUST in the next major.
+- **`commons/`.** Not vendored. `arch-commons` is an installed, separately versioned
+  dependency, so a fix reaches every project instead of drifting into N copies.
+- **Read side.** Repositories persist and retrieve aggregate roots; they are not
+  query interfaces. Projection, reporting, search, dashboard, and cross-aggregate
+  reads live in `<context>/read/`, which may query the store directly and returns
+  DTOs.
+- **Context dependencies.** Declared in `contexts.toml` and validated acyclic - the
+  only way to see a cycle, since contexts never import each other.
+- **Rule tiers.** Each rule is tagged `tier: core` or `tier: full`. The core rules
+  bind from day one; `arch-standard check --core` runs only those.
+- **Logging.** `domain/` and `application/` do not log. They raise domain exceptions
+  and emit domain events; entrypoints and infrastructure adapters log.
 
 ## How to read this document (RFC 2119)
 

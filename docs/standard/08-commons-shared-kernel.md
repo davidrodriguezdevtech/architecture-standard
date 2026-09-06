@@ -1,13 +1,27 @@
 # 8. commons/ and shared_kernel/
 
-## 8.1 Two technical tiers
+## 8.1 `arch-commons` - a separately versioned package
 
-| | `commons/types/` | `commons/infrastructure/` |
+`commons/` is not vendored into each project. It is published as `arch-commons` and
+declared as a dependency, so a fix or a new primitive reaches every project that
+upgrades instead of drifting into N divergent copies. This is what makes the standard
+usable as the base of many repositories rather than a one-off scaffold.
+
+| | `commons.types` | `commons.infrastructure` |
 |---|---|---|
-| Content | dependency-free technical primitives, protocols | framework-bound shared technical implementations |
-| Examples | `Result`-free error bases, `EntityId`, `Pagination`, `Clock` / `EventBus` / `IdGenerator` / `UnitOfWork` Protocols | `SqlAlchemyUnitOfWork` / `InMemoryUnitOfWork` (reference impls: session, txn, event collection), outbox machinery |
+| Content | dependency-free technical primitives and Protocols | framework-bound shared implementations |
+| Examples | `DomainError`/`ApplicationError` bases, `EntityId`, `Pagination`, `Clock` / `EventBus` / `IdGenerator` / `UnitOfWork` Protocols | `SqlAlchemyUnitOfWork`, `InMemoryUnitOfWork`, outbox machinery |
 | Importable by | everyone, including `domain/` | only `infrastructure/`, `entrypoints/`, `bootstrap/`, tests |
 | Forbidden | any business meaning, any framework import | - |
+
+**Governance.** `arch-commons` follows semver, with the same compatibility policy as
+the standard itself (Section 16.3): a breaking change to `commons.types` is a major
+bump and is announced with migration notes. Adding a primitive is a minor. Consuming
+projects pin a version and upgrade deliberately.
+
+**Contributing upward.** A technical primitive that a project invents locally, and
+that a second project would want, does not get copied - it is proposed upstream into
+`arch-commons`. Until it is accepted it lives in that project, clearly marked.
 
 Rules: ARCH-015 (`commons.types` imports nothing from
 contexts/application/infrastructure/shared_kernel), ARCH-016 (`commons.types` has no

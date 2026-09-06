@@ -81,9 +81,17 @@ Concrete domain exceptions live in `domain/model/exceptions.py`, subclassing
 (ARCH-032) `DomainError` also covers expected business errors (validation, precondition
 failures) - there is no `Result` type.
 
-## 5.5 Projections
+## 5.5 Projections versus the Read/Query layer
 
-Domain-derived projections (a read shape computed from the model, still expressed in
-domain terms) live in `domain/model/projections.py`. Query, dashboard, and
-presentation read models are not domain - they live outside, introduced when their
-complexity justifies a dedicated read path (Section 15).
+A domain-derived projection - a read shape computed from the aggregate, still
+expressed in domain terms and used by the write side - lives in the aggregate
+module's `domain/model/projections.py`.
+
+Everything else is not domain. Repositories persist and retrieve aggregate roots and
+must not be used as general-purpose query interfaces (ARCH-051). Projection-oriented,
+reporting, search, dashboard, and cross-aggregate reads belong to `<context>/read/`
+(Section 2.5), which may query the store directly and returns DTOs.
+
+The practical test: if the result is an aggregate, or a value derived from one
+aggregate for the write side, it is domain. If the result is a DTO shaped for a
+screen, a report, or a search result, it is the read layer.

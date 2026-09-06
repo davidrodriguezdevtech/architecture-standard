@@ -65,3 +65,16 @@ def test_committed_standard_is_current() -> None:
         encoding="utf-8"
     )
     assert committed == r(Catalog.load(RULES), PROSE)
+
+
+def test_given_the_catalog__when_rendered__then_the_core_table_comes_first() -> None:
+    text = render_standard(Catalog.load(RULES), PROSE)
+    assert "### Core rules" in text
+    assert text.index("### Core rules") < text.index("### dependencies")
+    for rid in ("ARCH-046", "ARCH-050", "ARCH-051", "ARCH-052", "ARCH-053"):
+        assert rid in text
+
+
+def test_given_a_rule_block__when_rendered__then_the_tier_is_shown() -> None:
+    text = render_standard(Catalog.load(RULES), PROSE)
+    assert "**Tier:**" in text

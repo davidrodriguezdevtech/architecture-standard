@@ -4,7 +4,7 @@
 |---|---|---|
 | Anemic Domain Model | logic scattered in services, invariants unprotected | behavior on the aggregate |
 | God Aggregate | huge transactions, lock contention, not extractable | split by real consistency boundaries; reference by ID |
-| God / Fat Application Service | a general service that grows unbounded: many methods, many unrelated concerns, many deps | keep one general service per context, but split to another module past ~7 methods or on incohesive deps |
+| God / Fat Application Service | a service class that grows unbounded: many methods, many unrelated concerns, many deps | one service per aggregate module (Section 6.2); the checker warns past ~7 methods, ~200 lines, or 5 constructor params - look at the aggregate before splitting the service |
 | Fat Controller / Fat Entrypoint | untestable without transport, logic not reusable | entrypoint only translates + calls one service method |
 | Business logic in adapters | hidden from domain tests, duplicated | adapters only translate; decisions in domain/application |
 | Repository as business service | business queries leak into persistence, repo grows unbounded | repo = collection of roots; complex reads -> read model |
