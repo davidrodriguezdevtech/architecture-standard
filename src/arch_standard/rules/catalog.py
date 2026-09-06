@@ -6,7 +6,7 @@ from typing import Any
 
 import yaml
 
-from arch_standard.rules.model import Level, Rule
+from arch_standard.rules.model import Level, Rule, Tier
 
 
 class CatalogError(Exception):
@@ -65,3 +65,6 @@ class Catalog:
 
     def musts(self) -> list[Rule]:
         return [r for r in self._rules if r.level in (Level.MUST, Level.MUST_CONDITIONAL)]
+
+    def core(self) -> list[Rule]:
+        return [r for r in self._rules if r.tier is Tier.CORE]

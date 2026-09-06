@@ -77,6 +77,7 @@ rules:
     name: One transaction modifies one aggregate (UoW boundary)
     level: MUST*
     automation: partial
+    tier: core
     category: model_integrity
     description: >
       A single unit-of-work block loads and mutates exactly one aggregate
@@ -127,6 +128,7 @@ rules:
     name: Domain events are immutable and past-tense
     level: MUST
     automation: full
+    tier: core
     category: model_integrity
     description: >
       Every class defined in a context's domain/model/events.py is a frozen
@@ -176,6 +178,7 @@ rules:
     name: Value Objects are immutable and validate on construction
     level: MUST
     automation: partial
+    tier: core
     category: model_integrity
     description: >
       Every value object class is a frozen dataclass with no setters, validates
@@ -254,3 +257,28 @@ rules:
       tool: ast-checker
       detail: state-changing service methods must contain a `with uow:` and uow.commit()
     related: [ARCH-021]
+  - id: ARCH-051
+    name: Repositories are not query interfaces
+    level: MUST
+    automation: partial
+    tier: core
+    category: model_integrity
+    description: >
+      Repositories persist and retrieve aggregate roots. They are not general-purpose
+      query interfaces: projection-oriented, reporting, search, dashboard, and
+      cross-aggregate reads belong to the context's read/ layer.
+    rationale: >
+      A repository that grows report queries stops being a collection of roots, drags
+      query pressure into the write model, and starts returning DTOs instead of
+      aggregates.
+    correct: |
+      class OrderRepository(Protocol):
+          def get(self, order_id: OrderId) -> Order: ...
+          def add(self, order: Order) -> None: ...
+    incorrect: |
+      class OrderRepository(Protocol):
+          def find_premium_customers_with_overdue_invoices(self) -> list[ReportRow]: ...
+    validation:
+      tool: ast-checker
+      detail: repository methods returning non-aggregate collections
+    related: [ARCH-022, ARCH-052]

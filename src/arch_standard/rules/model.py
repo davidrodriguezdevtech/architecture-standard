@@ -22,6 +22,11 @@ class Automation(StrEnum):
     MANUAL = "manual"
 
 
+class Tier(StrEnum):
+    CORE = "core"
+    FULL = "full"
+
+
 class ValidationSpec(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -43,6 +48,7 @@ class Rule(BaseModel):
     incorrect: str
     validation: ValidationSpec
     related: list[str] = []
+    tier: Tier = Tier.FULL
 
     @field_validator("id")
     @classmethod

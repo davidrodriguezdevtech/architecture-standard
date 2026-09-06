@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from arch_standard.rules.catalog import Catalog
-from arch_standard.rules.model import Automation
+from arch_standard.rules.model import Automation, Level
 
 RULES_DIR = Path(__file__).parent.parent.parent / "rules"
 
@@ -56,8 +56,32 @@ EXPECTED_IDS = {
         43,
         44,
         45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
     ]
 }
+
+CORE_IDS = {
+    "ARCH-001",
+    "ARCH-002",
+    "ARCH-003",
+    "ARCH-005",
+    "ARCH-006",
+    "ARCH-008",
+    "ARCH-012",
+    "ARCH-021",
+    "ARCH-023",
+    "ARCH-031",
+    "ARCH-046",
+    "ARCH-051",
+}
+NEW_IDS = {f"ARCH-{n:03d}" for n in range(46, 54)}
 
 
 def test_catalog_loads_clean() -> None:
@@ -86,3 +110,35 @@ def test_full_automation_rules_have_a_machine_tool() -> None:
     for rule in cat:
         if rule.automation is Automation.FULL:
             assert rule.validation.tool != "review", rule.id
+
+
+def test_given_the_catalog__when_loaded__then_the_new_rules_are_present() -> None:
+    cat = Catalog.load(RULES_DIR)
+    assert {r.id for r in cat} >= NEW_IDS
+
+
+def test_given_the_catalog__when_filtering_core__then_exactly_the_twelve() -> None:
+    cat = Catalog.load(RULES_DIR)
+    assert {r.id for r in cat.core()} == CORE_IDS
+    assert len(cat.core()) == 12
+
+
+def test_given_the_catalog__when_reading_conditional_rules__then_they_are_must_star() -> None:
+    cat = Catalog.load(RULES_DIR)
+    for rid in ("ARCH-024", "ARCH-043", "ARCH-044"):
+        assert cat.get(rid).level is Level.MUST_CONDITIONAL, rid
+
+
+def test_given_a_core_rule__when_read__then_it_is_machine_checkable() -> None:
+    # ARCH-021 is a documented, pre-existing exception: its `automation: partial`
+    # validation is "PR checklist plus ADR waiver expiry check" (tool: review) because
+    # the one-aggregate-per-transaction rule has a deliberate ADR-justified escape
+    # hatch. It is still required in the 12-rule core set (see CORE_IDS) and its
+    # `level`/`validation` were left untouched per this task's scope. See
+    # task-3-report.md "Concerns" for the trade-off this leaves open.
+    known_review_exceptions = {"ARCH-021"}
+    cat = Catalog.load(RULES_DIR)
+    for rule in cat.core():
+        if rule.id in known_review_exceptions:
+            continue
+        assert rule.validation.tool != "review", rule.id

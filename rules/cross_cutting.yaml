@@ -1,7 +1,7 @@
 rules:
   - id: ARCH-043
     name: Every published message uses the commons event envelope
-    level: MUST
+    level: "MUST*"
     automation: partial
     category: cross_cutting
     description: >
@@ -23,7 +23,7 @@ rules:
     related: [ARCH-036, ARCH-044]
   - id: ARCH-044
     name: Every integration event has a published schema in the events catalog
-    level: MUST
+    level: "MUST*"
     automation: partial
     category: cross_cutting
     description: >
@@ -43,3 +43,26 @@ rules:
       tool: schema
       detail: every published event has a catalog schema; producer fixtures validate against it
     related: [ARCH-024]
+  - id: ARCH-053
+    name: The core does not log
+    level: MUST
+    automation: full
+    category: cross_cutting
+    description: >
+      Modules under domain/ and application/ import no logging library and make no
+      logging calls. They raise domain exceptions and emit domain events; entrypoints and
+      infrastructure adapters log.
+    rationale: >
+      Logging is an observability concern of the adapters. Keeping it out of the core
+      keeps the core free of ambient I/O and makes behavior fully assertable from the
+      state and events a use case produces.
+    correct: |
+      # application: emit a fact
+      self._bus.publish_all(self._uow.collect_new_events())
+    incorrect: |
+      # application
+      import logging
+      logging.getLogger(__name__).info("order created")
+    validation:
+      tool: ruff
+      detail: banned logging imports/calls under domain/ and application/

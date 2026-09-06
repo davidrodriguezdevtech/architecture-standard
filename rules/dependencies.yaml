@@ -3,6 +3,7 @@ rules:
     name: Domain does not depend on infrastructure
     level: MUST
     automation: full
+    tier: core
     category: dependencies
     description: >
       No module under a context's domain/ package may import from that
@@ -25,6 +26,7 @@ rules:
     name: Domain does not depend on application
     level: MUST
     automation: full
+    tier: core
     category: dependencies
     description: >
       No module under a context's domain/ package imports from that context's
@@ -45,6 +47,7 @@ rules:
     name: Domain does not depend on frameworks
     level: MUST
     automation: full
+    tier: core
     category: dependencies
     description: >
       No module under a context's domain/ package imports a web framework, an
@@ -91,6 +94,7 @@ rules:
     name: Application does not depend on infrastructure
     level: MUST
     automation: full
+    tier: core
     category: dependencies
     description: >
       No module under a context's application/ package imports from that
@@ -111,6 +115,7 @@ rules:
     name: Application does not depend on entrypoints
     level: MUST
     automation: full
+    tier: core
     category: dependencies
     description: >
       No module under a context's application/ package imports from that
@@ -154,6 +159,7 @@ rules:
     name: Infrastructure implements ports; the core imports abstractions only
     level: MUST
     automation: full
+    tier: core
     category: dependencies
     description: >
       Every concrete adapter in a context's infrastructure/ package implements a
@@ -246,6 +252,7 @@ rules:
     name: A context imports nothing from another context
     level: MUST
     automation: full
+    tier: core
     category: dependencies
     description: >
       A bounded context imports nothing from another bounded context (its

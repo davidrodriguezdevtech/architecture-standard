@@ -1,7 +1,7 @@
 rules:
   - id: ARCH-024
     name: Integration events have a versioned schema and live in application/integration_events.py
-    level: MUST
+    level: "MUST*"
     automation: partial
     category: application
     description: >

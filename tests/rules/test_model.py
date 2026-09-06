@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from arch_standard.rules.model import Automation, Level, Rule, ValidationSpec
+from arch_standard.rules.model import Automation, Level, Rule, Tier, ValidationSpec
 
 
 def _valid_kwargs() -> dict[str, Any]:
@@ -52,3 +52,13 @@ def test_rule_is_frozen() -> None:
     rule = Rule(**_valid_kwargs())
     with pytest.raises(ValidationError):
         rule.name = "changed"
+
+
+def test_given_no_tier__when_parsing_a_rule__then_defaults_to_full() -> None:
+    rule = Rule(**_valid_kwargs())
+    assert rule.tier is Tier.FULL
+
+
+def test_given_core_tier__when_parsing_a_rule__then_tier_is_core() -> None:
+    rule = Rule(**{**_valid_kwargs(), "tier": "core"})
+    assert rule.tier is Tier.CORE

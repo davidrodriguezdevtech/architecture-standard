@@ -667,12 +667,13 @@ it.
 | ARCH-031 | Value Objects are immutable and validate on construction | MUST | partial |
 | ARCH-032 | The domain raises only exceptions derived from commons DomainError | SHOULD | partial |
 | ARCH-033 | Every use-case write goes through a Unit of Work | MUST | partial |
+| ARCH-051 | Repositories are not query interfaces | MUST | partial |
 
 ### application
 
 | ID | Rule | Level | Automation |
 |---|---|---|---|
-| ARCH-024 | Integration events have a versioned schema and live in application/integration_events.py | MUST | partial |
+| ARCH-024 | Integration events have a versioned schema and live in application/integration_events.py | MUST* | partial |
 | ARCH-025 | Cross-context communication is through a declared contract, never imports | MUST | full |
 | ARCH-026 | External-provider dependencies sit behind a port | SHOULD | partial |
 | ARCH-027 | The domain does not cross the application boundary | SHOULD | manual |
@@ -700,8 +701,20 @@ it.
 
 | ID | Rule | Level | Automation |
 |---|---|---|---|
-| ARCH-043 | Every published message uses the commons event envelope | MUST | partial |
-| ARCH-044 | Every integration event has a published schema in the events catalog | MUST | partial |
+| ARCH-043 | Every published message uses the commons event envelope | MUST* | partial |
+| ARCH-044 | Every integration event has a published schema in the events catalog | MUST* | partial |
+| ARCH-053 | The core does not log | MUST | full |
+
+### structure
+
+| ID | Rule | Level | Automation |
+|---|---|---|---|
+| ARCH-046 | Aggregate module isolation | MUST | full |
+| ARCH-047 | Context shared area is strictly limited | MUST | partial |
+| ARCH-048 | No context-level application package | MUST | full |
+| ARCH-049 | One aggregate root per aggregate module | MUST | partial |
+| ARCH-050 | Declared context dependency graph | MUST | full |
+| ARCH-052 | Read layer does not import the write side | MUST | full |
 
 ### Rule reference
 
@@ -1094,7 +1107,7 @@ it.
   ```
 
 #### ARCH-024 — Integration events have a versioned schema and live in application/integration_events.py
-- **Level:** MUST · **Automation:** partial · **Category:** application
+- **Level:** MUST* · **Automation:** partial · **Category:** application
 - **Description:** Every integration event a context publishes is defined in application/integration_events.py with an explicit version field, and its wire schema is exported to the events catalog; consumers never import the event class.
 - **Rationale:** Integration events are a cross-team contract; expressed as importable classes they would couple producer and consumer lifecycles.
 - **Correct:**
@@ -1425,7 +1438,7 @@ it.
 - **Related:** ARCH-008, ARCH-026
 
 #### ARCH-043 — Every published message uses the commons event envelope
-- **Level:** MUST · **Automation:** partial · **Category:** cross_cutting
+- **Level:** MUST* · **Automation:** partial · **Category:** cross_cutting
 - **Description:** Every published integration message is wrapped in the commons/ EventEnvelope carrying correlation_id, causation_id, occurred_at, event_type, event_version, and payload, and the correlation id is read from the contextvar set by the entrypoint.
 - **Rationale:** A uniform envelope with a correlation id on a contextvar is what makes an asynchronous flow traceable through a broker.
 - **Correct:**
@@ -1440,7 +1453,7 @@ it.
 - **Related:** ARCH-036, ARCH-044
 
 #### ARCH-044 — Every integration event has a published schema in the events catalog
-- **Level:** MUST · **Automation:** partial · **Category:** cross_cutting
+- **Level:** MUST* · **Automation:** partial · **Category:** cross_cutting
 - **Description:** For every integration event a context publishes there is a versioned schema file in the events catalog, and the producer contract test validates each emitted event against it.
 - **Rationale:** The published schema is the Published Language, the single artifact producers and consumers agree on, versioned so a change is a new event version rather than an in-place edit.
 - **Correct:**
@@ -1470,6 +1483,135 @@ it.
   from billing.application.billing_service import BillingService  # calls 8 of 20 methods
   ```
 - **Related:** ARCH-012, ARCH-025
+
+#### ARCH-046 — Aggregate module isolation
+- **Level:** MUST · **Automation:** full · **Category:** structure
+- **Description:** An aggregate module does not import another aggregate module's application/ or infrastructure/ package. References between aggregates are by ID, and those ID types live in the context's shared/ids.py.
+- **Rationale:** Aggregate modules are consistency boundaries. Reaching into a sibling's service or repository re-couples them and makes the one-transaction-one-aggregate rule unenforceable.
+- **Correct:**
+  ```
+  # sales/orders/domain/model/order.py
+  from sales.shared.ids import UserId
+  class Order:
+      customer_id: UserId
+  ```
+- **Incorrect:**
+  ```
+  # sales/orders/application/order_service.py
+  from sales.users.application.user_service import UserService
+  ```
+- **Related:** ARCH-020, ARCH-021
+
+#### ARCH-047 — Context shared area is strictly limited
+- **Level:** MUST · **Automation:** partial · **Category:** structure
+- **Description:** <context>/shared/ contains only ID types, policy-free value objects used by two or more aggregates of that context, and domain services spanning them.
+- **Rationale:** It is the only context-level code area, so without a narrow admission test it becomes the junk drawer that couples every aggregate module together.
+- **Correct:**
+  ```
+  # sales/shared/ids.py
+  @dataclass(frozen=True)
+  class UserId:
+      value: str
+  ```
+- **Incorrect:**
+  ```
+  # sales/shared/user_service.py
+  class UserService: ...
+  ```
+
+#### ARCH-048 — No context-level application package
+- **Level:** MUST · **Automation:** full · **Category:** structure
+- **Description:** A context has no application/ package of its own. Application services live in aggregate modules, one per aggregate.
+- **Rationale:** DDD has no "application service of the context"; application services are per use case and belong with the model they coordinate. A context-level one becomes a coordination layer that hides non-atomic multi-aggregate flow.
+- **Correct:**
+  ```
+  sales/orders/application/order_service.py
+  ```
+- **Incorrect:**
+  ```
+  sales/application/sales_service.py
+  ```
+
+#### ARCH-049 — One aggregate root per aggregate module
+- **Level:** MUST · **Automation:** partial · **Category:** structure
+- **Description:** An aggregate module's domain/model/ declares exactly one aggregate root, in a file named after it.
+- **Rationale:** The 1:1 mapping is what makes "where does this go?" answerable without judgement, and it makes the transaction boundary visible in the tree.
+- **Correct:**
+  ```
+  sales/users/domain/model/user.py declaring class User
+  ```
+- **Incorrect:**
+  ```
+  sales/users/domain/model/user.py declaring class User and class Order
+  ```
+
+#### ARCH-050 — Declared context dependency graph
+- **Level:** MUST · **Automation:** full · **Category:** structure
+- **Description:** Every cross-context dependency is declared in contexts.toml, and the declared graph is acyclic.
+- **Rationale:** Contexts never import each other, so no import analysis can see a runtime cycle wired through the composition root. Declaring the graph is the only way to check it, and it turns adding an edge into a reviewable diff.
+- **Correct:**
+  ```
+  # contexts.toml
+  [contexts.sales]
+  depends_on = ["billing"]
+  ```
+- **Incorrect:**
+  ```
+  [contexts.sales]
+  depends_on = ["billing"]
+  [contexts.billing]
+  depends_on = ["sales"]
+  ```
+
+#### ARCH-051 — Repositories are not query interfaces
+- **Level:** MUST · **Automation:** partial · **Category:** model_integrity
+- **Description:** Repositories persist and retrieve aggregate roots. They are not general-purpose query interfaces: projection-oriented, reporting, search, dashboard, and cross-aggregate reads belong to the context's read/ layer.
+- **Rationale:** A repository that grows report queries stops being a collection of roots, drags query pressure into the write model, and starts returning DTOs instead of aggregates.
+- **Correct:**
+  ```
+  class OrderRepository(Protocol):
+      def get(self, order_id: OrderId) -> Order: ...
+      def add(self, order: Order) -> None: ...
+  ```
+- **Incorrect:**
+  ```
+  class OrderRepository(Protocol):
+      def find_premium_customers_with_overdue_invoices(self) -> list[ReportRow]: ...
+  ```
+- **Related:** ARCH-022, ARCH-052
+
+#### ARCH-052 — Read layer does not import the write side
+- **Level:** MUST · **Automation:** full · **Category:** structure
+- **Description:** <context>/read/ imports no aggregate module's domain/ or application/ package.
+- **Rationale:** The read layer exists to answer queries the write model is not shaped for. Importing the write side re-couples them and pulls invariant-carrying objects into query paths.
+- **Correct:**
+  ```
+  # sales/read/customer_overview.py
+  @dataclass(frozen=True)
+  class CustomerOverview:
+      user_id: str
+  ```
+- **Incorrect:**
+  ```
+  # sales/read/customer_overview.py
+  from sales.users.domain.model.user import User
+  ```
+
+#### ARCH-053 — The core does not log
+- **Level:** MUST · **Automation:** full · **Category:** cross_cutting
+- **Description:** Modules under domain/ and application/ import no logging library and make no logging calls. They raise domain exceptions and emit domain events; entrypoints and infrastructure adapters log.
+- **Rationale:** Logging is an observability concern of the adapters. Keeping it out of the core keeps the core free of ambient I/O and makes behavior fully assertable from the state and events a use case produces.
+- **Correct:**
+  ```
+  # application: emit a fact
+  self._bus.publish_all(self._uow.collect_new_events())
+  ```
+- **Incorrect:**
+  ```
+  # application
+  import logging
+  logging.getLogger(__name__).info("order created")
+  ```
 
 ---
 
