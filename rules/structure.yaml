@@ -32,21 +32,38 @@ rules:
     category: structure
     description: >
       <context>/shared/ contains only ID types, policy-free value objects used by two or
-      more aggregates of that context, and domain services spanning them.
+      more aggregates of that context, and domain services spanning them. Those spanning
+      services live specifically in shared/services.py — the one file in shared/ exempt
+      from the *Service/*Repository name-suffix ban, since it is the standard's own
+      documented home for them. Every other file in shared/ keeps the full name-suffix
+      ban, and shared/services.py classes still may not mutate their own state.
     rationale: >
       It is the only context-level code area, so without a narrow admission test it
-      becomes the junk drawer that couples every aggregate module together.
+      becomes the junk drawer that couples every aggregate module together. Naming the
+      one legitimate exception explicitly (rather than banning *Service outright) keeps
+      the carve-out narrow instead of inviting every file in shared/ to claim it.
     correct: |
       # sales/shared/ids.py
       @dataclass(frozen=True)
       class UserId:
           value: str
+
+      # sales/shared/services.py — the documented carve-out
+      class PricingService:
+          def quote(self, order: Order) -> Money: ...
     incorrect: |
-      # sales/shared/user_service.py
+      # sales/shared/user_service.py — *Service outside services.py is still banned
       class UserService: ...
+
+      # sales/shared/services.py — mutation is still banned even here
+      class PricingService:
+          def bump(self) -> None:
+              self.calls += 1
     validation:
       tool: ast-checker
-      detail: no class named *Service/*Repository, no aggregate roots
+      detail: >-
+        no class named *Service/*Repository outside shared/services.py; no aggregate
+        roots; shared/services.py classes must not mutate their own state
   - id: ARCH-048
     name: No context-level application package
     level: MUST
