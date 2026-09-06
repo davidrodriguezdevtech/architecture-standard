@@ -140,6 +140,27 @@ class ImportContractsCheck:
         "ARCH-035",
     )
 
+    def _fail_all(self, project: ProjectLayout, message: str) -> list[CheckReport]:
+        """Map an errored / timed-out import-linter run to FAIL for every covered rule.
+
+        RULING 4: an errored subprocess run must never let a covered rule PASS.
+        """
+        return [
+            CheckReport(
+                rule_id=rule_id,
+                outcome=Outcome.FAIL,
+                findings=(
+                    Finding(
+                        rule_id=rule_id,
+                        path=str(project.src),
+                        line=None,
+                        message=message,
+                    ),
+                ),
+            )
+            for rule_id in self.rule_ids
+        ]
+
     def run(self, project: ProjectLayout, catalog: Catalog) -> list[CheckReport]:
         ini = build_contracts(project)
         handle, name = tempfile.mkstemp(suffix=".importlinter.ini", text=True)
@@ -154,7 +175,10 @@ class ImportContractsCheck:
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=120,
             )
+        except subprocess.TimeoutExpired:
+            return self._fail_all(project, "import-linter timed out after 120s")
         finally:
             config_path.unlink(missing_ok=True)
 
@@ -162,24 +186,20 @@ class ImportContractsCheck:
         covered, broken = _parse_broken_rules(output)
 
         if not covered:
-            # import-linter could not evaluate any contract (config or import
-            # resolution error). Never let that pass silently.
+            # No contract was evaluated at all (config or import-resolution error).
             detail = output.strip() or f"lint-imports exited with {proc.returncode}"
-            return [
-                CheckReport(
-                    rule_id=rule_id,
-                    outcome=Outcome.FAIL,
-                    findings=(
-                        Finding(
-                            rule_id=rule_id,
-                            path=str(project.src),
-                            line=None,
-                            message=f"import-linter did not run: {detail}",
-                        ),
-                    ),
-                )
-                for rule_id in self.rule_ids
-            ]
+            return self._fail_all(project, f"import-linter did not run: {detail}")
+
+        if proc.returncode != 0 and not broken:
+            # import-linter errored *after* reporting one or more KEPT contracts
+            # (grimp exception, module-not-in-graph, non-zero exit for any reason
+            # other than a broken contract). Do not let the un-broken rules PASS.
+            detail = output.strip() or "no diagnostic output"
+            return self._fail_all(
+                project,
+                f"import-linter exited {proc.returncode} without reporting a broken "
+                f"contract: {detail}",
+            )
 
         reports: list[CheckReport] = []
         for rule_id in self.rule_ids:

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from arch_standard.checks.base import Outcome, ProjectLayout
 from arch_standard.checks.import_contracts import ImportContractsCheck, build_contracts
@@ -38,3 +41,35 @@ def test_bad_project_fails_arch_001() -> None:
     # Contracts unrelated to the violation stay green.
     assert reports["ARCH-012"].outcome is Outcome.PASS
     assert reports["ARCH-034"].outcome is Outcome.PASS
+
+
+def test_errored_run_after_a_kept_contract_fails_all(monkeypatch: pytest.MonkeyPatch) -> None:
+    # import-linter reports one KEPT contract, then exits non-zero for a reason
+    # other than a broken contract (grimp exception, module-not-in-graph, ...).
+    # RULING 4: no covered rule may PASS off an errored run.
+    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args=["lint-imports"],
+            returncode=1,
+            stdout="ARCH-001 ARCH-002 ARCH-005 ARCH-006 layered KEPT\n",
+            stderr="grimp.exceptions.ModuleNotPresent: boom\n",
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    layout = ProjectLayout.detect(FIX / "good_project")
+    reports = ImportContractsCheck().run(layout, Catalog.load(RULES))
+    assert reports
+    assert all(r.outcome is Outcome.FAIL for r in reports)
+    assert all("exited 1" in r.findings[0].message for r in reports)
+
+
+def test_timeout_fails_all(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(cmd="lint-imports", timeout=120)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    layout = ProjectLayout.detect(FIX / "good_project")
+    reports = ImportContractsCheck().run(layout, Catalog.load(RULES))
+    assert reports
+    assert all(r.outcome is Outcome.FAIL for r in reports)
+    assert all("timed out" in r.findings[0].message for r in reports)
