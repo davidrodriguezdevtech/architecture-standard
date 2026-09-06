@@ -7,6 +7,7 @@ from pathlib import Path
 from arch_standard.checks import all_checks
 from arch_standard.checks.adr_waivers import active_waivers
 from arch_standard.checks.base import ProjectLayout
+from arch_standard.docgen import render_standard, write_standard
 from arch_standard.report import Report
 from arch_standard.rules.catalog import Catalog
 
@@ -35,7 +36,17 @@ def _run_check(path: str) -> int:
 
 
 def _run_docs(check: bool) -> int:
-    # implemented in Task 15
+    root = Path.cwd()
+    if check:
+        expected = render_standard(Catalog.load(_PACKAGED_RULES), root / "docs" / "standard")
+        current = (root / "ARCHITECTURE_STANDARD.md").read_text(encoding="utf-8")
+        if current != expected:
+            print("ARCHITECTURE_STANDARD.md is stale — run `arch-standard docs`")
+            return 1
+        print("ARCHITECTURE_STANDARD.md is current")
+        return 0
+    path = write_standard(root)
+    print(f"wrote {path}")
     return 0
 
 
