@@ -35,3 +35,19 @@ def test_bad_project_flags_datetime_now() -> None:
 def test_bad_project_flags_orm_base() -> None:
     r = _reports("bad_project")["ARCH-028"]
     assert r.outcome is Outcome.FAIL
+
+
+def test_given_a_logging_domain_module__when_checked__then_arch_053_fails() -> None:
+    r = _reports("bad_project")["ARCH-053"]
+    assert r.outcome is Outcome.FAIL
+    assert any("logging" in f.message for f in r.findings)
+
+
+def test_given_the_modular_fixture__when_checked__then_all_banned_symbol_rules_pass() -> None:
+    layout = ProjectLayout.detect(FIX / "modular_project")
+    reports = {r.rule_id: r for r in BannedSymbolsCheck().run(layout, Catalog.load(RULES))}
+    assert all(r.outcome is Outcome.PASS for r in reports.values()), [
+        (rid, [f.message for f in r.findings])
+        for rid, r in reports.items()
+        if r.outcome is not Outcome.PASS
+    ]

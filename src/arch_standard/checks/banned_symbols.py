@@ -42,6 +42,8 @@ DEFAULT_BANNED_CALLS = frozenset(
 # flagging them by bare name false-positives ARCH-028 (a MUST) on compliant
 # domain code. Narrowed to the one name that unambiguously means "ORM base".
 _ORM_BASES = {"DeclarativeBase"}
+DEFAULT_BANNED_LOGGING = frozenset({"logging", "structlog", "loguru"})
+_LOG_METHODS = frozenset({"debug", "info", "warning", "warn", "error", "exception", "critical"})
 
 
 def _dotted(node: ast.expr) -> str:
@@ -54,18 +56,30 @@ def _dotted(node: ast.expr) -> str:
 
 def _domain_files(project: ProjectLayout) -> list[Path]:
     files: list[Path] = []
+    for context, module in project.iter_modules():
+        files.extend(iter_python_files(project.module_domain_dir(context, module)))
     for context in project.contexts:
+        files.extend(iter_python_files(project.shared_dir(context)))
+        # legacy single-level layout, removed in Task 10
         files.extend(iter_python_files(project.domain_dir(context)))
     return files
 
 
+def _core_files(project: ProjectLayout) -> list[Path]:
+    files = _domain_files(project)
+    for context, module in project.iter_modules():
+        files.extend(iter_python_files(project.module_application_dir(context, module)))
+    return files
+
+
 class BannedSymbolsCheck:
-    rule_ids: tuple[str, ...] = ("ARCH-003", "ARCH-004", "ARCH-028")
+    rule_ids: tuple[str, ...] = ("ARCH-003", "ARCH-004", "ARCH-028", "ARCH-053")
 
     def run(self, project: ProjectLayout, catalog: Catalog) -> list[CheckReport]:
         imports: list[Finding] = []
         calls: list[Finding] = []
         orm: list[Finding] = []
+        logging_findings: list[Finding] = []
         for path in _domain_files(project):
             rel = str(path.relative_to(project.root))
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -107,6 +121,29 @@ class BannedSymbolsCheck:
                             )
                         )
 
+        for path in _core_files(project):
+            rel = str(path.relative_to(project.root))
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name.split(".")[0] in DEFAULT_BANNED_LOGGING:
+                            logging_findings.append(
+                                Finding("ARCH-053", rel, node.lineno, f"core imports {alias.name}")
+                            )
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    if node.module.split(".")[0] in DEFAULT_BANNED_LOGGING:
+                        logging_findings.append(
+                            Finding("ARCH-053", rel, node.lineno, f"core imports {node.module}")
+                        )
+                elif isinstance(node, ast.Call):
+                    target = _dotted(node.func)
+                    head, _, method = target.rpartition(".")
+                    if method in _LOG_METHODS and "log" in head.lower():
+                        logging_findings.append(
+                            Finding("ARCH-053", rel, node.lineno, f"core logs via {target}")
+                        )
+
         def report(rid: str, findings: list[Finding]) -> CheckReport:
             return CheckReport(
                 rule_id=rid,
@@ -114,4 +151,9 @@ class BannedSymbolsCheck:
                 findings=tuple(findings),
             )
 
-        return [report("ARCH-003", imports), report("ARCH-004", calls), report("ARCH-028", orm)]
+        return [
+            report("ARCH-003", imports),
+            report("ARCH-004", calls),
+            report("ARCH-028", orm),
+            report("ARCH-053", logging_findings),
+        ]
