@@ -33,6 +33,12 @@
 | Cross-aggregate flow | Choreography by domain events; one service call per entrypoint handler. No orchestration layer, none in the canonical tree. Synchronous multi-aggregate requests answer with `202 Accepted` or a partial synchronous write. |
 | Integration events | **Conditional.** Not in the default shape. A domain event consumed by another context is promoted to a contract with a versioned schema. |
 | Process wiring | `main.py` is the process entrypoint. `bootstrap/` is the Composition Root. |
+| Distribution | The standard is the base of **many repositories, one per project**. Three semver'd artifacts: the standard (`arch-standard`), the shared technical package (`arch-commons`), and the project template. Projects carry a `.arch-standard` version stamp. A new `MUST` lands as a `SHOULD` in a minor first, then becomes `MUST` in a major. |
+| `commons/` | **Not vendored.** `arch-commons` is an installed, separately versioned dependency, so a fix reaches every project instead of drifting into N copies. |
+| Read side | Repositories persist and retrieve aggregate roots and are **not** query interfaces. Projection, reporting, search, dashboard, and cross-aggregate reads live in `<context>/read/`, which may query the store directly and returns DTOs. |
+| Context dependencies | Declared in `contexts.toml` and validated acyclic — the only way to see a cycle, since contexts never import each other. |
+| Rule tiers | Each rule is `tier: core` or `tier: full`. The 12 core rules bind from day one; `arch-standard check --core` runs only those. |
+| Logging | `domain/` and `application/` do not log. They raise domain exceptions and emit domain events; entrypoints and infrastructure adapters log. |
 
 ---
 
@@ -72,6 +78,8 @@ project/
 ├── main.py                          # process entrypoint: starts the app, calls bootstrap/
 ├── pyproject.toml
 ├── .importlinter                    # dependency contracts
+├── contexts.toml                    # declared context dependency graph (Section 3.7)
+├── .arch-standard                   # standard-version stamp (Section 16.3)
 ├── src/
 │   ├── <context>/                   # LEVEL 1 - one bounded context (e.g. sales)
 │   │   ├── entrypoints/             # inbound adapters, context-wide
@@ -100,18 +108,11 @@ project/
 │   │   │       ├── <aggregate>_repository.py
 │   │   │       ├── mapping.py             # aggregate <-> stored form
 │   │   │       └── <adapter>.py           # one module per outbound adapter
-│   │   └── <aggregate_module_2>/    # same shape, one per aggregate
-│   ├── commons/
-│   │   ├── types/                   # dependency-free primitives + Protocols. Importable by ALL
-│   │   │   ├── ids.py               #   EntityId base, IdGenerator Protocol
-│   │   │   ├── pagination.py
-│   │   │   ├── errors.py            #   DomainError, ApplicationError base classes
-│   │   │   ├── clock.py             #   Clock Protocol
-│   │   │   ├── event_bus.py         #   EventBus Protocol
-│   │   │   └── unit_of_work.py      #   UnitOfWork Protocol (store-agnostic)
-│   │   └── infrastructure/          # shared framework-bound implementations
-│   │       ├── unit_of_work.py      #   SqlAlchemyUnitOfWork + InMemoryUnitOfWork
-│   │       └── outbox.py            #   transactional outbox machinery
+│   │   ├── <aggregate_module_2>/    # same shape, one per aggregate
+│   │   └── read/                    # Read/Query layer - projections, reporting, search,
+│   │                                #   dashboards, cross-aggregate reads. Returns DTOs.
+│   │                                #   MUST NOT import any aggregate module's domain/ or
+│   │                                #   application/. MAY query the store directly.
 │   ├── shared_kernel/               # governed cross-context domain VOs.
 │   │                                #   NOT scaffolded until genuinely needed.
 │   └── bootstrap/                   # Composition Root: config, singletons, DI container,
@@ -119,6 +120,10 @@ project/
 │                                    #   consumer startup
 └── tests/
 ```
+
+`commons/` is **not** in `src/`. It is an installed, separately versioned package
+(`arch-commons`) that every project depends on, so a fix reaches all of them (Section 8.1).
+`shared_kernel/` stays in-repo -- it holds this project's own cross-context domain concepts.
 
 **The folder shape is fixed and canonical. Files appear when they have content.**
 There is no "flat first, promote later" step: a context does not start as loose modules
@@ -162,8 +167,9 @@ and those ID types live in `<context>/shared/ids.py`. (ARCH-046)
 | A fact other parts of this context react to | a domain event in `<module>/domain/model/events.py` |
 | An ID type referenced by another aggregate of this context | `<context>/shared/ids.py` |
 | A value object used by 2+ aggregates of this context | `<context>/shared/value_objects.py` |
-| A dependency-free technical primitive | `commons/types/` |
-| A shared framework-bound technical implementation | `commons/infrastructure/` |
+| A projection, report, search, dashboard, or any cross-aggregate read | `<context>/read/` |
+| A dependency-free technical primitive | the `arch-commons` package, `commons.types` (propose upstream) |
+| A shared framework-bound technical implementation | the `arch-commons` package, `commons.infrastructure` (propose upstream) |
 | A domain concept genuinely shared by 2+ contexts, with business policy | `shared_kernel/` (with governance) |
 | Wiring / config / DI | `bootstrap/` |
 
@@ -177,6 +183,27 @@ Section 3.6, not by a coordinating layer.
 three things in the table above: ID types, policy-free value objects used by 2+ aggregates,
 and domain services spanning aggregates. Never a service, never a repository, never an
 aggregate. (ARCH-047)
+
+### 2.5 The Read/Query layer
+
+> **Repositories are responsible for persistence and retrieval of aggregate roots. They
+> must not be used as general-purpose query interfaces. Complex, projection-oriented,
+> reporting, search, dashboard, or cross-aggregate reads belong to the Read/Query layer.**
+
+`<context>/read/` is that layer. It exists at context level, not inside an aggregate
+module, because the reads that need it are precisely the ones that span aggregates -- a
+single-aggregate lookup is served by that aggregate's repository.
+
+- `read/` **MAY** query the store directly, bypassing aggregates and the Unit of Work.
+  That is the point: a read model is not bound by write-side invariants.
+- `read/` **MUST NOT** import any aggregate module's `domain/` or `application/`.
+  (ARCH-052)
+- `read/` returns **DTOs**, never aggregates.
+- Entrypoints call `read/` directly for queries; they do not route a query through an
+  application service that adds nothing.
+
+This makes the CQRS split explicit and mechanically checkable, and it keeps the write side
+(aggregate modules) free of query pressure. (ARCH-051, ARCH-052)
 
 
 ---
@@ -258,6 +285,33 @@ There is deliberately no orchestration module in the canonical tree. If a genuin
 long-running business process later demands one, the DDD pattern is a **Process Manager**
 (stateful, tracks its own progress, lives in the application layer) — introduced as a
 named exception with its own review, never as a general-purpose coordination layer.
+
+### 3.7 Declared context dependency graph
+
+Contexts do not import each other (ARCH-012), so no static import analysis can see a cycle
+between them: a runtime cycle `sales -> billing -> sales` through `bootstrap/`-wired
+gateways is invisible to every other check in this standard.
+
+The fix is a declaration. `contexts.toml` at the project root lists, for each context, the
+contexts it is allowed to depend on:
+
+```toml
+[contexts.sales]
+depends_on = ["billing"]
+
+[contexts.billing]
+depends_on = []
+
+[contexts.identity]
+depends_on = []
+```
+
+- Every cross-context dependency wired in `bootstrap/` MUST correspond to a declared edge.
+- The declared graph MUST be acyclic.
+- Adding an edge is a deliberate, reviewable act -- which is the real value: it turns
+  "someone quietly wired B into A" into a diff.
+
+(ARCH-050)
 
 ---
 
@@ -372,12 +426,20 @@ Concrete domain exceptions live in `domain/model/exceptions.py`, subclassing
 (ARCH-032) `DomainError` also covers **expected** business errors (validation,
 precondition failures) — there is no `Result` type.
 
-### 5.5 Projections
+### 5.5 Projections vs the Read/Query layer
 
-Domain-derived projections (a read shape computed from the model, still expressed in
-domain terms) live in `domain/model/projections.py`. Query/dashboard/presentation read
-models are **not** domain — they live outside, introduced when their complexity justifies
-a dedicated read path (Section 15).
+A **domain-derived projection** -- a read shape computed from the aggregate, still
+expressed in domain terms and used by the write side -- lives in the aggregate module's
+`domain/model/projections.py`.
+
+Everything else is not domain. Per ARCH-051: repositories persist and retrieve aggregate
+roots and **must not** be used as general-purpose query interfaces. Projection-oriented,
+reporting, search, dashboard, and cross-aggregate reads belong to `<context>/read/`
+(Section 2.5), which may query the store directly and returns DTOs.
+
+The practical test: if the result is an aggregate (or a value derived from one aggregate
+for the write side), it is domain. If the result is a DTO shaped for a screen, a report, or
+a search result, it is the read layer.
 
 ---
 
@@ -610,18 +672,32 @@ through a UoW; the service never commits repositories individually. (ARCH-033)
 
 ## 8. `commons/` and `shared_kernel/`
 
-### 8.1 Two technical tiers
+### 8.1 `arch-commons` -- a separately versioned package
 
-| | `commons/types/` | `commons/infrastructure/` |
+`commons/` is **not** vendored into each project. It is published as `arch-commons` and
+declared as a dependency, so a fix or a new primitive reaches every project that upgrades
+instead of drifting into N divergent copies. This is what makes the standard usable as the
+base of many repositories rather than a one-off scaffold.
+
+| | `commons.types` | `commons.infrastructure` |
 |---|---|---|
-| Content | dependency-free technical primitives, protocols | framework-bound shared technical implementations |
-| Examples | `Result`-free error bases, `EntityId`, `Pagination`, `Clock` / `EventBus` / `IdGenerator` / `UnitOfWork` Protocols | `SqlAlchemyUnitOfWork` / `InMemoryUnitOfWork` (reference impls: session, txn, event collection), outbox machinery |
+| Content | dependency-free technical primitives and Protocols | framework-bound shared implementations |
+| Examples | `DomainError`/`ApplicationError` bases, `EntityId`, `Pagination`, `Clock` / `EventBus` / `IdGenerator` / `UnitOfWork` Protocols | `SqlAlchemyUnitOfWork`, `InMemoryUnitOfWork`, outbox machinery |
 | Importable by | everyone, including `domain/` | only `infrastructure/`, `entrypoints/`, `bootstrap/`, tests |
-| Forbidden | any business meaning, any framework import | — |
+| Forbidden | any business meaning, any framework import | -- |
 
-Rules: ARCH-015 (`commons.types` ⊥ contexts/application/infrastructure/shared_kernel),
-ARCH-016 (`commons.types` no business logic), ARCH-034 (`commons.infrastructure` ⊥
-domain/application), ARCH-035 (`commons.types` ⊥ frameworks).
+**Governance.** `arch-commons` follows semver, and the compatibility policy is the same as
+the standard's (Section 16.3): a breaking change to `commons.types` is a **major** bump and
+is announced with migration notes. Adding a primitive is a minor. Consuming projects pin a
+version and upgrade deliberately.
+
+**Contributing upward.** A technical primitive that a project invents locally and that a
+second project would want does not get copied -- it is proposed upstream into
+`arch-commons`. Until it is accepted it lives in that project, clearly marked.
+
+Rules: ARCH-015 (`commons.types` imports nothing from the project), ARCH-016
+(`commons.types` has no business logic), ARCH-034 (`commons.infrastructure` is not imported
+by `domain/` or `application/`), ARCH-035 (`commons.types` imports no framework).
 
 ### 8.2 `shared_kernel/`
 
@@ -646,9 +722,22 @@ code — consumed via the Section 3 mechanisms.
 
 ## 9. Dependency rules — catalog
 
-Every rule in `ARCHITECTURE_STANDARD.md` carries the full schema:
+Every rule carries the full schema:
 `ID · name · description · rationale · correct example · incorrect example · level
-(MUST/SHOULD/MAY) · automation (full/partial/manual)`.
+(MUST/SHOULD/MAY) · automation (full/partial/manual) · tier (core/full)`.
+
+**Adoption tiers.** Nobody adopts a standard that opens with "learn 53 rules". Each rule is
+tagged `tier: core` or `tier: full`.
+
+- **Core (12 rules)** -- binding from day one, all machine-checkable, and enough on their
+  own to keep the architecture honest: **ARCH-001, 002, 003, 005, 006, 008, 012, 021, 023,
+  031, 046, 051**. That is the dependency rule, context isolation, aggregate-module
+  isolation, the transaction boundary, model immutability, and the repository/read split.
+- **Full** -- everything else. It matters at maturity, and CI enforces it, but it is not
+  what a new project must read first.
+
+`arch-standard check --core` runs only the core set. The generated standard leads with the
+core table; the complete catalog is the reference section.
 
 The machine-readable source of truth is `rules/*.yaml`; the Markdown is generated from it.
 
@@ -680,6 +769,9 @@ The machine-readable source of truth is `rules/*.yaml`; the Markdown is generate
 | ARCH-047 | `<context>/shared/` contains only ID types, policy-free value objects used by 2+ aggregates of that context, and domain services spanning them. Never a service, a repository, or an aggregate | MUST | partial |
 | ARCH-048 | There is no context-level `application/` package; application services live in aggregate modules | MUST | full |
 | ARCH-049 | An aggregate module maps 1:1 to exactly one aggregate root | MUST | partial |
+| ARCH-050 | Every cross-context dependency wired in `bootstrap/` is declared in `contexts.toml`, and the declared graph is acyclic | MUST | full |
+| ARCH-052 | `<context>/read/` imports no aggregate module's `domain/` or `application/` | MUST | full |
+| ARCH-053 | `domain/` and `application/` do not log; they raise domain exceptions and emit domain events. Logging happens in entrypoints and infrastructure adapters | MUST | full |
 
 ### 9.2 Model integrity (DDD)
 
@@ -690,6 +782,7 @@ The machine-readable source of truth is `rules/*.yaml`; the Markdown is generate
 | ARCH-020 | Inter-aggregate references are by ID, not object | SHOULD | partial |
 | ARCH-021 | One transaction modifies one aggregate (UoW boundary) | MUST* (justified) | partial |
 | ARCH-022 | Repositories operate at root level and return aggregates, not rows/DTOs | MUST | partial |
+| ARCH-051 | Repositories persist and retrieve aggregate roots; they are not general-purpose query interfaces. Projection, reporting, search, dashboard, and cross-aggregate reads belong to `<context>/read/` | MUST | partial |
 | ARCH-023 | Domain events are immutable and past-tense | MUST | full |
 | ARCH-028 | No Active Record: the aggregate has no persistence base/decorator/import and no `save()`; translation lives entirely in `infrastructure/` | MUST | partial |
 | ARCH-031 | Value Objects are immutable and validate on construction | MUST | partial |
@@ -936,6 +1029,44 @@ Authoring constraints for agent-consumability:
 - decision guidance as decision trees / checklists, not prose;
 - structure as a literal tree + a "what goes where" table;
 - every rule is self-contained — no "as discussed above".
+
+### 16.3 Versioning and distribution
+
+The standard is the base of many repositories, so it is versioned and distributed like a
+dependency, not copied.
+
+**Three versioned artifacts, all semver:**
+
+| Artifact | What it is | How a project consumes it |
+|---|---|---|
+| the standard | rule catalog + `ARCHITECTURE_STANDARD.md` | `arch-standard` installed; version stamped in the project |
+| `arch-commons` | the shared technical package (Section 8.1) | a pinned dependency |
+| the project template | the scaffold | `copier`, which records the template version it generated from |
+
+**Compatibility policy for the rule catalog:**
+
+| Change | Bump |
+|---|---|
+| Add a `MUST`, or raise a rule's level to `MUST` | **major** -- it can fail an existing project's build |
+| Add a `SHOULD`/`MAY`, or tighten a `SHOULD` | minor |
+| Wording, rationale, examples, automation tier | patch |
+
+A new `MUST` never lands directly: it enters as a `SHOULD` in a minor, and is promoted to
+`MUST` in the next major, so projects get a warning window before a red build.
+
+**Version stamp.** Generated projects carry `.arch-standard` at the root:
+
+```toml
+standard-version = "1.0.0"
+template-version = "1.0.0"
+```
+
+`arch-standard check` compares the stamp against the catalog it is running and prints a
+notice when the project is behind, naming the majors crossed. It does not fail on drift --
+upgrading is the project's decision.
+
+**CHANGELOG.** Every release records added/changed/removed rules and, for a major, the
+migration notes for each newly-binding `MUST`.
 
 ### 16.1 `ARCHITECTURE_STANDARD.md` outline
 
