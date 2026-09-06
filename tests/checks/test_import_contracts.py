@@ -189,6 +189,45 @@ def test_two_module_context_with_a_cross_module_import_fails_arch_046(tmp_path: 
     assert reports["ARCH-046"].findings
 
 
+def test_context_with_entrypoints_and_an_application_import_of_it_fails_arch_006(
+    tmp_path: Path,
+) -> None:
+    # Guardrail: post-Task-10, no fixture has both an entrypoints/ dir and an
+    # application module that actually imports it, so nothing drives ARCH-006 to
+    # FAIL anywhere else in the suite. This synthetic case exercises the genuine
+    # violation the per-context ARCH-006-<ctx> forbidden contract exists to catch.
+    src = tmp_path / "src"
+    (src / "sales" / "orders" / "domain" / "model").mkdir(parents=True)
+    (src / "sales" / "orders" / "domain" / "model" / "__init__.py").write_text("")
+    (src / "sales" / "orders" / "domain" / "__init__.py").write_text("")
+    (src / "sales" / "orders" / "application").mkdir(parents=True)
+    (src / "sales" / "orders" / "application" / "__init__.py").write_text("")
+    (src / "sales" / "orders" / "__init__.py").write_text("")
+    (src / "sales" / "entrypoints").mkdir(parents=True)
+    (src / "sales" / "entrypoints" / "__init__.py").write_text("")
+    (src / "sales" / "entrypoints" / "http.py").write_text("class Router: ...\n")
+    (src / "sales" / "__init__.py").write_text("")
+    (src / "__init__.py").write_text("")
+
+    # Deliberate ARCH-006 violation: orders' application reaches into sales.entrypoints.
+    (src / "sales" / "orders" / "application" / "service.py").write_text(
+        "from sales.entrypoints.http import Router\n"
+    )
+
+    layout = ProjectLayout.detect(tmp_path)
+    assert layout.contexts == ("sales",)
+    assert layout.modules("sales") == ("orders",)
+
+    reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, Catalog.load(RULES))}
+    assert reports["ARCH-006"].outcome is Outcome.FAIL
+    assert reports["ARCH-006"].findings
+    # The violation is entrypoints-specific: it must not spill into the per-module
+    # layers contract (ARCH-001/002/005), which knows nothing about entrypoints.
+    assert reports["ARCH-001"].outcome is Outcome.PASS
+    assert reports["ARCH-002"].outcome is Outcome.PASS
+    assert reports["ARCH-005"].outcome is Outcome.PASS
+
+
 def test_timeout_fails_all(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
         raise subprocess.TimeoutExpired(cmd="lint-imports", timeout=120)
