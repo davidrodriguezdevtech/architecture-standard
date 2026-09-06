@@ -12,6 +12,12 @@ from arch_standard.rules.model import Level
 _NON_CONTEXT_DIRS = {"commons", "shared_kernel", "bootstrap"}
 _CONTEXT_LAYER_DIRS = ("domain", "application", "infrastructure", "entrypoints")
 _SKIP_DIRS = {".venv", "venv", "__pycache__", ".git", ".mypy_cache", ".ruff_cache"}
+_CONTEXT_RESERVED = frozenset({"entrypoints", "shared", "read"})
+_MODULE_LAYER_DIRS = ("domain", "application", "infrastructure")
+
+
+def _has_module_layer(path: Path) -> bool:
+    return any((path / layer).is_dir() for layer in _MODULE_LAYER_DIRS)
 
 
 class Outcome(StrEnum):
@@ -66,7 +72,13 @@ class ProjectLayout:
                     if p.is_dir()
                     and p.name not in _NON_CONTEXT_DIRS
                     and not p.name.startswith((".", "_"))
-                    and any((p / layer).is_dir() for layer in _CONTEXT_LAYER_DIRS)
+                    and (
+                        any((p / layer).is_dir() for layer in _CONTEXT_LAYER_DIRS)
+                        or any(
+                            c.is_dir() and c.name not in _CONTEXT_RESERVED and _has_module_layer(c)
+                            for c in p.iterdir()
+                        )
+                    )
                 )
             )
         return cls(root=root, src=src, contexts=contexts)
@@ -82,6 +94,41 @@ class ProjectLayout:
 
     def entrypoints_dir(self, context: str) -> Path:
         return self.src / context / "entrypoints"
+
+    def modules(self, context: str) -> tuple[str, ...]:
+        base = self.src / context
+        if not base.is_dir():
+            return ()
+        return tuple(
+            sorted(
+                p.name
+                for p in base.iterdir()
+                if p.is_dir()
+                and p.name not in _CONTEXT_RESERVED
+                and not p.name.startswith((".", "_"))
+                and _has_module_layer(p)
+            )
+        )
+
+    def module_domain_dir(self, context: str, module: str) -> Path:
+        return self.src / context / module / "domain"
+
+    def module_application_dir(self, context: str, module: str) -> Path:
+        return self.src / context / module / "application"
+
+    def module_infrastructure_dir(self, context: str, module: str) -> Path:
+        return self.src / context / module / "infrastructure"
+
+    def shared_dir(self, context: str) -> Path:
+        return self.src / context / "shared"
+
+    def read_dir(self, context: str) -> Path:
+        return self.src / context / "read"
+
+    def iter_modules(self) -> Iterator[tuple[str, str]]:
+        for context in self.contexts:
+            for module in self.modules(context):
+                yield context, module
 
 
 class Check(Protocol):
