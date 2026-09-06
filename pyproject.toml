@@ -25,7 +25,7 @@ dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "types-pyyaml"]
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
-exclude = ["docs"]
+exclude = ["docs", "tests/fixtures"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "TID"]
@@ -33,6 +33,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "TID"]
 [tool.mypy]
 strict = true
 files = ["src", "tests"]
+exclude = ["tests/fixtures/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
