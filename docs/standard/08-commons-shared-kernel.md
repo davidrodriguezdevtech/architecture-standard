@@ -15,9 +15,9 @@ usable as the base of many repositories rather than a one-off scaffold.
 | Forbidden | any business meaning, any framework import | - |
 
 **Governance.** `arch-commons` follows semver, with the same compatibility policy as
-the standard itself (Section 16.3): a breaking change to `commons.types` is a major
-bump and is announced with migration notes. Adding a primitive is a minor. Consuming
-projects pin a version and upgrade deliberately.
+the standard itself: a breaking change to `commons.types` is a major bump and is
+announced with migration notes. Adding a primitive is a minor. Consuming projects pin
+a version and upgrade deliberately.
 
 **Contributing upward.** A technical primitive that a project invents locally, and
 that a second project would want, does not get copied - it is proposed upstream into

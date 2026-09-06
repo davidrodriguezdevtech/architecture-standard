@@ -131,7 +131,7 @@ project/
 ├── pyproject.toml
 ├── .importlinter                    # dependency contracts
 ├── contexts.toml                    # declared context dependency graph (Section 3.7)
-├── .arch-standard                   # standard-version stamp (Section 16.3)
+├── .arch-standard                   # standard-version stamp (versioning policy: see the release notes)
 ├── src/
 │   ├── <context>/                   # LEVEL 1 - one bounded context (e.g. sales)
 │   │   ├── entrypoints/             # inbound adapters, context-wide
@@ -683,7 +683,7 @@ Shipped in `commons/infrastructure/` and the template.
 - `InMemoryUnitOfWork` (dict-backed, explicit `track()`) ships alongside for tests.
 
 ```python
-# sales/infrastructure/order_repository.py     - thin, intention-revealing
+# sales/orders/infrastructure/order_repository.py     - thin, intention-revealing
 class SqlAlchemyOrderRepository:                  # implements OrderRepository (domain port)
     def __init__(self, uow: SqlAlchemyUnitOfWork) -> None:
         self._uow = uow
@@ -696,14 +696,11 @@ class SqlAlchemyOrderRepository:                  # implements OrderRepository (
         if order is None:
             raise OrderNotFound(order_id)
         return order
-
-    def find_open_for_customer(self, customer_id: CustomerId) -> list[Order]:
-        return (
-            self._uow.session.query(Order)
-            .filter_by(customer_id=customer_id.value, status="OPEN")
-            .all()
-        )
 ```
+
+A reporting-shaped method (`find_open_for_customer`, or anything else that filters or
+lists rather than retrieves one aggregate root by identity) does not belong here - per
+ARCH-051, that query lives in `sales/read/`, not on the repository (Section 2.5).
 
 ```python
 # sales/entrypoints/providers.py
@@ -762,9 +759,9 @@ usable as the base of many repositories rather than a one-off scaffold.
 | Forbidden | any business meaning, any framework import | - |
 
 **Governance.** `arch-commons` follows semver, with the same compatibility policy as
-the standard itself (Section 16.3): a breaking change to `commons.types` is a major
-bump and is announced with migration notes. Adding a primitive is a minor. Consuming
-projects pin a version and upgrade deliberately.
+the standard itself: a breaking change to `commons.types` is a major bump and is
+announced with migration notes. Adding a primitive is a minor. Consuming projects pin
+a version and upgrade deliberately.
 
 **Contributing upward.** A technical primitive that a project invents locally, and
 that a second project would want, does not get copied - it is proposed upstream into

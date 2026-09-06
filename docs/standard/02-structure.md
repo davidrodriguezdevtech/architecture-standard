@@ -8,7 +8,7 @@ project/
 ├── pyproject.toml
 ├── .importlinter                    # dependency contracts
 ├── contexts.toml                    # declared context dependency graph (Section 3.7)
-├── .arch-standard                   # standard-version stamp (Section 16.3)
+├── .arch-standard                   # standard-version stamp (versioning policy: see the release notes)
 ├── src/
 │   ├── <context>/                   # LEVEL 1 - one bounded context (e.g. sales)
 │   │   ├── entrypoints/             # inbound adapters, context-wide
