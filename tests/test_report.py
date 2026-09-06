@@ -62,3 +62,13 @@ def test_format_text_caps_findings_per_rule_at_ten() -> None:
     text = report.format_text(catalog)
     assert text.count("not given/when/then") == 10
     assert "... and 5 more" in text
+
+
+def test_given_a_report__when_filtered_to_a_subset__then_only_those_remain() -> None:
+    report = Report(
+        reports=(
+            CheckReport(rule_id="ARCH-001", outcome=Outcome.PASS),
+            CheckReport(rule_id="ARCH-041", outcome=Outcome.WARN),
+        )
+    )
+    assert {r.rule_id for r in report.only({"ARCH-001"}).reports} == {"ARCH-001"}

@@ -35,3 +35,12 @@ def test_check_on_good_project_exits_zero(capsys: pytest.CaptureFixture[str]) ->
 
 def test_check_on_bad_project_exits_one() -> None:
     assert main(["check", str(FIX / "bad_project")]) == 1
+
+
+def test_given_core_mode__when_checking__then_only_core_rules_are_reported(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["check", str(FIX / "modular_project"), "--core"]) == 0
+    out = capsys.readouterr().out
+    assert "core rules only" in out
+    assert "ARCH-041" not in out

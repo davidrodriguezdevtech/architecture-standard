@@ -51,8 +51,14 @@ class Report:
                 return 1
         return 0
 
-    def format_text(self, catalog: Catalog) -> str:
+    def only(self, rule_ids: set[str]) -> Report:
+        return Report(reports=tuple(r for r in self.reports if r.rule_id in rule_ids))
+
+    def format_text(self, catalog: Catalog, header: str | None = None) -> str:
         lines: list[str] = []
+        if header is not None:
+            lines.append(header)
+            lines.append("")
         counts = {o: 0 for o in Outcome}
         for report in sorted(self.reports, key=lambda r: r.rule_id):
             counts[report.outcome] += 1

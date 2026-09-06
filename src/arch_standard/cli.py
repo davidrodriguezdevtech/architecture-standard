@@ -19,19 +19,26 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
     check = sub.add_parser("check", help="validate a project against the rule catalog")
     check.add_argument("path", nargs="?", default=".", help="project root (default: cwd)")
+    check.add_argument("--core", action="store_true", help="run only the core rule set")
     docs = sub.add_parser("docs", help="render ARCHITECTURE_STANDARD.md from the catalog")
     docs.add_argument("--check", action="store_true", help="fail if the committed doc is stale")
     return parser
 
 
-def _run_check(path: str) -> int:
+def _run_check(path: str, core: bool = False) -> int:
     root = Path(path).resolve()
     layout = ProjectLayout.detect(root)
     rules_dir = root / "rules" if (root / "rules").is_dir() else _PACKAGED_RULES
     catalog = Catalog.load(rules_dir)
     waivers = active_waivers(root / "docs" / "adr")
-    report = Report.collect(layout, catalog, all_checks()).with_waivers(waivers)
-    print(report.format_text(catalog))
+    report = Report.collect(layout, catalog, all_checks())
+    header = None
+    if core:
+        core_ids = {r.id for r in catalog.core()}
+        report = report.only(core_ids)
+        header = f"core rules only ({len(core_ids)})"
+    report = report.with_waivers(waivers)
+    print(report.format_text(catalog, header=header))
     return report.exit_code(catalog)
 
 
@@ -61,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     args = parser.parse_args(argv)
     if args.command == "check":
-        return _run_check(args.path)
+        return _run_check(args.path, core=args.core)
     if args.command == "docs":
         return _run_docs(check=args.check)
     return 0
