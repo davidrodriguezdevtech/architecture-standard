@@ -18,10 +18,12 @@ def test_given_entity_id__when_constructed_empty__then_raises() -> None:
 
 
 def test_given_entity_id__when_constructed__then_it_is_frozen() -> None:
+    from dataclasses import FrozenInstanceError
+
     from commons.types.identity import EntityId
 
     entity_id = EntityId(value="ord-1")
-    with pytest.raises(Exception):  # dataclasses.FrozenInstanceError
+    with pytest.raises(FrozenInstanceError):
         entity_id.value = "ord-2"  # type: ignore[misc]
 
 
