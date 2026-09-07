@@ -1,0 +1,14 @@
+from __future__ import annotations
+
+from typing import Protocol
+
+from {{ context_name }}.{{ aggregate_module }}.domain.model.{{ aggregate_name }} import (
+    {{ aggregate_name | capitalize }},
+    {{ aggregate_name | capitalize }}Id,
+)
+
+
+class {{ aggregate_name | capitalize }}Repository(Protocol):
+    def next_identity(self) -> str: ...
+    def add(self, {{ aggregate_name }}: {{ aggregate_name | capitalize }}) -> None: ...
+    def get(self, {{ aggregate_name }}_id: {{ aggregate_name | capitalize }}Id) -> {{ aggregate_name | capitalize }}: ...

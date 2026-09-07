@@ -1,0 +1,12 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+
+
+@dataclass(frozen=True)
+class {{ aggregate_name | capitalize }}Created:
+    """Past-tense, immutable domain event (ARCH-023)."""
+
+    id: object
+    occurred_at: datetime

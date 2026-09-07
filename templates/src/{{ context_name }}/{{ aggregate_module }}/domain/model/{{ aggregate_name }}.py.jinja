@@ -1,0 +1,37 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime
+
+from commons.types.identity import EntityId
+
+from {{ context_name }}.{{ aggregate_module }}.domain.model.events import (
+    {{ aggregate_name | capitalize }}Created,
+)
+
+
+@dataclass(frozen=True)
+class {{ aggregate_name | capitalize }}Id(EntityId):
+    pass
+
+
+@dataclass
+class {{ aggregate_name | capitalize }}:
+    """Aggregate root -- one module, one aggregate (spec Section 2.2)."""
+
+    id: {{ aggregate_name | capitalize }}Id
+    name: str
+    pending_events: list[object] = field(default_factory=list, compare=False)
+
+    @classmethod
+    def create(
+        cls, id: {{ aggregate_name | capitalize }}Id, name: str, occurred_at: datetime
+    ) -> "{{ aggregate_name | capitalize }}":
+        {{ aggregate_name }} = cls(id=id, name=name)
+        {{ aggregate_name }}.pending_events.append(
+            {{ aggregate_name | capitalize }}Created(id=id, occurred_at=occurred_at)
+        )
+        return {{ aggregate_name }}
+
+    def clear_pending_events(self) -> None:
+        self.pending_events.clear()

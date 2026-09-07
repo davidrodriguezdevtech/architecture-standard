@@ -1,0 +1,12 @@
+from __future__ import annotations
+
+from commons.types.errors import DomainError
+
+from {{ context_name }}.{{ aggregate_module }}.domain.model.{{ aggregate_name }} import (
+    {{ aggregate_name | capitalize }}Id,
+)
+
+
+class {{ aggregate_name | capitalize }}NotFound(DomainError):
+    def __init__(self, {{ aggregate_name }}_id: {{ aggregate_name | capitalize }}Id) -> None:
+        super().__init__("{{ aggregate_name | capitalize }} not found: " + str({{ aggregate_name }}_id))
