@@ -28,6 +28,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "release-snapshot", help="freeze the current rules/ catalog as a released version"
     )
     release_snapshot.add_argument("version", help="the version being released, e.g. 1.1.0")
+    release_check = sub.add_parser(
+        "release-check", help="verify a pending catalog change against the compatibility policy"
+    )
+    release_check.add_argument("--version", required=True, help="the version being released")
+    release_check.add_argument("--rules-dir", default=None, help="rules dir (default: ./rules)")
     return parser
 
 
@@ -103,13 +108,54 @@ def _run_release_snapshot(version: str) -> int:
     return 0
 
 
+def _run_release_check(version: str, rules_dir_arg: str | None) -> int:
+    from arch_standard.release.compatibility import (
+        actual_bump,
+        bump_satisfies,
+        find_unsanctioned_must_promotions,
+        required_bump,
+    )
+    from arch_standard.release.diff import diff_catalogs
+    from arch_standard.release.snapshot import latest_snapshot_version, snapshot_dir
+
+    rules_dir = Path(rules_dir_arg) if rules_dir_arg else Path.cwd() / "rules"
+    previous = latest_snapshot_version(rules_dir)
+    if previous is None:
+        print(
+            "no released snapshot to compare against -- run `arch-standard release-snapshot` first"
+        )
+        return 1
+
+    old_catalog = Catalog.load(snapshot_dir(rules_dir, previous))
+    new_catalog = Catalog.load(rules_dir)
+    changes = diff_catalogs(old_catalog, new_catalog)
+
+    violations = find_unsanctioned_must_promotions(changes)
+    if violations:
+        for rule_id in violations:
+            print(f"{rule_id} FAIL  jumps to MUST/MUST* without being SHOULD in {previous}")
+        return 1
+
+    required = required_bump(changes)
+    actual = actual_bump(previous, version)
+    if not bump_satisfies(actual, required):
+        print(
+            f"FAIL  {previous} -> {version} is a {actual} bump, but this diff "
+            f"requires at least a {required} bump"
+        )
+        return 1
+
+    print(f"OK  {previous} -> {version} ({actual} bump, {len(changes)} rule change(s))")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = _build_parser()
     if not argv:
         parser.print_help()
         return 0
-    if argv[0] not in {"check", "docs", "release-snapshot", "-h", "--help"}:
+    if argv[0] not in {"check", "docs", "release-snapshot", "release-check", "-h", "--help"}:
         parser.print_usage()
         return 2
     args = parser.parse_args(argv)
@@ -119,6 +165,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_docs(check=args.check)
     if args.command == "release-snapshot":
         return _run_release_snapshot(args.version)
+    if args.command == "release-check":
+        return _run_release_check(args.version, args.rules_dir)
     return 0
 
 
