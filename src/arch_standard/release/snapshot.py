@@ -15,6 +15,8 @@ def snapshot_dir(rules_dir: Path, version: str) -> Path:
 def write_snapshot(rules_dir: Path, version: str) -> Path:
     """Copy every rule YAML at rules_dir into rules_dir/.released/<version>/,
     freezing that version's catalog for future compatibility/changelog diffs."""
+    if not rules_dir.is_dir():
+        raise FileNotFoundError(f"rules_dir does not exist: {rules_dir}")
     dest = snapshot_dir(rules_dir, version)
     if dest.exists():
         raise FileExistsError(f"snapshot {version} already exists at {dest}")
