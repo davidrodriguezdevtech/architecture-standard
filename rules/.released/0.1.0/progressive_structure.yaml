@@ -1,0 +1,22 @@
+rules:
+  - id: ARCH-041
+    name: A module is promoted to a package only past the Section 15 thresholds
+    level: MAY
+    automation: partial
+    category: progressive_structure
+    description: >
+      A flat module (domain/model.py, application/<capability>.py,
+      infrastructure/<adapter>.py) is split into a package only once it crosses
+      a Section 15 threshold, for example domain/model.py past about 400 lines
+      or 2 aggregates.
+    rationale: >
+      Structure should grow when it hurts, not before; promoting a module early
+      adds indirection with no payoff.
+    correct: |
+      # domain/model.py at 180 lines, one aggregate -> stays a single module
+    incorrect: |
+      # domain/model/ split into aggregates/, value_objects/, events/ on day one,
+      # each folder holding a single 20-line file
+    validation:
+      tool: ast-checker
+      detail: promotion thresholds check (line count, aggregate count, port count)

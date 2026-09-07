@@ -24,6 +24,10 @@ def _build_parser() -> argparse.ArgumentParser:
     check.add_argument("--core", action="store_true", help="run only the core rule set")
     docs = sub.add_parser("docs", help="render ARCHITECTURE_STANDARD.md from the catalog")
     docs.add_argument("--check", action="store_true", help="fail if the committed doc is stale")
+    release_snapshot = sub.add_parser(
+        "release-snapshot", help="freeze the current rules/ catalog as a released version"
+    )
+    release_snapshot.add_argument("version", help="the version being released, e.g. 1.1.0")
     return parser
 
 
@@ -91,13 +95,21 @@ def _run_docs(check: bool) -> int:
     return 0
 
 
+def _run_release_snapshot(version: str) -> int:
+    from arch_standard.release.snapshot import write_snapshot
+
+    dest = write_snapshot(Path.cwd() / "rules", version)
+    print(f"wrote snapshot {dest}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = _build_parser()
     if not argv:
         parser.print_help()
         return 0
-    if argv[0] not in {"check", "docs", "-h", "--help"}:
+    if argv[0] not in {"check", "docs", "release-snapshot", "-h", "--help"}:
         parser.print_usage()
         return 2
     args = parser.parse_args(argv)
@@ -105,6 +117,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_check(args.path, core=args.core)
     if args.command == "docs":
         return _run_docs(check=args.check)
+    if args.command == "release-snapshot":
+        return _run_release_snapshot(args.version)
     return 0
 
 

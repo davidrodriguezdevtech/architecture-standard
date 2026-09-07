@@ -1,0 +1,144 @@
+rules:
+  - id: ARCH-046
+    name: Aggregate module isolation
+    level: MUST
+    automation: full
+    tier: core
+    category: structure
+    description: >
+      An aggregate module does not import another aggregate module's application/ or
+      infrastructure/ package. References between aggregates are by ID, and those ID
+      types live in the context's shared/ids.py.
+    rationale: >
+      Aggregate modules are consistency boundaries. Reaching into a sibling's service or
+      repository re-couples them and makes the one-transaction-one-aggregate rule
+      unenforceable.
+    correct: |
+      # sales/orders/domain/model/order.py
+      from sales.shared.ids import UserId
+      class Order:
+          customer_id: UserId
+    incorrect: |
+      # sales/orders/application/order_service.py
+      from sales.users.application.user_service import UserService
+    validation:
+      tool: import-linter
+      detail: forbidden contract between sibling modules' application and infrastructure
+    related: [ARCH-020, ARCH-021]
+  - id: ARCH-047
+    name: Context shared area is strictly limited
+    level: MUST
+    automation: partial
+    category: structure
+    description: >
+      <context>/shared/ contains only ID types, policy-free value objects used by two or
+      more aggregates of that context, and domain services spanning them. Those spanning
+      services live specifically in shared/services.py — the one file in shared/ exempt
+      from the *Service/*Repository name-suffix ban, since it is the standard's own
+      documented home for them. Every other file in shared/ keeps the full name-suffix
+      ban, and shared/services.py classes still may not mutate their own state.
+    rationale: >
+      It is the only context-level code area, so without a narrow admission test it
+      becomes the junk drawer that couples every aggregate module together. Naming the
+      one legitimate exception explicitly (rather than banning *Service outright) keeps
+      the carve-out narrow instead of inviting every file in shared/ to claim it.
+    correct: |
+      # sales/shared/ids.py
+      @dataclass(frozen=True)
+      class UserId:
+          value: str
+
+      # sales/shared/services.py — the documented carve-out
+      class PricingService:
+          def quote(self, order: Order) -> Money: ...
+    incorrect: |
+      # sales/shared/user_service.py — *Service outside services.py is still banned
+      class UserService: ...
+
+      # sales/shared/services.py — mutation is still banned even here
+      class PricingService:
+          def bump(self) -> None:
+              self.calls += 1
+    validation:
+      tool: ast-checker
+      detail: >-
+        no class named *Service/*Repository outside shared/services.py; no aggregate
+        roots; shared/services.py classes must not mutate their own state
+  - id: ARCH-048
+    name: No context-level application package
+    level: MUST
+    automation: full
+    category: structure
+    description: >
+      A context has no application/ package of its own. Application services live in
+      aggregate modules, one per aggregate.
+    rationale: >
+      DDD has no "application service of the context"; application services are per use
+      case and belong with the model they coordinate. A context-level one becomes a
+      coordination layer that hides non-atomic multi-aggregate flow.
+    correct: "sales/orders/application/order_service.py"
+    incorrect: "sales/application/sales_service.py"
+    validation:
+      tool: ast-checker
+      detail: filesystem check for <context>/application
+  - id: ARCH-049
+    name: One aggregate root per aggregate module
+    level: MUST
+    automation: partial
+    category: structure
+    description: >
+      An aggregate module's domain/model/ declares exactly one aggregate root, in a file
+      named after it.
+    rationale: >
+      The 1:1 mapping is what makes "where does this go?" answerable without judgement,
+      and it makes the transaction boundary visible in the tree.
+    correct: "sales/users/domain/model/user.py declaring class User"
+    incorrect: "sales/users/domain/model/user.py declaring class User and class Order"
+    validation:
+      tool: ast-checker
+      detail: exactly one non-reserved module in domain/model
+  - id: ARCH-050
+    name: Declared context dependency graph
+    level: MUST
+    automation: full
+    category: structure
+    description: >
+      Every cross-context dependency is declared in contexts.toml, and the declared graph
+      is acyclic.
+    rationale: >
+      Contexts never import each other, so no import analysis can see a runtime cycle
+      wired through the composition root. Declaring the graph is the only way to check it,
+      and it turns adding an edge into a reviewable diff.
+    correct: |
+      # contexts.toml
+      [contexts.sales]
+      depends_on = ["billing"]
+    incorrect: |
+      [contexts.sales]
+      depends_on = ["billing"]
+      [contexts.billing]
+      depends_on = ["sales"]
+    validation:
+      tool: schema
+      detail: parse contexts.toml, topological sort
+  - id: ARCH-052
+    name: Read layer does not import the write side
+    level: MUST
+    automation: full
+    category: structure
+    description: >
+      <context>/read/ imports no aggregate module's domain/ or application/ package.
+    rationale: >
+      The read layer exists to answer queries the write model is not shaped for. Importing
+      the write side re-couples them and pulls invariant-carrying objects into query paths.
+    correct: |
+      # sales/read/customer_overview.py
+      @dataclass(frozen=True)
+      class CustomerOverview:
+          user_id: str
+    incorrect: |
+      # sales/read/customer_overview.py
+      from sales.users.domain.model.user import User
+    validation:
+      tool: import-linter
+      detail: forbidden contract read -> modules' domain/application
