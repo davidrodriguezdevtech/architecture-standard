@@ -86,31 +86,44 @@ def test_minimal_project_with_no_commons_or_bootstrap_passes() -> None:
     # layer to exist — a single-context project with only domain/ must not spuriously
     # FAIL rules it does cover.
     # I3: minimal_project has no entrypoints/, no commons/, only one module, and no
-    # read/ dir — ARCH-006/034/035/046/052 have nothing to check and SKIP instead of
-    # a vacuous PASS. Only the always-emitted per-module layers contract (001/002/005)
-    # and the independence contract (012) are actually covered here.
+    # read/ dir — ARCH-006/046/052 have nothing to check and SKIP instead of a
+    # vacuous PASS. ARCH-034/035 no longer SKIP here (Task 10 correction): commons
+    # is not vendored under minimal_project's own src/, but it resolves via the
+    # installed arch-commons dependency in the interpreter running this test (this
+    # repo's own workspace), so both contracts ARE genuinely emitted and genuinely
+    # satisfied (nothing in minimal_project imports commons.infrastructure, and
+    # commons.types imports no forbidden framework) — a real PASS, not a vacuous one.
     layout = ProjectLayout.detect(FIX / "minimal_project")
     reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, Catalog.load(RULES))}
     assert reports
-    skipped = {"ARCH-006", "ARCH-034", "ARCH-035", "ARCH-046", "ARCH-052"}
+    skipped = {"ARCH-006", "ARCH-046", "ARCH-052"}
     for rule_id, report in reports.items():
         expected = Outcome.SKIP if rule_id in skipped else Outcome.PASS
         assert report.outcome is expected, rule_id
 
 
 def test_non_ddd_tree_skips_instead_of_erroring(tmp_path: Path) -> None:
-    # Follow-through from C1 + I5: with no contexts and no commons/bootstrap,
-    # there is no root package at all for import-linter to build a graph from
-    # (it errors on an empty root_packages list). That must SKIP, not FAIL —
-    # otherwise running arch-standard against a tree it doesn't understand
-    # invents findings instead of reporting "nothing to check here".
+    # Follow-through from C1 + I5: with no contexts, there is nothing for
+    # import-linter to build a *layering/independence* graph from, so ARCH-001/
+    # 002/005/006/012/046/052 (all context-scoped) SKIP.
+    # ARCH-035 is the one exception (Task 10 correction): commons.types resolves
+    # via the installed arch-commons dependency in the interpreter running this
+    # test regardless of whether this tree has any contexts at all, so
+    # `root_packages = [commons]` alone is enough for import-linter to build a
+    # graph and genuinely evaluate ARCH-035 -- it PASSes (commons.types imports no
+    # forbidden framework), not SKIPs. ARCH-034 still SKIPs: it additionally
+    # requires a non-empty domain_app (there being anything to forbid commons.
+    # infrastructure FROM), which this contextless tree has none of.
     (tmp_path / "src" / "somepkg").mkdir(parents=True)
     (tmp_path / "src" / "somepkg" / "foo.py").write_text("x = 1\n")
     layout = ProjectLayout.detect(tmp_path)
     assert layout.contexts == ()
-    reports = ImportContractsCheck().run(layout, Catalog.load(RULES))
+    reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, Catalog.load(RULES))}
     assert reports
-    assert all(r.outcome is Outcome.SKIP for r in reports)
+    assert reports["ARCH-035"].outcome is Outcome.PASS
+    skipped = set(reports) - {"ARCH-035"}
+    for rule_id in skipped:
+        assert reports[rule_id].outcome is Outcome.SKIP, rule_id
 
 
 def test_given_the_modular_fixture__when_building_contracts__then_module_layers_are_emitted() -> (
@@ -134,16 +147,17 @@ def test_given_the_modular_fixture__when_building_contracts__then_module_layers_
 
 
 def test_given_the_modular_fixture__when_checked__then_every_rule_passes() -> None:
-    # modular_project has no commons/ dir, so ARCH-034/035 (which both require
-    # commons/) have nothing to check and SKIP (I3) rather than a vacuous PASS.
-    # Every other rule's contract is genuinely emitted here (sales has 2 modules,
-    # entrypoints, and a read/ dir; billing has entrypoints) and stays PASS.
+    # modular_project has no commons/ dir vendored under its own src/, but
+    # commons resolves via the installed arch-commons dependency in the
+    # interpreter running this test (Task 10 correction), so ARCH-034/035 are
+    # genuinely emitted (not SKIPped) here too. Every rule's contract is
+    # genuinely emitted (sales has 2 modules, entrypoints, and a read/ dir;
+    # billing has entrypoints) and nothing in the fixture violates any of them,
+    # so every rule PASSes.
     layout = ProjectLayout.detect(MODULAR)
     reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, Catalog.load(RULES))}
-    skipped = {"ARCH-034", "ARCH-035"}
     for rule_id, report in reports.items():
-        expected = Outcome.SKIP if rule_id in skipped else Outcome.PASS
-        assert report.outcome is expected, (rule_id, [f.message for f in report.findings])
+        assert report.outcome is Outcome.PASS, (rule_id, [f.message for f in report.findings])
     # All 9 rules must be present and accounted for.
     assert set(reports) == set(ImportContractsCheck.rule_ids)
 
@@ -284,3 +298,55 @@ def test_timeout_fails_all(monkeypatch: pytest.MonkeyPatch) -> None:
     assert reports
     assert all(r.outcome is Outcome.FAIL for r in reports)
     assert all("timed out" in r.findings[0].message for r in reports)
+
+
+def test_given_installed_commons_types__when_build_contracts__then_arch_035_present(
+    tmp_path: Path,
+) -> None:
+    """commons.types is NOT vendored under this project's src/ -- it resolves
+    only because arch-commons is installed in the running interpreter (this
+    repo's own dev environment, via the Task 1 workspace dependency)."""
+    root = tmp_path / "proj"
+    for rel in [
+        "src/sales/orders/domain/model/order.py",
+        "src/sales/orders/application/order_service.py",
+    ]:
+        f = root / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("", encoding="utf-8")
+    assert not (root / "src" / "commons").exists()
+
+    layout = ProjectLayout.detect(root)
+    ini = build_contracts(layout)
+
+    assert "ARCH-034" in ini
+    assert "ARCH-035" in ini
+
+
+def test_given_installed_commons__when_checked__then_arch_034_catches_violation(
+    tmp_path: Path,
+) -> None:
+    """Negative-case guardrail for Task 10's correction: commons being resolvable
+    only via the installed arch-commons dependency (not vendored) must not turn
+    ARCH-034 into a rule that can never fail. An application module that actually
+    imports commons.infrastructure must still be caught."""
+    src = tmp_path / "src"
+    (src / "sales" / "orders" / "domain" / "model").mkdir(parents=True)
+    (src / "sales" / "orders" / "domain" / "model" / "__init__.py").write_text("")
+    (src / "sales" / "orders" / "domain" / "__init__.py").write_text("")
+    (src / "sales" / "orders" / "application").mkdir(parents=True)
+    (src / "sales" / "orders" / "application" / "__init__.py").write_text("")
+    (src / "sales" / "orders" / "__init__.py").write_text("")
+    (src / "sales" / "__init__.py").write_text("")
+    (src / "__init__.py").write_text("")
+    assert not (src / "commons").exists()
+
+    # Deliberate ARCH-034 violation: application reaches into commons.infrastructure.
+    (src / "sales" / "orders" / "application" / "service.py").write_text(
+        "from commons.infrastructure import x\n"
+    )
+
+    layout = ProjectLayout.detect(tmp_path)
+    reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, Catalog.load(RULES))}
+    assert reports["ARCH-034"].outcome is Outcome.FAIL
+    assert reports["ARCH-034"].findings

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import os
 import re
 import shutil
@@ -27,12 +28,31 @@ _STATUS_RE = re.compile(r"^(?P<name>.+?)\s+(?P<status>KEPT|BROKEN)\s*$")
 _RULE_RE = re.compile(r"ARCH-\d+")
 
 
+def _commons_root_available(project: ProjectLayout) -> bool:
+    """True if ``commons`` can be a ``root_packages`` entry: either vendored under
+    the project's own src/ (legacy/local-dev layout) or resolvable in the
+    interpreter running this check via the installed ``arch-commons`` dependency.
+
+    import-linter's ``ForbiddenContract`` validation unconditionally rejects a
+    forbidden target that is a subpackage of a module NOT present in
+    ``root_packages`` (e.g. ``commons.infrastructure`` when ``commons`` itself is
+    only an external module) -- this holds regardless of
+    ``include_external_packages``. So ``commons`` must be a genuine root package
+    for ARCH-034 to validate at all once it is no longer vendored on disk.
+    """
+    if (project.src / "commons").is_dir():
+        return True
+    return importlib.util.find_spec("commons") is not None
+
+
 def _roots(project: ProjectLayout) -> list[str]:
     """Root packages import-linter should know about: real contexts plus commons/
-    bootstrap, but only when those directories actually exist (C1)."""
+    bootstrap, but only when those directories actually exist (C1), or commons
+    when it resolves via an installed arch-commons instead of being vendored."""
     return [
         *project.contexts,
-        *(d for d in ("commons", "bootstrap") if (project.src / d).is_dir()),
+        *(["commons"] if _commons_root_available(project) else []),
+        *(d for d in ("bootstrap",) if (project.src / d).is_dir()),
     ]
 
 
@@ -144,6 +164,18 @@ def _domain_application_modules(project: ProjectLayout) -> list[str]:
     return result
 
 
+def _commons_types_importable(project: ProjectLayout) -> bool:
+    """ARCH-035's *source* is commons.types itself, so import-linter must be
+    able to parse it -- unlike ARCH-034's forbidden *target*, this is not
+    covered by include_external_packages. True if commons/types is vendored
+    under the project's own src/ (legacy/local-dev layout) or if commons.types
+    is installed as the arch-commons dependency in the interpreter running
+    this check."""
+    if (project.src / "commons" / "types").is_dir():
+        return True
+    return importlib.util.find_spec("commons.types") is not None
+
+
 def build_contracts(project: ProjectLayout) -> str:
     """Render an ``.importlinter`` INI for the layering, independence and commons rules."""
     roots = _roots(project)
@@ -174,7 +206,7 @@ def build_contracts(project: ProjectLayout) -> str:
         ]
 
     domain_app = _domain_application_modules(project)
-    if domain_app and (project.src / "commons").is_dir():
+    if domain_app and _commons_root_available(project):
         lines += [
             "[importlinter:contract:ARCH-034]",
             "name = ARCH-034 commons.infrastructure isolated from domain and application",
@@ -186,7 +218,7 @@ def build_contracts(project: ProjectLayout) -> str:
             "",
         ]
 
-    if (project.src / "commons" / "types").is_dir():
+    if _commons_types_importable(project):
         lines += [
             "[importlinter:contract:ARCH-035]",
             "name = ARCH-035 commons.types framework-free",
