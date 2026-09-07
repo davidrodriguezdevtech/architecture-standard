@@ -1,11 +1,21 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from arch_standard.rules.catalog import Catalog
 from arch_standard.rules.model import Automation, Level
 
 RULES_DIR = Path(__file__).parent.parent.parent / "rules"
+
+# A context name directly followed by domain/application/infrastructure (no
+# aggregate module segment in between) is the pre-aggregate-module flat
+# shape the standard no longer uses (spec §17 row P).
+FLAT_CONTEXT_PATH = re.compile(r"\b(?:sales|billing)[./](?:domain|application|infrastructure)\b")
+
+# ARCH-048 bans a context-level application/ package; its `incorrect` field
+# must show exactly the flat shape it forbids, so it is exempt.
+FLAT_CONTEXT_PATH_EXEMPT_IDS = {"ARCH-048"}
 
 # every rule ID the spec §9 defines
 EXPECTED_IDS = {
@@ -133,3 +143,18 @@ def test_given_a_core_rule__when_read__then_it_is_machine_checkable() -> None:
     cat = Catalog.load(RULES_DIR)
     for rule in cat.core():
         assert rule.validation.tool != "review", rule.id
+
+
+def test_given_the_catalog__when_reading_examples__then_no_stale_flat_context_paths() -> None:
+    cat = Catalog.load(RULES_DIR)
+    for rule in cat:
+        if rule.id in FLAT_CONTEXT_PATH_EXEMPT_IDS:
+            continue
+        for field_name in ("correct", "incorrect"):
+            text = getattr(rule, field_name)
+            match = FLAT_CONTEXT_PATH.search(text)
+            assert match is None, (
+                f"{rule.id}.{field_name} still uses a pre-aggregate-module flat path "
+                f"({match.group(0) if match else '?'}); insert the aggregate module "
+                f"segment, e.g. sales/orders/domain/..."
+            )

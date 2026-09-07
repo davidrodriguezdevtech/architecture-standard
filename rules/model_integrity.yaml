@@ -159,13 +159,13 @@ rules:
       An Active Record aggregate entangles invariants with the database and
       cannot be unit-tested without it.
     correct: |
-      # sales/domain/model/order.py
+      # sales/orders/domain/model/order.py
       @dataclass
       class Order: ...
-      # sales/infrastructure/mapping.py
+      # sales/orders/infrastructure/mapping.py
       map_imperatively(Order, order_table)
     incorrect: |
-      # sales/domain/model/order.py
+      # sales/orders/domain/model/order.py
       class Order(Base):
           __tablename__ = "orders"
           def save(self) -> None: self._session.add(self)
@@ -219,12 +219,12 @@ rules:
       entrypoints map failures predictably and keeps library exceptions from
       carrying business meaning.
     correct: |
-      # sales/domain/model/exceptions.py
+      # sales/orders/domain/model/exceptions.py
       class OrderAlreadyShipped(DomainError): ...
-      # sales/domain/model/order.py
+      # sales/orders/domain/model/order.py
       raise OrderAlreadyShipped(self.id)
     incorrect: |
-      # sales/domain/model/order.py
+      # sales/orders/domain/model/order.py
       raise ValueError("order already shipped")
     validation:
       tool: review

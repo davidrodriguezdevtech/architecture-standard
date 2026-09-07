@@ -43,13 +43,13 @@ rules:
       Contract-mediated communication keeps contexts independently deployable
       and makes the seam explicit for the teams on each side.
     correct: |
-      # sales/domain/model/ports.py
+      # sales/orders/domain/model/ports.py
       class CreditCheckPort(Protocol):
           def has_credit(self, customer_id: CustomerId, amount: Money) -> bool: ...
       # bootstrap/ wires an adapter backed by billing's application service
     incorrect: |
-      # sales/application/order_service.py
-      from billing.application.billing_service import BillingService
+      # sales/orders/application/order_service.py
+      from billing.invoices.application.invoice_service import InvoiceService
     validation:
       tool: import-linter
       detail: independence contract between context packages
@@ -70,7 +70,7 @@ rules:
       class PaymentGateway(Protocol):
           def charge(self, customer_id: CustomerId, amount: Money) -> ChargeId: ...
     incorrect: |
-      # sales/application/order_service.py
+      # sales/orders/application/order_service.py
       import stripe
       stripe.Charge.create(amount=total, currency="eur")
     validation:
@@ -186,11 +186,11 @@ rules:
       Keeping domain/model/ports.py a faithful list of domain concepts keeps
       integration-contract churn out of the stable domain file.
     correct: |
-      # commons/types/clock.py            -> Clock
-      # sales/domain/model/ports.py       -> OrderRepository
-      # sales/application/order_service.py -> class OrderNotifier(Protocol): ...
+      # commons/types/clock.py                    -> Clock
+      # sales/orders/domain/model/ports.py        -> OrderRepository
+      # sales/orders/application/order_service.py -> class OrderNotifier(Protocol): ...
     incorrect: |
-      # sales/application/ports.py -> EmailSender, Clock, OrderRepository (one dumping file)
+      # sales/orders/application/ports.py -> EmailSender, Clock, OrderRepository (one dumping file)
     validation:
       tool: ast-checker
       detail: no application/ports.py until 3+ shared; Clock/EventBus not in domain ports
@@ -209,12 +209,12 @@ rules:
       never breaks it, and the contract documents exactly what the boundary
       carries.
     correct: |
-      # sales/domain/model/ports.py
+      # sales/orders/domain/model/ports.py
       class CreditCheckPort(Protocol):
           def has_credit(self, customer_id: CustomerId, amount: Money) -> bool: ...
     incorrect: |
-      # sales/infrastructure/credit_gateway.py
-      from billing.application.billing_service import BillingService  # calls 8 of 20 methods
+      # sales/orders/infrastructure/credit_gateway.py
+      from billing.invoices.application.invoice_service import InvoiceService  # calls 8 of 20 methods
     validation:
       tool: ast-checker
       detail: consumer port surface stays within what the consumer calls; ACL present in infrastructure/

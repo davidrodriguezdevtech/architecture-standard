@@ -12,12 +12,12 @@ rules:
       Inverting this dependency (DIP) lets the core be tested without a
       database and lets the store be swapped without touching business rules.
     correct: |
-      # sales/domain/model/ports.py
+      # sales/orders/domain/model/ports.py
       class OrderRepository(Protocol):
           def get(self, order_id: OrderId) -> Order: ...
     incorrect: |
-      # sales/domain/model/order.py
-      from sales.infrastructure.postgres_order_repository import PostgresOrderRepository
+      # sales/orders/domain/model/order.py
+      from sales.orders.infrastructure.postgres_order_repository import PostgresOrderRepository
     validation:
       tool: import-linter
       detail: layered contract; domain is the innermost layer
@@ -35,11 +35,11 @@ rules:
       The domain is the innermost layer; use-case orchestration depends on it,
       never the reverse.
     correct: |
-      # sales/application/order_service.py
-      from sales.domain.model.order import Order
+      # sales/orders/application/order_service.py
+      from sales.orders.domain.model.order import Order
     incorrect: |
-      # sales/domain/model/order.py
-      from sales.application.order_service import OrderService
+      # sales/orders/domain/model/order.py
+      from sales.orders.application.order_service import OrderService
     validation:
       tool: import-linter
       detail: layered contract
@@ -56,11 +56,11 @@ rules:
       A framework-free domain stays unit-testable without a runtime and keeps
       vendor choices out of the business core.
     correct: |
-      # sales/domain/model/order.py
+      # sales/orders/domain/model/order.py
       from dataclasses import dataclass
       from commons.types.ids import EntityId
     incorrect: |
-      # sales/domain/model/order.py
+      # sales/orders/domain/model/order.py
       from pydantic import BaseModel
       from sqlalchemy.orm import Mapped
     validation:
@@ -79,12 +79,12 @@ rules:
       A domain that reads datetime.now() or a socket is non-deterministic and
       cannot be tested in microseconds.
     correct: |
-      # sales/domain/model/order.py
+      # sales/orders/domain/model/order.py
       @classmethod
       def place(cls, clock: Clock, ids: IdGenerator) -> "Order":
           return cls(id=ids.next_identity(), placed_at=clock.now())
     incorrect: |
-      # sales/domain/model/order.py
+      # sales/orders/domain/model/order.py
       from datetime import datetime
       placed_at = datetime.now()
     validation:
@@ -103,11 +103,11 @@ rules:
       Orchestration names ports only; the concrete adapter is injected from
       providers.py and is never imported by the use case.
     correct: |
-      # sales/application/order_service.py
+      # sales/orders/application/order_service.py
       def __init__(self, orders: OrderRepository, uow: UnitOfWork) -> None: ...
     incorrect: |
-      # sales/application/order_service.py
-      from sales.infrastructure.order_repository import SqlAlchemyOrderRepository
+      # sales/orders/application/order_service.py
+      from sales.orders.infrastructure.order_repository import SqlAlchemyOrderRepository
     validation:
       tool: import-linter
       detail: layered contract
@@ -125,9 +125,9 @@ rules:
       dependency arrow never points back out to transport code.
     correct: |
       # sales/entrypoints/http.py
-      from sales.application.order_service import OrderService
+      from sales.orders.application.order_service import OrderService
     incorrect: |
-      # sales/application/order_service.py
+      # sales/orders/application/order_service.py
       from sales.entrypoints.http import parse_body
     validation:
       tool: import-linter
@@ -149,7 +149,7 @@ rules:
       orders = SqlAlchemyOrderRepository(uow)
       return OrderService(uow=uow, orders=orders)
     incorrect: |
-      # sales/application/order_service.py
+      # sales/orders/application/order_service.py
       self._orders = SqlAlchemyOrderRepository(SqlAlchemyUnitOfWork())
     validation:
       tool: grimp
@@ -169,12 +169,12 @@ rules:
       The core names the contract it needs and infrastructure plugs in behind
       it, so the store can be replaced without editing business rules.
     correct: |
-      # sales/infrastructure/order_repository.py
+      # sales/orders/infrastructure/order_repository.py
       class SqlAlchemyOrderRepository:  # implements OrderRepository (domain port)
           def get(self, order_id: OrderId) -> Order: ...
     incorrect: |
-      # sales/domain/services/order_pricing.py
-      from sales.infrastructure.order_repository import SqlAlchemyOrderRepository
+      # sales/orders/domain/services.py
+      from sales.orders.infrastructure.order_repository import SqlAlchemyOrderRepository
     validation:
       tool: import-linter
       detail: layered contract; domain/application import ports, never adapters
@@ -263,10 +263,10 @@ rules:
       explicit.
     correct: |
       # sales needs a credit check
-      # sales/domain/model/ports.py declares CreditCheckPort (consumer-driven)
+      # sales/orders/domain/model/ports.py declares CreditCheckPort (consumer-driven)
       # bootstrap/ wires an adapter backed by billing's application service
     incorrect: |
-      from billing.domain.invoice import Invoice   # in sales/
+      from billing.invoices.domain.model.invoice import Invoice   # in sales/orders/
     validation:
       tool: import-linter
       detail: independence contract
@@ -286,8 +286,8 @@ rules:
       # sales declares a consumer-driven port; bootstrap wires a billing adapter
       # billing does not import sales
     incorrect: |
-      # sales/infrastructure/credit_gateway.py imports billing.application...
-      # billing/infrastructure/order_gateway.py imports sales.application...
+      # sales/orders/infrastructure/credit_gateway.py imports billing.invoices.application...
+      # billing/invoices/infrastructure/order_gateway.py imports sales.orders.application...
     validation:
       tool: grimp
       detail: import-graph cycle detection across top-level context packages
@@ -307,7 +307,7 @@ rules:
       from commons.types.errors import DomainError
     incorrect: |
       # shared_kernel/pricing.py
-      from sales.domain.model.order import Order
+      from sales.orders.domain.model.order import Order
     validation:
       tool: import-linter
       detail: forbidden contract; shared_kernel -/-> contexts
@@ -327,7 +327,7 @@ rules:
       from typing import Protocol
     incorrect: |
       # commons/types/ids.py
-      from sales.domain.model.order import OrderId
+      from sales.orders.domain.model.order import OrderId
     validation:
       tool: import-linter
       detail: forbidden contract; commons.types -/-> everything above it
@@ -370,7 +370,7 @@ rules:
       # main.py
       from bootstrap.container import build_container
     incorrect: |
-      # sales/application/order_service.py
+      # sales/orders/application/order_service.py
       from bootstrap.container import build_container
     validation:
       tool: import-linter
@@ -387,10 +387,10 @@ rules:
       commons/infrastructure holds framework-bound implementations; only
       infrastructure/, entrypoints/, bootstrap/, and tests may touch them.
     correct: |
-      # sales/infrastructure/unit_of_work.py
+      # sales/orders/infrastructure/unit_of_work.py
       from commons.infrastructure.unit_of_work import SqlAlchemyUnitOfWork
     incorrect: |
-      # sales/application/order_service.py
+      # sales/orders/application/order_service.py
       from commons.infrastructure.unit_of_work import SqlAlchemyUnitOfWork
     validation:
       tool: import-linter

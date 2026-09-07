@@ -920,14 +920,14 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** Inverting this dependency (DIP) lets the core be tested without a database and lets the store be swapped without touching business rules.
 - **Correct:**
   ```
-  # sales/domain/model/ports.py
+  # sales/orders/domain/model/ports.py
   class OrderRepository(Protocol):
       def get(self, order_id: OrderId) -> Order: ...
   ```
 - **Incorrect:**
   ```
-  # sales/domain/model/order.py
-  from sales.infrastructure.postgres_order_repository import PostgresOrderRepository
+  # sales/orders/domain/model/order.py
+  from sales.orders.infrastructure.postgres_order_repository import PostgresOrderRepository
   ```
 - **Related:** ARCH-008
 
@@ -937,13 +937,13 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** The domain is the innermost layer; use-case orchestration depends on it, never the reverse.
 - **Correct:**
   ```
-  # sales/application/order_service.py
-  from sales.domain.model.order import Order
+  # sales/orders/application/order_service.py
+  from sales.orders.domain.model.order import Order
   ```
 - **Incorrect:**
   ```
-  # sales/domain/model/order.py
-  from sales.application.order_service import OrderService
+  # sales/orders/domain/model/order.py
+  from sales.orders.application.order_service import OrderService
   ```
 
 #### ARCH-003 — Domain does not depend on frameworks
@@ -952,13 +952,13 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** A framework-free domain stays unit-testable without a runtime and keeps vendor choices out of the business core.
 - **Correct:**
   ```
-  # sales/domain/model/order.py
+  # sales/orders/domain/model/order.py
   from dataclasses import dataclass
   from commons.types.ids import EntityId
   ```
 - **Incorrect:**
   ```
-  # sales/domain/model/order.py
+  # sales/orders/domain/model/order.py
   from pydantic import BaseModel
   from sqlalchemy.orm import Mapped
   ```
@@ -969,14 +969,14 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** A domain that reads datetime.now() or a socket is non-deterministic and cannot be tested in microseconds.
 - **Correct:**
   ```
-  # sales/domain/model/order.py
+  # sales/orders/domain/model/order.py
   @classmethod
   def place(cls, clock: Clock, ids: IdGenerator) -> "Order":
       return cls(id=ids.next_identity(), placed_at=clock.now())
   ```
 - **Incorrect:**
   ```
-  # sales/domain/model/order.py
+  # sales/orders/domain/model/order.py
   from datetime import datetime
   placed_at = datetime.now()
   ```
@@ -987,13 +987,13 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** Orchestration names ports only; the concrete adapter is injected from providers.py and is never imported by the use case.
 - **Correct:**
   ```
-  # sales/application/order_service.py
+  # sales/orders/application/order_service.py
   def __init__(self, orders: OrderRepository, uow: UnitOfWork) -> None: ...
   ```
 - **Incorrect:**
   ```
-  # sales/application/order_service.py
-  from sales.infrastructure.order_repository import SqlAlchemyOrderRepository
+  # sales/orders/application/order_service.py
+  from sales.orders.infrastructure.order_repository import SqlAlchemyOrderRepository
   ```
 
 #### ARCH-006 — Application does not depend on entrypoints
@@ -1003,11 +1003,11 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Correct:**
   ```
   # sales/entrypoints/http.py
-  from sales.application.order_service import OrderService
+  from sales.orders.application.order_service import OrderService
   ```
 - **Incorrect:**
   ```
-  # sales/application/order_service.py
+  # sales/orders/application/order_service.py
   from sales.entrypoints.http import parse_body
   ```
 
@@ -1023,7 +1023,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # sales/application/order_service.py
+  # sales/orders/application/order_service.py
   self._orders = SqlAlchemyOrderRepository(SqlAlchemyUnitOfWork())
   ```
 - **Related:** ARCH-005
@@ -1034,14 +1034,14 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** The core names the contract it needs and infrastructure plugs in behind it, so the store can be replaced without editing business rules.
 - **Correct:**
   ```
-  # sales/infrastructure/order_repository.py
+  # sales/orders/infrastructure/order_repository.py
   class SqlAlchemyOrderRepository:  # implements OrderRepository (domain port)
       def get(self, order_id: OrderId) -> Order: ...
   ```
 - **Incorrect:**
   ```
-  # sales/domain/services/order_pricing.py
-  from sales.infrastructure.order_repository import SqlAlchemyOrderRepository
+  # sales/orders/domain/services.py
+  from sales.orders.infrastructure.order_repository import SqlAlchemyOrderRepository
   ```
 - **Related:** ARCH-001, ARCH-042
 
@@ -1103,12 +1103,12 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Correct:**
   ```
   # sales needs a credit check
-  # sales/domain/model/ports.py declares CreditCheckPort (consumer-driven)
+  # sales/orders/domain/model/ports.py declares CreditCheckPort (consumer-driven)
   # bootstrap/ wires an adapter backed by billing's application service
   ```
 - **Incorrect:**
   ```
-  from billing.domain.invoice import Invoice   # in sales/
+  from billing.invoices.domain.model.invoice import Invoice   # in sales/orders/
   ```
 - **Related:** ARCH-013, ARCH-025, ARCH-045
 
@@ -1123,8 +1123,8 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # sales/infrastructure/credit_gateway.py imports billing.application...
-  # billing/infrastructure/order_gateway.py imports sales.application...
+  # sales/orders/infrastructure/credit_gateway.py imports billing.invoices.application...
+  # billing/invoices/infrastructure/order_gateway.py imports sales.orders.application...
   ```
 - **Related:** ARCH-012
 
@@ -1140,7 +1140,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Incorrect:**
   ```
   # shared_kernel/pricing.py
-  from sales.domain.model.order import Order
+  from sales.orders.domain.model.order import Order
   ```
 
 #### ARCH-015 — commons/types imports nothing from contexts, application, infrastructure, or shared_kernel
@@ -1155,7 +1155,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Incorrect:**
   ```
   # commons/types/ids.py
-  from sales.domain.model.order import OrderId
+  from sales.orders.domain.model.order import OrderId
   ```
 - **Related:** ARCH-035
 
@@ -1188,7 +1188,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # sales/application/order_service.py
+  # sales/orders/application/order_service.py
   from bootstrap.container import build_container
   ```
 
@@ -1327,15 +1327,15 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** Contract-mediated communication keeps contexts independently deployable and makes the seam explicit for the teams on each side.
 - **Correct:**
   ```
-  # sales/domain/model/ports.py
+  # sales/orders/domain/model/ports.py
   class CreditCheckPort(Protocol):
       def has_credit(self, customer_id: CustomerId, amount: Money) -> bool: ...
   # bootstrap/ wires an adapter backed by billing's application service
   ```
 - **Incorrect:**
   ```
-  # sales/application/order_service.py
-  from billing.application.billing_service import BillingService
+  # sales/orders/application/order_service.py
+  from billing.invoices.application.invoice_service import InvoiceService
   ```
 - **Related:** ARCH-012, ARCH-045
 
@@ -1350,7 +1350,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # sales/application/order_service.py
+  # sales/orders/application/order_service.py
   import stripe
   stripe.Charge.create(amount=total, currency="eur")
   ```
@@ -1378,15 +1378,15 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** An Active Record aggregate entangles invariants with the database and cannot be unit-tested without it.
 - **Correct:**
   ```
-  # sales/domain/model/order.py
+  # sales/orders/domain/model/order.py
   @dataclass
   class Order: ...
-  # sales/infrastructure/mapping.py
+  # sales/orders/infrastructure/mapping.py
   map_imperatively(Order, order_table)
   ```
 - **Incorrect:**
   ```
-  # sales/domain/model/order.py
+  # sales/orders/domain/model/order.py
   class Order(Base):
       __tablename__ = "orders"
       def save(self) -> None: self._session.add(self)
@@ -1455,14 +1455,14 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** A consistent domain exception hierarchy lets the application and entrypoints map failures predictably and keeps library exceptions from carrying business meaning.
 - **Correct:**
   ```
-  # sales/domain/model/exceptions.py
+  # sales/orders/domain/model/exceptions.py
   class OrderAlreadyShipped(DomainError): ...
-  # sales/domain/model/order.py
+  # sales/orders/domain/model/order.py
   raise OrderAlreadyShipped(self.id)
   ```
 - **Incorrect:**
   ```
-  # sales/domain/model/order.py
+  # sales/orders/domain/model/order.py
   raise ValueError("order already shipped")
   ```
 
@@ -1493,12 +1493,12 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** commons/infrastructure holds framework-bound implementations; only infrastructure/, entrypoints/, bootstrap/, and tests may touch them.
 - **Correct:**
   ```
-  # sales/infrastructure/unit_of_work.py
+  # sales/orders/infrastructure/unit_of_work.py
   from commons.infrastructure.unit_of_work import SqlAlchemyUnitOfWork
   ```
 - **Incorrect:**
   ```
-  # sales/application/order_service.py
+  # sales/orders/application/order_service.py
   from commons.infrastructure.unit_of_work import SqlAlchemyUnitOfWork
   ```
 
@@ -1623,13 +1623,13 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** Keeping domain/model/ports.py a faithful list of domain concepts keeps integration-contract churn out of the stable domain file.
 - **Correct:**
   ```
-  # commons/types/clock.py            -> Clock
-  # sales/domain/model/ports.py       -> OrderRepository
-  # sales/application/order_service.py -> class OrderNotifier(Protocol): ...
+  # commons/types/clock.py                    -> Clock
+  # sales/orders/domain/model/ports.py        -> OrderRepository
+  # sales/orders/application/order_service.py -> class OrderNotifier(Protocol): ...
   ```
 - **Incorrect:**
   ```
-  # sales/application/ports.py -> EmailSender, Clock, OrderRepository (one dumping file)
+  # sales/orders/application/ports.py -> EmailSender, Clock, OrderRepository (one dumping file)
   ```
 - **Related:** ARCH-008, ARCH-026
 
@@ -1669,14 +1669,14 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** Consumer-driven contracts mean removing a field the consumer does not use never breaks it, and the contract documents exactly what the boundary carries.
 - **Correct:**
   ```
-  # sales/domain/model/ports.py
+  # sales/orders/domain/model/ports.py
   class CreditCheckPort(Protocol):
       def has_credit(self, customer_id: CustomerId, amount: Money) -> bool: ...
   ```
 - **Incorrect:**
   ```
-  # sales/infrastructure/credit_gateway.py
-  from billing.application.billing_service import BillingService  # calls 8 of 20 methods
+  # sales/orders/infrastructure/credit_gateway.py
+  from billing.invoices.application.invoice_service import InvoiceService  # calls 8 of 20 methods
   ```
 - **Related:** ARCH-012, ARCH-025
 
