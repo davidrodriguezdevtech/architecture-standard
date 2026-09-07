@@ -13,4 +13,8 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy
       - run: uv run pytest
+      - run: uv run --package arch-commons ruff check packages/arch-commons
+      - run: uv run --package arch-commons ruff format --check packages/arch-commons
+      - run: uv run --package arch-commons mypy
+      - run: uv run --package arch-commons pytest
       - run: uv run arch-standard docs --check
