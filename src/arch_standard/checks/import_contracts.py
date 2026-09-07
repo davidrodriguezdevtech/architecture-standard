@@ -40,6 +40,8 @@ def _commons_root_available(project: ProjectLayout) -> bool:
     ``include_external_packages``. So ``commons`` must be a genuine root package
     for ARCH-034 to validate at all once it is no longer vendored on disk.
     """
+    if not project.src.is_dir():
+        return False
     if (project.src / "commons").is_dir():
         return True
     return importlib.util.find_spec("commons") is not None

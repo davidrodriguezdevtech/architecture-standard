@@ -126,6 +126,19 @@ def test_non_ddd_tree_skips_instead_of_erroring(tmp_path: Path) -> None:
         assert reports[rule_id].outcome is Outcome.SKIP, rule_id
 
 
+def test_given_a_completely_empty_project__when_checked__then_skips_instead_of_crashing(
+    tmp_path: Path,
+) -> None:
+    """No .arch-standard, no src/ at all -- ImportContractsCheck must SKIP
+    everything, not crash trying to subprocess.run(cwd=<nonexistent src>)."""
+    layout = ProjectLayout.detect(tmp_path)
+    assert layout.contexts == ()
+    reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, Catalog.load(RULES))}
+    assert reports
+    for report in reports.values():
+        assert report.outcome is Outcome.SKIP
+
+
 def test_given_the_modular_fixture__when_building_contracts__then_module_layers_are_emitted() -> (
     None
 ):
