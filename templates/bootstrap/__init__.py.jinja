@@ -1,0 +1,30 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from commons.infrastructure.in_memory_event_bus import InMemoryEventBus
+from commons.infrastructure.in_memory_unit_of_work import InMemoryUnitOfWork
+from commons.infrastructure.system_clock import SystemClock
+
+from {{ context_name }}.{{ aggregate_module }}.application.{{ aggregate_name }}_service import (
+    {{ aggregate_name | capitalize }}Service,
+)
+from {{ context_name }}.{{ aggregate_module }}.infrastructure.{{ aggregate_name }}_repository import (
+    InMemory{{ aggregate_name | capitalize }}Repository,
+)
+
+
+@dataclass(frozen=True)
+class Container:
+    {{ aggregate_name }}_service: {{ aggregate_name | capitalize }}Service
+
+
+def build_container() -> Container:
+    """Composition Root: construct singletons and wire services (ARCH-017 --
+    nothing outside this module imports it)."""
+    uow = InMemoryUnitOfWork()
+    repository = InMemory{{ aggregate_name | capitalize }}Repository()
+    service = {{ aggregate_name | capitalize }}Service(
+        uow=uow, repository=repository, clock=SystemClock(), bus=InMemoryEventBus()
+    )
+    return Container({{ aggregate_name }}_service=service)
