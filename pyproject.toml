@@ -26,7 +26,7 @@ members = ["packages/*"]
 arch-commons = { workspace = true }
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "types-pyyaml", "arch-commons"]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "types-pyyaml", "arch-commons", "copier>=9"]
 
 [tool.ruff]
 line-length = 100

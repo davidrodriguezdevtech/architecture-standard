@@ -1,0 +1,19 @@
+[project]
+name = "{{ project_slug }}"
+version = "0.1.0"
+description = "{{ project_name }}"
+requires-python = ">=3.12"
+dependencies = [
+    "arch-standard @ git+{{ standard_git_url }}@v{{ arch_standard_version }}",
+    "arch-commons @ git+{{ standard_git_url }}@v{{ arch_commons_version }}#subdirectory=packages/arch-commons",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/{{ context_name }}", "src/bootstrap"]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11"]

@@ -1,0 +1,50 @@
+project_name:
+  type: str
+  help: "Human-readable project name"
+  default: "My Project"
+
+project_slug:
+  type: str
+  help: "Python distribution slug (kebab-case)"
+  default: "{{ project_name.lower().replace(' ', '-') }}"
+
+context_name:
+  type: str
+  help: "The first bounded context's folder name (snake_case)"
+  default: "sales"
+
+aggregate_name:
+  type: str
+  help: "The first aggregate's name, singular (snake_case)"
+  default: "order"
+
+aggregate_module:
+  type: str
+  help: "The aggregate module's folder name, usually the plural"
+  default: "{{ aggregate_name }}s"
+
+arch_standard_version:
+  type: str
+  help: "arch-standard version to pin as a dependency"
+  default: "0.1.0"
+
+arch_commons_version:
+  type: str
+  help: "arch-commons version to pin as a dependency"
+  default: "0.1.0"
+
+template_version:
+  type: str
+  help: "This template's own version, recorded in the .arch-standard stamp"
+  default: "0.1.0"
+
+standard_git_url:
+  type: str
+  help: >-
+    Git URL of the architecture-standard repo. arch-standard and arch-commons are
+    not published to a package index yet, so they are installed from here directly --
+    replace with your actual remote before generating a real project.
+  default: "https://github.com/CHANGE_ME/architecture-standard.git"
+
+_tasks:
+  - "arch-standard render-importlinter ."
