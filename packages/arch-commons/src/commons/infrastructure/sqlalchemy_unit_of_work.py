@@ -10,10 +10,11 @@ from commons.types.events import DomainEvent
 class SqlAlchemyUnitOfWork:
     """Reference UnitOfWork backed by a SQLAlchemy Session (spec Section 7.2).
 
-    ``track()`` is a no-op: the session's own identity map already knows every
-    object added to or loaded through it, so draining works off
-    ``session.new | session.dirty | session.identity_map`` instead of an
-    explicit tracked list.
+    Events are captured once during ``commit()`` (before session close) and cached
+    in ``_collected_events``. ``track()`` is a no-op: the session's own identity
+    map already knows every object added to or loaded through it, eliminating the
+    need for explicit tracking. The session's new, dirty, and identity_map
+    snapshots are scanned at commit time to drain pending events.
     """
 
     def __init__(self, session_factory: sessionmaker) -> None:  # type: ignore[type-arg]
@@ -68,4 +69,5 @@ class SqlAlchemyUnitOfWork:
                 clear()
 
     def collect_new_events(self) -> Iterable[DomainEvent]:
+        """Return events captured during the last ``commit()``."""
         return self._collected_events
