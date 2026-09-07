@@ -33,6 +33,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     release_check.add_argument("--version", required=True, help="the version being released")
     release_check.add_argument("--rules-dir", default=None, help="rules dir (default: ./rules)")
+    changelog = sub.add_parser("changelog", help="render and prepend a CHANGELOG.md entry")
+    changelog.add_argument("--version", required=True)
+    changelog.add_argument("--rules-dir", default=None)
+    changelog.add_argument("--changelog-file", default="CHANGELOG.md")
+    changelog.add_argument("--migration-notes", default=None, help="path to a migration-notes file")
     return parser
 
 
@@ -149,13 +154,77 @@ def _run_release_check(version: str, rules_dir_arg: str | None) -> int:
     return 0
 
 
+def _run_changelog(
+    version: str,
+    rules_dir_arg: str | None,
+    changelog_file_arg: str,
+    migration_notes_arg: str | None,
+) -> int:
+    from arch_standard.release.changelog import render_changelog_entry
+    from arch_standard.release.compatibility import find_unsanctioned_must_promotions
+    from arch_standard.release.diff import ChangeKind, diff_catalogs
+    from arch_standard.release.snapshot import latest_snapshot_version, snapshot_dir
+    from arch_standard.rules.model import Level
+
+    rules_dir = Path(rules_dir_arg) if rules_dir_arg else Path.cwd() / "rules"
+    previous = latest_snapshot_version(rules_dir)
+    if previous is None:
+        print(
+            "no released snapshot to compare against -- run `arch-standard release-snapshot` first"
+        )
+        return 1
+
+    old_catalog = Catalog.load(snapshot_dir(rules_dir, previous))
+    new_catalog = Catalog.load(rules_dir)
+    changes = diff_catalogs(old_catalog, new_catalog)
+
+    binding = (Level.MUST, Level.MUST_CONDITIONAL)
+    must_promotions = [
+        change
+        for change in changes
+        if change.kind == ChangeKind.LEVEL_CHANGED and change.new_level in binding
+    ]
+    # find_unsanctioned_must_promotions is release-check's own gate; changelog only
+    # needs to know a MUST promotion happened at all, sanctioned or not, to require notes.
+    del find_unsanctioned_must_promotions
+
+    migration_notes: str | None = None
+    if migration_notes_arg:
+        migration_notes = Path(migration_notes_arg).read_text(encoding="utf-8").strip()
+    elif must_promotions:
+        promoted = ", ".join(change.rule_id for change in must_promotions)
+        print(f"FAIL  {promoted} newly binding as MUST -- pass --migration-notes")
+        return 1
+
+    entry = render_changelog_entry(version, old_catalog, new_catalog, changes, migration_notes)
+
+    changelog_path = Path(changelog_file_arg)
+    existing = (
+        changelog_path.read_text(encoding="utf-8")
+        if changelog_path.is_file()
+        else "# Changelog\n\n"
+    )
+    header, _, rest = existing.partition("\n\n")
+    changelog_path.write_text(f"{header}\n\n{entry}\n{rest}", encoding="utf-8")
+    print(f"wrote {changelog_path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = _build_parser()
     if not argv:
         parser.print_help()
         return 0
-    if argv[0] not in {"check", "docs", "release-snapshot", "release-check", "-h", "--help"}:
+    if argv[0] not in {
+        "check",
+        "docs",
+        "release-snapshot",
+        "release-check",
+        "changelog",
+        "-h",
+        "--help",
+    }:
         parser.print_usage()
         return 2
     args = parser.parse_args(argv)
@@ -167,6 +236,10 @@ def main(argv: list[str] | None = None) -> int:
         return _run_release_snapshot(args.version)
     if args.command == "release-check":
         return _run_release_check(args.version, args.rules_dir)
+    if args.command == "changelog":
+        return _run_changelog(
+            args.version, args.rules_dir, args.changelog_file, args.migration_notes
+        )
     return 0
 
 
