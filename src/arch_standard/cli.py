@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
 from arch_standard.checks import all_checks
@@ -10,6 +11,7 @@ from arch_standard.checks.base import CheckReport, Outcome, ProjectLayout
 from arch_standard.docgen import render_standard, write_standard
 from arch_standard.report import Report
 from arch_standard.rules.catalog import Catalog
+from arch_standard.version_stamp import majors_crossed, read_stamp
 
 _PACKAGED_RULES = Path(__file__).resolve().parents[2] / "rules"
 
@@ -23,6 +25,22 @@ def _build_parser() -> argparse.ArgumentParser:
     docs = sub.add_parser("docs", help="render ARCHITECTURE_STANDARD.md from the catalog")
     docs.add_argument("--check", action="store_true", help="fail if the committed doc is stale")
     return parser
+
+
+def _drift_notice(root: Path) -> str | None:
+    stamp = read_stamp(root)
+    if stamp is None:
+        return None
+    running = _pkg_version("arch-standard")
+    crossed = majors_crossed(stamp.standard_version, running)
+    if not crossed:
+        return None
+    crossed_str = ", ".join(f"v{m}" for m in crossed)
+    return (
+        f"NOTICE: project is stamped standard-version={stamp.standard_version}, "
+        f"running arch-standard {running} -- crossed major {crossed_str}. "
+        "Upgrading the stamp is your decision; this does not fail the build."
+    )
 
 
 def _run_check(path: str, core: bool = False) -> int:
@@ -52,6 +70,9 @@ def _run_check(path: str, core: bool = False) -> int:
         header = f"core rules only ({len(core_ids)})"
     report = report.with_waivers(waivers)
     print(report.format_text(catalog, header=header))
+    notice = _drift_notice(root)
+    if notice is not None:
+        print(notice)
     return report.exit_code(catalog)
 
 
