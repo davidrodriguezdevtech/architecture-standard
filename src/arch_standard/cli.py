@@ -161,7 +161,6 @@ def _run_changelog(
     migration_notes_arg: str | None,
 ) -> int:
     from arch_standard.release.changelog import render_changelog_entry
-    from arch_standard.release.compatibility import find_unsanctioned_must_promotions
     from arch_standard.release.diff import ChangeKind, diff_catalogs
     from arch_standard.release.snapshot import latest_snapshot_version, snapshot_dir
     from arch_standard.rules.model import Level
@@ -179,14 +178,14 @@ def _run_changelog(
     changes = diff_catalogs(old_catalog, new_catalog)
 
     binding = (Level.MUST, Level.MUST_CONDITIONAL)
+    # find_unsanctioned_must_promotions is release-check's own gate (sanctioned
+    # vs. unsanctioned promotions); changelog only needs to know a MUST
+    # promotion happened at all, sanctioned or not, to require migration notes.
     must_promotions = [
         change
         for change in changes
         if change.kind == ChangeKind.LEVEL_CHANGED and change.new_level in binding
     ]
-    # find_unsanctioned_must_promotions is release-check's own gate; changelog only
-    # needs to know a MUST promotion happened at all, sanctioned or not, to require notes.
-    del find_unsanctioned_must_promotions
 
     migration_notes: str | None = None
     if migration_notes_arg:
