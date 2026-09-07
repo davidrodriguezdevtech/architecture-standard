@@ -38,10 +38,6 @@ def _build_parser() -> argparse.ArgumentParser:
     changelog.add_argument("--rules-dir", default=None)
     changelog.add_argument("--changelog-file", default="CHANGELOG.md")
     changelog.add_argument("--migration-notes", default=None, help="path to a migration-notes file")
-    render_importlinter = sub.add_parser(
-        "render-importlinter", help="render import-linter configuration files"
-    )
-    render_importlinter.add_argument("path", nargs="?", default=".", help="project root (default: cwd)")
     return parser
 
 
@@ -158,13 +154,6 @@ def _run_release_check(version: str, rules_dir_arg: str | None) -> int:
     return 0
 
 
-def _run_render_importlinter(path: str) -> int:
-    """Render import-linter configuration files. Currently a stub that succeeds."""
-    # This is a placeholder for future import-linter configuration rendering.
-    # For now, it just succeeds to allow project generation.
-    return 0
-
-
 def _run_changelog(
     version: str,
     rules_dir_arg: str | None,
@@ -232,7 +221,6 @@ def main(argv: list[str] | None = None) -> int:
         "release-snapshot",
         "release-check",
         "changelog",
-        "render-importlinter",
         "-h",
         "--help",
     }:
@@ -251,8 +239,6 @@ def main(argv: list[str] | None = None) -> int:
         return _run_changelog(
             args.version, args.rules_dir, args.changelog_file, args.migration_notes
         )
-    if args.command == "render-importlinter":
-        return _run_render_importlinter(args.path)
     return 0
 
 

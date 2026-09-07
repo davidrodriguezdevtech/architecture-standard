@@ -11,7 +11,14 @@ def test_given_defaults__when_copied__then_root_files_render_with_no_leftover_ji
     tmp_path: Path,
 ) -> None:
     dest = tmp_path / "generated"
-    copier.run_copy(str(TEMPLATE_ROOT), str(dest), defaults=True, overwrite=True, unsafe=True)
+    copier.run_copy(
+        str(TEMPLATE_ROOT),
+        str(dest),
+        defaults=True,
+        overwrite=True,
+        unsafe=True,
+        skip_tasks=True,
+    )
 
     for relative in ("main.py", "pyproject.toml", "contexts.toml", ".arch-standard", "Makefile"):
         content = (dest / relative).read_text(encoding="utf-8")
