@@ -158,3 +158,11 @@ def test_given_the_catalog__when_reading_examples__then_no_stale_flat_context_pa
                 f"({match.group(0) if match else '?'}); insert the aggregate module "
                 f"segment, e.g. sales/orders/domain/..."
             )
+
+
+def test_given_repo_root__when_changelog_exists__then_starts_with_changelog_header() -> None:
+    changelog = Path(__file__).resolve().parents[2] / "CHANGELOG.md"
+    assert changelog.is_file(), "CHANGELOG.md is missing from the repo root"
+    content = changelog.read_text(encoding="utf-8")
+    assert content.startswith("# Changelog")
+    assert "## 0.1.0" in content
