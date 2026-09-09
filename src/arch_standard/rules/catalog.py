@@ -20,9 +20,14 @@ class Catalog:
 
     @classmethod
     def load(cls, rules_dir: Path) -> Catalog:
+        if not rules_dir.is_dir():
+            raise CatalogError(f"rule catalog directory does not exist: {rules_dir}")
+        paths = sorted(rules_dir.glob("*.yaml"))
+        if not paths:
+            raise CatalogError(f"rule catalog directory contains no rule files: {rules_dir}")
         rules: list[Rule] = []
         seen: dict[str, Path] = {}
-        for path in sorted(rules_dir.glob("*.yaml")):
+        for path in paths:
             raw: Any = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
             for entry in raw.get("rules", []):
                 rule = Rule.model_validate(entry)
@@ -32,6 +37,8 @@ class Catalog:
                     )
                 seen[rule.id] = path
                 rules.append(rule)
+        if not rules:
+            raise CatalogError(f"rule catalog loaded zero rules from {rules_dir}")
         catalog = cls(rules)
         catalog._check_related()
         return catalog
