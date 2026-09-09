@@ -47,9 +47,10 @@ def test_check_on_bad_project_exits_one() -> None:
 def test_given_core_mode__when_checking__then_only_core_rules_are_reported(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    # ARCH-008 and ARCH-033 are core but declare a machine tool with no check
-    # implementing it yet (Tasks 6-9), so Report.collect honestly reports
-    # them as ERROR and the run exits 1 until those land.
+    # ARCH-033 is core but declares a machine tool with no check implementing
+    # it yet (Tasks 8-9), so Report.collect honestly reports it as ERROR and
+    # the run exits 1 until that lands. ARCH-008 is now attributed to the
+    # per-module layers contract (Task 6) and genuinely passes.
     assert main(["check", str(FIX / "modular_project"), "--core"]) == 1
     out = capsys.readouterr().out
     assert "core rules only" in out
@@ -59,11 +60,12 @@ def test_given_core_mode__when_checking__then_only_core_rules_are_reported(
 def test_given_core_mode__when_checking__then_all_12_core_rules_are_shown(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    # ARCH-008 and ARCH-033 are tier: core but no check implements them yet;
-    # Report.collect guarantees completeness for every catalog rule, so
-    # --core still shows exactly the 12 core rows it claims, marking the
-    # uncovered two honestly as ERROR (a validator defect) rather than
-    # silently omitting them or disguising them as SKIP.
+    # ARCH-033 is tier: core but no check implements it yet; Report.collect
+    # guarantees completeness for every catalog rule, so --core still shows
+    # exactly the 12 core rows it claims, marking the uncovered rule honestly
+    # as ERROR (a validator defect) rather than silently omitting it or
+    # disguising it as SKIP. ARCH-008 was attributed to the per-module layers
+    # contract in Task 6 and now genuinely PASSes on this compliant fixture.
     main(["check", str(FIX / "modular_project"), "--core"])
     out = capsys.readouterr().out
     assert "core rules only (12)" in out
@@ -82,7 +84,7 @@ def test_given_core_mode__when_checking__then_all_12_core_rules_are_shown(
         "ARCH-051",
     ):
         assert rid in out, rid
-    assert "ARCH-008  ERROR" in out
+    assert "ARCH-008  PASS" in out
     assert "ARCH-033  ERROR" in out
     total = sum(
         int(n)

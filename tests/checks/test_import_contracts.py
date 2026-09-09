@@ -363,3 +363,26 @@ def test_given_installed_commons__when_checked__then_arch_034_catches_violation(
     reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, Catalog.load(RULES))}
     assert reports["ARCH-034"].outcome is Outcome.FAIL
     assert reports["ARCH-034"].findings
+
+
+def test_given_a_modular_project__when_building__then_layer_contract_names_arch_007_and_008() -> (
+    None
+):
+    layout = ProjectLayout.detect(MODULAR)
+    ini = build_contracts(layout)
+    assert "ARCH-007" in ini
+    assert "ARCH-008" in ini
+
+
+def test_given_contexts__when_building__then_independence_names_arch_013_and_025() -> None:
+    layout = ProjectLayout.detect(MODULAR)
+    ini = build_contracts(layout)
+    independence = [b for b in ini.split("[importlinter:contract:") if b.startswith("ARCH-012")]
+    assert independence, "independence contract missing"
+    assert "ARCH-013" in independence[0]
+    assert "ARCH-025" in independence[0]
+
+
+def test_given_the_check__when_listing_rules__then_attributed_rules_are_claimed() -> None:
+    for rid in ("ARCH-007", "ARCH-008", "ARCH-013", "ARCH-025"):
+        assert rid in ImportContractsCheck.rule_ids

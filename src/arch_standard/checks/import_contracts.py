@@ -18,8 +18,18 @@ from arch_standard.rules.catalog import Catalog
 # covered separately by a per-context ``forbidden`` contract instead.
 _MODULE_LAYERS: tuple[str, ...] = ("infrastructure", "application", "domain")
 
-# The layering rules encoded by the per-module ``layers`` contract.
-_MODULE_LAYER_RULES: tuple[str, ...] = ("ARCH-001", "ARCH-002", "ARCH-005")
+# The layering rules encoded by the per-module ``layers`` contract. ARCH-007/008
+# ride this same contract: once application cannot import infrastructure, it
+# cannot name an adapter class to construct one (007), and domain/application
+# are left importing only the abstractions (008) -- there is no separate check,
+# these are the same import facts ARCH-001/002/005 already enforce.
+_MODULE_LAYER_RULES: tuple[str, ...] = (
+    "ARCH-001",
+    "ARCH-002",
+    "ARCH-005",
+    "ARCH-007",
+    "ARCH-008",
+)
 
 # Frameworks that must never reach ``commons.types`` (ARCH-035).
 _FRAMEWORK_MODULES: tuple[str, ...] = ("sqlalchemy", "fastapi", "pydantic")
@@ -211,7 +221,7 @@ def build_contracts(project: ProjectLayout) -> str:
 
         lines += [
             "[importlinter:contract:ARCH-012]",
-            "name = ARCH-012 bounded-context independence",
+            "name = ARCH-012 ARCH-013 ARCH-025 bounded-context independence",
             "type = independence",
             "modules =",
             *(f"    {context}" for context in project.contexts),
@@ -291,7 +301,11 @@ class ImportContractsCheck:
         "ARCH-002",
         "ARCH-005",
         "ARCH-006",
+        "ARCH-007",
+        "ARCH-008",
         "ARCH-012",
+        "ARCH-013",
+        "ARCH-025",
         "ARCH-034",
         "ARCH-035",
         "ARCH-046",
