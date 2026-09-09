@@ -7,6 +7,7 @@ from arch_standard.checks.ast_rules import _aggregate_files
 from arch_standard.checks.base import (
     CheckReport,
     Finding,
+    Outcome,
     ProjectLayout,
     iter_python_files,
     outcome_for,
@@ -168,6 +169,8 @@ class StructureCheck:
     rule_ids: tuple[str, ...] = ("ARCH-047", "ARCH-048", "ARCH-051")
 
     def run(self, project: ProjectLayout, catalog: Catalog) -> list[CheckReport]:
+        if not project.is_scannable():
+            return [CheckReport(rule_id=rid, outcome=Outcome.SKIP) for rid in self.rule_ids]
         by_rule = {
             "ARCH-047": _check_shared_is_limited(project),
             "ARCH-048": _check_no_context_application(project),

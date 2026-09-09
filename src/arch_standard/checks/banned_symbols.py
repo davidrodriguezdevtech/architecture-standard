@@ -6,6 +6,7 @@ from pathlib import Path
 from arch_standard.checks.base import (
     CheckReport,
     Finding,
+    Outcome,
     ProjectLayout,
     iter_python_files,
     outcome_for,
@@ -74,6 +75,8 @@ class BannedSymbolsCheck:
     rule_ids: tuple[str, ...] = ("ARCH-003", "ARCH-004", "ARCH-028", "ARCH-053")
 
     def run(self, project: ProjectLayout, catalog: Catalog) -> list[CheckReport]:
+        if not project.is_scannable():
+            return [CheckReport(rule_id=rid, outcome=Outcome.SKIP) for rid in self.rule_ids]
         imports: list[Finding] = []
         calls: list[Finding] = []
         orm: list[Finding] = []

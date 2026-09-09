@@ -308,6 +308,8 @@ class AstRulesCheck:
     )
 
     def run(self, project: ProjectLayout, catalog: Catalog) -> list[CheckReport]:
+        if not project.is_scannable():
+            return [CheckReport(rule_id=rid, outcome=Outcome.SKIP) for rid in self.rule_ids]
         reports: list[CheckReport] = []
         for rid in self.rule_ids:
             fn = _IMPLEMENTED.get(rid)

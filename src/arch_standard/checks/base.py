@@ -122,6 +122,14 @@ class ProjectLayout:
             for module in self.modules(context):
                 yield context, module
 
+    def is_scannable(self) -> bool:
+        """True when there is actually something for a check to look at.
+
+        A check that scans zero files has not verified anything, so it must
+        report SKIP rather than a vacuous PASS.
+        """
+        return self.src.is_dir() and bool(self.contexts)
+
 
 class Check(Protocol):
     rule_ids: tuple[str, ...]

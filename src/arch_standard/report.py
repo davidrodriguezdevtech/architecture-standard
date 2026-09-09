@@ -17,6 +17,29 @@ class Report:
 
     @classmethod
     def collect(cls, project: ProjectLayout, catalog: Catalog, checks: list[Check]) -> Report:
+        if not project.is_scannable():
+            reason = (
+                "no src/ directory"
+                if not project.src.is_dir()
+                else "no bounded contexts detected under src/"
+            )
+            return cls(
+                reports=tuple(
+                    CheckReport(
+                        rule_id=rule.id,
+                        outcome=Outcome.ERROR,
+                        findings=(
+                            Finding(
+                                rule_id=rule.id,
+                                path=str(project.root),
+                                line=None,
+                                message=f"nothing to validate: {reason}",
+                            ),
+                        ),
+                    )
+                    for rule in catalog
+                )
+            )
         out: list[CheckReport] = []
         for check in checks:
             out.extend(check.run(project, catalog))
