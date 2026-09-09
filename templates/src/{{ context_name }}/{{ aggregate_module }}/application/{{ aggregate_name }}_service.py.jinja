@@ -34,14 +34,17 @@ class {{ aggregate_name | capitalize }}Service:
         self._bus = bus
 
     def create_{{ aggregate_name }}(
-        self, command: Create{{ aggregate_name | capitalize }}
+        self,
+        command: Create{{ aggregate_name | capitalize }},
     ) -> {{ aggregate_name | capitalize }}Id:
         with self._uow:
             {{ aggregate_name }}_id = {{ aggregate_name | capitalize }}Id(
-                value=self._repository.next_identity()
+                value=self._repository.next_identity(),
             )
             {{ aggregate_name }} = {{ aggregate_name | capitalize }}.create(
-                id={{ aggregate_name }}_id, name=command.name, occurred_at=self._clock.now()
+                id={{ aggregate_name }}_id,
+                name=command.name,
+                occurred_at=self._clock.now(),
             )
             self._repository.add({{ aggregate_name }})
             self._uow.track({{ aggregate_name }})

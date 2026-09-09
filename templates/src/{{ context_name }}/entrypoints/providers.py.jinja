@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from bootstrap import build_container
-
 from {{ context_name }}.{{ aggregate_module }}.application.{{ aggregate_name }}_service import (
     {{ aggregate_name | capitalize }}Service,
 )

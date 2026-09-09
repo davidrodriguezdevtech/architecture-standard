@@ -36,7 +36,6 @@ def test_given_a_freshly_generated_project__when_service_runs__then_order_is_cre
     copier.run_copy(str(TEMPLATE_ROOT), str(dest), defaults=True, overwrite=True, unsafe=True)
 
     monkeypatch.syspath_prepend(str(dest / "src"))
-    monkeypatch.syspath_prepend(str(dest))  # bootstrap/ lives at the project root
     monkeypatch.syspath_prepend(str(_COMMONS_SRC))
 
     import importlib

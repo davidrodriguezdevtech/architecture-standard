@@ -20,7 +20,7 @@ def test_given_defaults__when_copied__then_bootstrap_and_providers_reference_ord
         skip_tasks=True,
     )
 
-    bootstrap = (dest / "bootstrap" / "__init__.py").read_text(encoding="utf-8")
+    bootstrap = (dest / "src" / "bootstrap" / "__init__.py").read_text(encoding="utf-8")
     assert "from sales.orders.application.order_service import" in bootstrap
     assert "OrderService" in bootstrap
     assert "InMemoryUnitOfWork" in bootstrap and "SystemClock" in bootstrap

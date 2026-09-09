@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from commons.infrastructure.uuid7_id_generator import Uuid7IdGenerator
 
+from {{ context_name }}.{{ aggregate_module }}.domain.model.exceptions import (
+    {{ aggregate_name | capitalize }}NotFound,
+)
 from {{ context_name }}.{{ aggregate_module }}.domain.model.{{ aggregate_name }} import (
     {{ aggregate_name | capitalize }},
     {{ aggregate_name | capitalize }}Id,
-)
-from {{ context_name }}.{{ aggregate_module }}.domain.model.exceptions import (
-    {{ aggregate_name | capitalize }}NotFound,
 )
 
 
@@ -26,7 +26,8 @@ class InMemory{{ aggregate_name | capitalize }}Repository:
         self._by_id[{{ aggregate_name }}.id.value] = {{ aggregate_name }}
 
     def get(
-        self, {{ aggregate_name }}_id: {{ aggregate_name | capitalize }}Id
+        self,
+        {{ aggregate_name }}_id: {{ aggregate_name | capitalize }}Id,
     ) -> {{ aggregate_name | capitalize }}:
         found = self._by_id.get({{ aggregate_name }}_id.value)
         if found is None:

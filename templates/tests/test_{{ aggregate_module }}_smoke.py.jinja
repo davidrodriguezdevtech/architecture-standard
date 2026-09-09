@@ -1,0 +1,43 @@
+from __future__ import annotations
+
+from commons.infrastructure.in_memory_event_bus import InMemoryEventBus
+from commons.infrastructure.in_memory_unit_of_work import InMemoryUnitOfWork
+from commons.infrastructure.system_clock import SystemClock
+
+from bootstrap import build_container
+from {{ context_name }}.{{ aggregate_module }}.application.{{ aggregate_name }}_service import (
+    Create{{ aggregate_name | capitalize }},
+    {{ aggregate_name | capitalize }}Service,
+)
+from {{ context_name }}.{{ aggregate_module }}.infrastructure.{{ aggregate_name }}_repository import (
+    InMemory{{ aggregate_name | capitalize }}Repository,
+)
+
+
+def test_given_composition_root__when_create_{{ aggregate_name }}__then_id_returned() -> None:
+    """The Composition Root wires a working slice end to end."""
+    container = build_container()
+
+    {{ aggregate_name }}_id = container.{{ aggregate_name }}_service.create_{{ aggregate_name }}(
+        Create{{ aggregate_name | capitalize }}(name="a {{ aggregate_name }}"),
+    )
+
+    assert {{ aggregate_name }}_id.value
+
+
+def test_given_test_doubles__when_create_{{ aggregate_name }}__then_event_published() -> None:
+    """Driven ports are swappable: the same use case runs against in-memory
+    adapters, and the aggregate's domain event reaches the bus after commit."""
+    bus = InMemoryEventBus()
+    service = {{ aggregate_name | capitalize }}Service(
+        uow=InMemoryUnitOfWork(),
+        repository=InMemory{{ aggregate_name | capitalize }}Repository(),
+        clock=SystemClock(),
+        bus=bus,
+    )
+
+    service.create_{{ aggregate_name }}(
+        Create{{ aggregate_name | capitalize }}(name="a {{ aggregate_name }}"),
+    )
+
+    assert len(bus.published) == 1

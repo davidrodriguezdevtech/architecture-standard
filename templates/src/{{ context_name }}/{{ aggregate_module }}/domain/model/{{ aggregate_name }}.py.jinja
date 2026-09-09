@@ -25,11 +25,14 @@ class {{ aggregate_name | capitalize }}:
 
     @classmethod
     def create(
-        cls, id: {{ aggregate_name | capitalize }}Id, name: str, occurred_at: datetime
-    ) -> "{{ aggregate_name | capitalize }}":
+        cls,
+        id: {{ aggregate_name | capitalize }}Id,
+        name: str,
+        occurred_at: datetime,
+    ) -> {{ aggregate_name | capitalize }}:
         {{ aggregate_name }} = cls(id=id, name=name)
         {{ aggregate_name }}.pending_events.append(
-            {{ aggregate_name | capitalize }}Created(id=id, occurred_at=occurred_at)
+            {{ aggregate_name | capitalize }}Created(id=id, occurred_at=occurred_at),
         )
         return {{ aggregate_name }}
 

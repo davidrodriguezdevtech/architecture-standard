@@ -12,8 +12,32 @@ dependencies = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.metadata]
+# arch-standard and arch-commons are pinned as direct git references above.
+allow-direct-references = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/{{ context_name }}", "src/bootstrap"]
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "TID"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+# src/ is the import root: without these, mypy would name src/{{ context_name }}/... modules
+# after their own directory rather than after their package path.
+mypy_path = "src"
+explicit_package_bases = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = ["src"]
