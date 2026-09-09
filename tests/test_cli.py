@@ -28,9 +28,15 @@ def test_main_with_unknown_subcommand_returns_two(
     assert code == 2
 
 
-def test_check_on_good_project_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
+def test_check_on_good_project_reports_arch_001_and_exits_one_on_unimplemented_checks(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # 14 catalog rules declare a machine tool with no check implementing it
+    # yet (Tasks 6-9); Report.collect reports those as ERROR rather than
+    # silently omitting them, so even a fully compliant project exits 1
+    # until those checks land.
     code = main(["check", str(FIX / "good_project")])
-    assert code == 0
+    assert code == 1
     assert "ARCH-001" in capsys.readouterr().out
 
 
@@ -41,7 +47,10 @@ def test_check_on_bad_project_exits_one() -> None:
 def test_given_core_mode__when_checking__then_only_core_rules_are_reported(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["check", str(FIX / "modular_project"), "--core"]) == 0
+    # ARCH-008 and ARCH-033 are core but declare a machine tool with no check
+    # implementing it yet (Tasks 6-9), so Report.collect honestly reports
+    # them as ERROR and the run exits 1 until those land.
+    assert main(["check", str(FIX / "modular_project"), "--core"]) == 1
     out = capsys.readouterr().out
     assert "core rules only" in out
     assert "ARCH-041" not in out
@@ -50,9 +59,11 @@ def test_given_core_mode__when_checking__then_only_core_rules_are_reported(
 def test_given_core_mode__when_checking__then_all_12_core_rules_are_shown(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    # I1: ARCH-008 and ARCH-033 are tier: core but no check implements them yet.
-    # --core must still show exactly the 12 core rows it claims, marking the
-    # uncovered two as SKIP rather than silently omitting them.
+    # ARCH-008 and ARCH-033 are tier: core but no check implements them yet;
+    # Report.collect guarantees completeness for every catalog rule, so
+    # --core still shows exactly the 12 core rows it claims, marking the
+    # uncovered two honestly as ERROR (a validator defect) rather than
+    # silently omitting them or disguising them as SKIP.
     main(["check", str(FIX / "modular_project"), "--core"])
     out = capsys.readouterr().out
     assert "core rules only (12)" in out
@@ -71,7 +82,10 @@ def test_given_core_mode__when_checking__then_all_12_core_rules_are_shown(
         "ARCH-051",
     ):
         assert rid in out, rid
-    assert "ARCH-008  SKIP" in out
-    assert "ARCH-033  SKIP" in out
-    total = sum(int(n) for n in re.findall(r"(\d+) (?:passed|failed|warnings|skipped)", out))
+    assert "ARCH-008  ERROR" in out
+    assert "ARCH-033  ERROR" in out
+    total = sum(
+        int(n)
+        for n in re.findall(r"(\d+) (?:passed|failed|warnings|skipped|not automated|errored)", out)
+    )
     assert total == 12

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from arch_standard.checks import all_checks
 from arch_standard.checks.adr_waivers import active_waivers
-from arch_standard.checks.base import CheckReport, Outcome, ProjectLayout
+from arch_standard.checks.base import ProjectLayout
 from arch_standard.checks.import_contracts import _roots, build_contracts
 from arch_standard.docgen import render_standard, write_standard
 from arch_standard.report import Report
@@ -76,19 +76,6 @@ def _run_check(path: str, core: bool = False) -> int:
     if core:
         core_ids = {r.id for r in catalog.core()}
         report = report.only(core_ids)
-        # I1: a core rule with no check implementing it yet (ARCH-008,
-        # ARCH-033) never appears in Report.collect's output at all. Without
-        # this, --core silently shows fewer rows than its own "(N)" header
-        # claims. Mark the gap honestly as SKIP instead of omitting it.
-        present = {r.rule_id for r in report.reports}
-        missing = core_ids - present
-        if missing:
-            report = Report(
-                reports=(
-                    *report.reports,
-                    *(CheckReport(rule_id=rid, outcome=Outcome.SKIP) for rid in sorted(missing)),
-                )
-            )
         header = f"core rules only ({len(core_ids)})"
     report = report.with_waivers(waivers)
     print(report.format_text(catalog, header=header))

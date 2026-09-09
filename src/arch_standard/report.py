@@ -20,6 +20,30 @@ class Report:
         out: list[CheckReport] = []
         for check in checks:
             out.extend(check.run(project, catalog))
+        claimed = {r.rule_id for r in out}
+        for rule in catalog:
+            if rule.id in claimed:
+                continue
+            # A rule no check claims is either honestly prose-only, or a
+            # machine-backed rule whose check was never built. The second case
+            # is a validator defect and must never look like a project result.
+            outcome = Outcome.NOT_AUTOMATED if rule.validation.tool == "review" else Outcome.ERROR
+            findings = (
+                ()
+                if outcome is Outcome.NOT_AUTOMATED
+                else (
+                    Finding(
+                        rule_id=rule.id,
+                        path=str(project.src),
+                        line=None,
+                        message=(
+                            f"{rule.id} declares validation.tool="
+                            f"{rule.validation.tool!r} but no check implements it"
+                        ),
+                    ),
+                )
+            )
+            out.append(CheckReport(rule_id=rule.id, outcome=outcome, findings=findings))
         return cls(reports=tuple(out))
 
     def with_waivers(self, waivers: dict[str, list[Waiver]]) -> Report:

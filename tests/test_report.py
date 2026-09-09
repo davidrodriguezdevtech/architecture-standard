@@ -18,8 +18,11 @@ def test_collect_runs_every_check_and_covers_rules() -> None:
     layout = ProjectLayout.detect(FIX / "good_project")
     report = Report.collect(layout, catalog, all_checks())
     covered = {r.rule_id for r in report.reports}
-    assert {"ARCH-001", "ARCH-023", "ARCH-003"} <= covered
-    assert report.exit_code(catalog) == 0
+    assert {r.id for r in catalog} <= covered
+    # 14 catalog rules declare a machine tool with no check implementing it
+    # yet (Tasks 6-9); Report.collect reports those as ERROR rather than
+    # silently omitting them, which fails the exit code until they land.
+    assert report.exit_code(catalog) == 1
 
 
 def test_bad_project_exit_code_is_one() -> None:
