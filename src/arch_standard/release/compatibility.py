@@ -44,8 +44,12 @@ def find_unsanctioned_must_promotions(changes: list[RuleChange]) -> list[str]:
     16.3: 'a new MUST never lands directly'). Returns the offending rule ids."""
     violations: list[str] = []
     for change in changes:
+        if change.kind not in (ChangeKind.ADDED, ChangeKind.LEVEL_CHANGED):
+            continue  # wording/rationale/example-only edits never promote a rule
         if change.new_level not in _BINDING:
             continue
+        if change.kind == ChangeKind.LEVEL_CHANGED and change.old_level in _BINDING:
+            continue  # already binding (MUST <-> MUST_CONDITIONAL) -- not a new promotion
         if change.kind == ChangeKind.LEVEL_CHANGED and change.old_level is Level.SHOULD:
             continue  # SHOULD -> MUST is exactly the sanctioned promotion
         violations.append(change.rule_id)

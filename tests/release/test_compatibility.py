@@ -85,3 +85,35 @@ def test_given_may_jumping_straight_to_must__when_checked__then_violation() -> N
         )
     ]
     assert find_unsanctioned_must_promotions(changes) == ["ARCH-902"]
+
+
+def test_given_wording_edit_to_an_already_must_rule__when_checked__then_no_violation() -> None:
+    """Editing prose on a rule that was already MUST promotes nothing."""
+    changes = [
+        RuleChange(
+            rule_id="ARCH-903",
+            kind=ChangeKind.CONTENT_CHANGED,
+            old_level=Level.MUST,
+            new_level=Level.MUST,
+        )
+    ]
+    assert find_unsanctioned_must_promotions(changes) == []
+
+
+def test_given_must_relaxed_to_must_conditional__when_checked__then_no_violation() -> None:
+    """A move within the already-binding levels is not a new promotion."""
+    changes = [
+        RuleChange(
+            rule_id="ARCH-904",
+            kind=ChangeKind.LEVEL_CHANGED,
+            old_level=Level.MUST,
+            new_level=Level.MUST_CONDITIONAL,
+        ),
+        RuleChange(
+            rule_id="ARCH-905",
+            kind=ChangeKind.LEVEL_CHANGED,
+            old_level=Level.MUST_CONDITIONAL,
+            new_level=Level.MUST,
+        ),
+    ]
+    assert find_unsanctioned_must_promotions(changes) == []
