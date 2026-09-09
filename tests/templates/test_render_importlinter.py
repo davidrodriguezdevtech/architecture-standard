@@ -22,3 +22,18 @@ def test_given_a_plain_project__when_render_importlinter__then_writes_a_dot_impo
     ini = (tmp_path / ".importlinter").read_text(encoding="utf-8")
     assert "[importlinter]" in ini
     assert "ARCH-layers-sales-orders" in ini
+
+
+def test_given_a_nonexistent_path__when_render_importlinter__then_fails_cleanly(
+    tmp_path: Path,
+) -> None:
+    exit_code = main(["render-importlinter", str(tmp_path / "does-not-exist")])
+    assert exit_code != 0
+
+
+def test_given_a_project_with_nothing_to_check__when_render_importlinter__then_fails_cleanly(
+    tmp_path: Path,
+) -> None:
+    exit_code = main(["render-importlinter", str(tmp_path)])
+    assert exit_code != 0
+    assert not (tmp_path / ".importlinter").exists()

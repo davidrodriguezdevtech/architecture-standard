@@ -8,7 +8,7 @@ from pathlib import Path
 from arch_standard.checks import all_checks
 from arch_standard.checks.adr_waivers import active_waivers
 from arch_standard.checks.base import CheckReport, Outcome, ProjectLayout
-from arch_standard.checks.import_contracts import build_contracts
+from arch_standard.checks.import_contracts import _roots, build_contracts
 from arch_standard.docgen import render_standard, write_standard
 from arch_standard.report import Report
 from arch_standard.rules.catalog import Catalog
@@ -219,7 +219,13 @@ def _run_changelog(
 
 def _run_render_importlinter(path: str) -> int:
     root = Path(path).resolve()
+    if not root.is_dir():
+        print(f"error: {root} is not a directory")
+        return 1
     layout = ProjectLayout.detect(root)
+    if not _roots(layout):
+        print(f"error: nothing to check at {root} (no contexts, commons, or bootstrap found)")
+        return 1
     ini = build_contracts(layout)
     (root / ".importlinter").write_text(ini, encoding="utf-8")
     print(f"wrote {root / '.importlinter'}")
