@@ -28,7 +28,8 @@ def test_given_committed_uow__when_collect_new_events__then_returns_tracked_pend
     with uow:
         uow.track(widget)
         uow.commit()
-    assert list(uow.collect_new_events()) == ["WidgetCreated"]
+    # plain strings stand in for events here; only pass-through behavior is under test
+    assert list(uow.collect_new_events()) == ["WidgetCreated"]  # type: ignore[comparison-overlap]
 
 
 def test_given_uncommitted_uow__when_exit__then_rollback_clears_tracked() -> None:
@@ -43,8 +44,9 @@ def test_given_uncommitted_uow__when_exit__then_rollback_clears_tracked() -> Non
 
 def test_given_in_memory_event_bus__when_publish_all__then_records_events() -> None:
     bus = InMemoryEventBus()
-    bus.publish_all(["WidgetCreated"])
-    assert bus.published == ["WidgetCreated"]
+    # plain strings stand in for events here; the bus only records what it is handed
+    bus.publish_all(["WidgetCreated"])  # type: ignore[list-item]
+    assert bus.published == ["WidgetCreated"]  # type: ignore[comparison-overlap]
 
 
 def test_given_system_clock__when_now__then_returns_a_timezone_aware_datetime() -> None:

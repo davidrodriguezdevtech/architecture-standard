@@ -5,7 +5,7 @@ lint:
 	uv run ruff check . && uv run ruff format --check . && uv run mypy
 test:
 	uv run pytest
-	uv run --package arch-commons pytest
+	uv run --package arch-commons pytest -c packages/arch-commons/pyproject.toml packages/arch-commons/tests
 check:
 	uv run arch-standard check .
 docs:

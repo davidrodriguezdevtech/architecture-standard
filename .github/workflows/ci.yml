@@ -15,6 +15,6 @@ jobs:
       - run: uv run pytest
       - run: uv run --package arch-commons ruff check packages/arch-commons
       - run: uv run --package arch-commons ruff format --check packages/arch-commons
-      - run: uv run --package arch-commons mypy
-      - run: uv run --package arch-commons pytest
+      - run: uv run --package arch-commons mypy --config-file packages/arch-commons/pyproject.toml packages/arch-commons/src packages/arch-commons/tests
+      - run: uv run --package arch-commons pytest -c packages/arch-commons/pyproject.toml packages/arch-commons/tests
       - run: uv run arch-standard docs --check

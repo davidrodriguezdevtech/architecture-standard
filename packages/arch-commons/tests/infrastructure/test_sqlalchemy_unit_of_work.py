@@ -42,7 +42,8 @@ def test_given_added_widget__when_committed__then_collect_new_events_drains_it(
         widget.pending_events.append("WidgetCreated")
         uow.session.add(widget)
         uow.commit()
-    assert list(uow.collect_new_events()) == ["WidgetCreated"]
+    # plain strings stand in for events here; only pass-through behavior is under test
+    assert list(uow.collect_new_events()) == ["WidgetCreated"]  # type: ignore[comparison-overlap]
 
 
 def test_given_uncommitted_change__when_exit__then_rollback_and_session_closed(
@@ -54,4 +55,5 @@ def test_given_uncommitted_change__when_exit__then_rollback_and_session_closed(
     with uow:
         uow.session.add(_Widget(id="w-1"))
         # no commit() -- __exit__ must roll back
-    assert uow.session.close.__self__ is uow.session  # session was closed, not left open
+    # __self__ is a bound-method attribute mypy does not model on Callable
+    assert uow.session.close.__self__ is uow.session  # type: ignore[attr-defined]

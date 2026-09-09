@@ -69,5 +69,7 @@ class SqlAlchemyUnitOfWork:
                 clear()
 
     def collect_new_events(self) -> Iterable[DomainEvent]:
-        """Return events captured during the last ``commit()``."""
-        return self._collected_events
+        """Return events captured during the last ``commit()``.
+
+        A copy, so a caller mutating the result cannot corrupt UoW state."""
+        return list(self._collected_events)
