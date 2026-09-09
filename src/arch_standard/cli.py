@@ -8,6 +8,7 @@ from pathlib import Path
 from arch_standard.checks import all_checks
 from arch_standard.checks.adr_waivers import active_waivers
 from arch_standard.checks.base import CheckReport, Outcome, ProjectLayout
+from arch_standard.checks.import_contracts import build_contracts
 from arch_standard.docgen import render_standard, write_standard
 from arch_standard.report import Report
 from arch_standard.rules.catalog import Catalog
@@ -38,6 +39,13 @@ def _build_parser() -> argparse.ArgumentParser:
     changelog.add_argument("--rules-dir", default=None)
     changelog.add_argument("--changelog-file", default="CHANGELOG.md")
     changelog.add_argument("--migration-notes", default=None, help="path to a migration-notes file")
+    render_importlinter = sub.add_parser(
+        "render-importlinter",
+        help="write a static .importlinter from the current project structure",
+    )
+    render_importlinter.add_argument(
+        "path", nargs="?", default=".", help="project root (default: cwd)"
+    )
     return parser
 
 
@@ -209,6 +217,15 @@ def _run_changelog(
     return 0
 
 
+def _run_render_importlinter(path: str) -> int:
+    root = Path(path).resolve()
+    layout = ProjectLayout.detect(root)
+    ini = build_contracts(layout)
+    (root / ".importlinter").write_text(ini, encoding="utf-8")
+    print(f"wrote {root / '.importlinter'}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = _build_parser()
@@ -221,6 +238,7 @@ def main(argv: list[str] | None = None) -> int:
         "release-snapshot",
         "release-check",
         "changelog",
+        "render-importlinter",
         "-h",
         "--help",
     }:
@@ -239,6 +257,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_changelog(
             args.version, args.rules_dir, args.changelog_file, args.migration_notes
         )
+    if args.command == "render-importlinter":
+        return _run_render_importlinter(args.path)
     return 0
 
 
