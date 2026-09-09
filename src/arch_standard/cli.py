@@ -84,6 +84,14 @@ def _run_check(path: str, core: bool = False) -> int:
     except StampError as exc:
         print(f"warning: ignoring version stamp -- {exc}", file=sys.stderr)
         notice = None
+    except Exception as exc:
+        # The drift notice is purely advisory (spec Sec16.3): nothing on this
+        # path may affect the run's outcome, e.g.
+        # importlib.metadata.PackageNotFoundError when the distribution isn't
+        # installed, or ValueError from a running version that isn't strict
+        # N.N.N (a PEP 440 build/pre-release tag).
+        print(f"warning: version drift notice unavailable -- {exc}", file=sys.stderr)
+        notice = None
     if notice is not None:
         print(notice)
     return report.exit_code(catalog)
