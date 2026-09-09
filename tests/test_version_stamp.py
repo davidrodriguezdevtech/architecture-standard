@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from arch_standard.version_stamp import VersionStamp, majors_crossed, parse_semver, read_stamp
+import pytest
+
+from arch_standard.version_stamp import (
+    StampError,
+    VersionStamp,
+    majors_crossed,
+    parse_semver,
+    read_stamp,
+)
 
 
 def test_given_no_stamp_file__when_read__then_returns_none(tmp_path: Path) -> None:
@@ -27,3 +35,31 @@ def test_given_stamp_ahead_of_or_equal_to_running__when_majors_crossed__then_emp
 
 def test_given_stamp_behind_running_by_two_majors__when_majors_crossed__then_lists_both() -> None:
     assert majors_crossed("0.1.0", "2.3.0") == [1, 2]
+
+
+def test_given_malformed_toml__when_reading__then_raises_stamp_error(tmp_path: Path) -> None:
+    (tmp_path / ".arch-standard").write_text("not toml [[[\n", encoding="utf-8")
+    with pytest.raises(StampError, match="not valid TOML"):
+        read_stamp(tmp_path)
+
+
+def test_given_a_missing_key__when_reading__then_raises_naming_the_key(tmp_path: Path) -> None:
+    (tmp_path / ".arch-standard").write_text('standard-version = "1.0.0"\n', encoding="utf-8")
+    with pytest.raises(StampError, match="template-version"):
+        read_stamp(tmp_path)
+
+
+def test_given_a_non_string_version__when_reading__then_raises(tmp_path: Path) -> None:
+    (tmp_path / ".arch-standard").write_text(
+        'standard-version = 1\ntemplate-version = "1.0.0"\n', encoding="utf-8"
+    )
+    with pytest.raises(StampError, match="standard-version"):
+        read_stamp(tmp_path)
+
+
+def test_given_a_malformed_version_string__when_reading__then_raises(tmp_path: Path) -> None:
+    (tmp_path / ".arch-standard").write_text(
+        'standard-version = "one.two"\ntemplate-version = "1.0.0"\n', encoding="utf-8"
+    )
+    with pytest.raises(StampError, match="one.two"):
+        read_stamp(tmp_path)

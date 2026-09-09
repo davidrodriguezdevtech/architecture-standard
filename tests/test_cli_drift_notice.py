@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -46,3 +48,30 @@ def test_given_stamp_current__when_check__then_no_drift_notice(
     out = capsys.readouterr().out
 
     assert "NOTICE" not in out
+
+
+def test_given_a_broken_stamp__when_checking__then_exit_code_matches_a_clean_run(
+    tmp_path: Path,
+) -> None:
+    """A stamp problem must never look like an architecture violation."""
+    import shutil
+
+    good = Path("tests/fixtures/good_project").resolve()
+    target = tmp_path / "proj"
+    shutil.copytree(good, target)
+    clean = subprocess.run(
+        [sys.executable, "-m", "arch_standard", "check", str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    (target / ".arch-standard").write_text("garbage [[[\n", encoding="utf-8")
+    broken = subprocess.run(
+        [sys.executable, "-m", "arch_standard", "check", str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert broken.returncode == clean.returncode
+    assert "Traceback" not in broken.stderr
+    assert ".arch-standard" in (broken.stderr + broken.stdout)

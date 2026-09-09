@@ -12,7 +12,7 @@ from arch_standard.checks.import_contracts import _roots, build_contracts
 from arch_standard.docgen import render_standard, write_standard
 from arch_standard.report import Report
 from arch_standard.rules.catalog import Catalog, packaged_rules_dir
-from arch_standard.version_stamp import majors_crossed, read_stamp
+from arch_standard.version_stamp import StampError, majors_crossed, read_stamp
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -79,7 +79,11 @@ def _run_check(path: str, core: bool = False) -> int:
         header = f"core rules only ({len(core_ids)})"
     report = report.with_waivers(waivers)
     print(report.format_text(catalog, header=header))
-    notice = _drift_notice(root)
+    try:
+        notice = _drift_notice(root)
+    except StampError as exc:
+        print(f"warning: ignoring version stamp -- {exc}", file=sys.stderr)
+        notice = None
     if notice is not None:
         print(notice)
     return report.exit_code(catalog)

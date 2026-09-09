@@ -28,6 +28,17 @@ _STATUS_RE = re.compile(r"^(?P<name>.+?)\s+(?P<status>KEPT|BROKEN)\s*$")
 _RULE_RE = re.compile(r"ARCH-\d+")
 
 
+def _importable(name: str) -> bool:
+    """``importlib.util.find_spec`` raises ``ModuleNotFoundError`` (rather than
+    returning ``None``) when a parent package in a dotted name is absent -- e.g.
+    ``find_spec("commons.types")`` when ``commons`` itself is not installed.
+    Treat that the same as "not importable"."""
+    try:
+        return importlib.util.find_spec(name) is not None
+    except ModuleNotFoundError:
+        return False
+
+
 def _commons_root_available(project: ProjectLayout) -> bool:
     """True if ``commons`` can be a ``root_packages`` entry: either vendored under
     the project's own src/ (legacy/local-dev layout) or resolvable in the
@@ -44,7 +55,7 @@ def _commons_root_available(project: ProjectLayout) -> bool:
         return False
     if (project.src / "commons").is_dir():
         return True
-    return importlib.util.find_spec("commons") is not None
+    return _importable("commons")
 
 
 def _roots(project: ProjectLayout) -> list[str]:
@@ -175,7 +186,7 @@ def _commons_types_importable(project: ProjectLayout) -> bool:
     this check."""
     if (project.src / "commons" / "types").is_dir():
         return True
-    return importlib.util.find_spec("commons.types") is not None
+    return _importable("commons.types")
 
 
 def build_contracts(project: ProjectLayout) -> str:
