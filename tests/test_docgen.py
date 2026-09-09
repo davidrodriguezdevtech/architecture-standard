@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from arch_standard.docgen import render_standard
-from arch_standard.rules.catalog import Catalog
+from arch_standard.rules.catalog import Catalog, packaged_rules_dir
 
 PROSE = Path(__file__).parent.parent / "docs" / "standard"
-RULES = Path(__file__).parent.parent / "rules"
+RULES = packaged_rules_dir()
 
 EXPECTED = {
     "00-purpose",

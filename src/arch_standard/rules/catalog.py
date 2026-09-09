@@ -1,12 +1,26 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from arch_standard.rules.model import Level, Rule, Tier
+
+_CATALOG_PACKAGE = "arch_standard.rules"
+_CATALOG_DIRNAME = "_catalog"
+
+
+def packaged_rules_dir() -> Path:
+    """The rule catalog that ships inside this package.
+
+    Resolved through ``importlib.resources`` so a source checkout and an
+    installed wheel behave identically. The catalog lives inside the package
+    precisely so there is no build-time-only copy step to diverge from.
+    """
+    return Path(str(resources.files(_CATALOG_PACKAGE).joinpath(_CATALOG_DIRNAME)))
 
 
 class CatalogError(Exception):

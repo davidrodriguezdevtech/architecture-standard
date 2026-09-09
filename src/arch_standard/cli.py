@@ -11,10 +11,8 @@ from arch_standard.checks.base import CheckReport, Outcome, ProjectLayout
 from arch_standard.checks.import_contracts import _roots, build_contracts
 from arch_standard.docgen import render_standard, write_standard
 from arch_standard.report import Report
-from arch_standard.rules.catalog import Catalog
+from arch_standard.rules.catalog import Catalog, packaged_rules_dir
 from arch_standard.version_stamp import majors_crossed, read_stamp
-
-_PACKAGED_RULES = Path(__file__).resolve().parents[2] / "rules"
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -26,14 +24,16 @@ def _build_parser() -> argparse.ArgumentParser:
     docs = sub.add_parser("docs", help="render ARCHITECTURE_STANDARD.md from the catalog")
     docs.add_argument("--check", action="store_true", help="fail if the committed doc is stale")
     release_snapshot = sub.add_parser(
-        "release-snapshot", help="freeze the current rules/ catalog as a released version"
+        "release-snapshot", help="freeze the current rule catalog as a released version"
     )
     release_snapshot.add_argument("version", help="the version being released, e.g. 1.1.0")
     release_check = sub.add_parser(
         "release-check", help="verify a pending catalog change against the compatibility policy"
     )
     release_check.add_argument("--version", required=True, help="the version being released")
-    release_check.add_argument("--rules-dir", default=None, help="rules dir (default: ./rules)")
+    release_check.add_argument(
+        "--rules-dir", default=None, help="rules dir (default: the packaged catalog)"
+    )
     changelog = sub.add_parser("changelog", help="render and prepend a CHANGELOG.md entry")
     changelog.add_argument("--version", required=True)
     changelog.add_argument("--rules-dir", default=None)
@@ -68,7 +68,7 @@ def _drift_notice(root: Path) -> str | None:
 def _run_check(path: str, core: bool = False) -> int:
     root = Path(path).resolve()
     layout = ProjectLayout.detect(root)
-    rules_dir = root / "rules" if (root / "rules").is_dir() else _PACKAGED_RULES
+    rules_dir = root / "rules" if (root / "rules").is_dir() else packaged_rules_dir()
     catalog = Catalog.load(rules_dir)
     waivers = active_waivers(root / "docs" / "adr")
     report = Report.collect(layout, catalog, all_checks())
@@ -101,7 +101,7 @@ def _run_check(path: str, core: bool = False) -> int:
 def _run_docs(check: bool) -> int:
     root = Path.cwd()
     if check:
-        expected = render_standard(Catalog.load(_PACKAGED_RULES), root / "docs" / "standard")
+        expected = render_standard(Catalog.load(packaged_rules_dir()), root / "docs" / "standard")
         current = (root / "ARCHITECTURE_STANDARD.md").read_text(encoding="utf-8")
         if current != expected:
             print("ARCHITECTURE_STANDARD.md is stale — run `arch-standard docs`")
@@ -116,7 +116,7 @@ def _run_docs(check: bool) -> int:
 def _run_release_snapshot(version: str) -> int:
     from arch_standard.release.snapshot import write_snapshot
 
-    dest = write_snapshot(Path.cwd() / "rules", version)
+    dest = write_snapshot(packaged_rules_dir(), version)
     print(f"wrote snapshot {dest}")
     return 0
 
@@ -131,7 +131,7 @@ def _run_release_check(version: str, rules_dir_arg: str | None) -> int:
     from arch_standard.release.diff import diff_catalogs
     from arch_standard.release.snapshot import latest_snapshot_version, snapshot_dir
 
-    rules_dir = Path(rules_dir_arg) if rules_dir_arg else Path.cwd() / "rules"
+    rules_dir = Path(rules_dir_arg) if rules_dir_arg else packaged_rules_dir()
     previous = latest_snapshot_version(rules_dir)
     if previous is None:
         print(
@@ -173,7 +173,7 @@ def _run_changelog(
     from arch_standard.release.snapshot import latest_snapshot_version, snapshot_dir
     from arch_standard.rules.model import Level
 
-    rules_dir = Path(rules_dir_arg) if rules_dir_arg else Path.cwd() / "rules"
+    rules_dir = Path(rules_dir_arg) if rules_dir_arg else packaged_rules_dir()
     previous = latest_snapshot_version(rules_dir)
     if previous is None:
         print(

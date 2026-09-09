@@ -7,10 +7,10 @@ import pytest
 
 from arch_standard.checks.base import Outcome, ProjectLayout
 from arch_standard.checks.import_contracts import ImportContractsCheck, build_contracts
-from arch_standard.rules.catalog import Catalog
+from arch_standard.rules.catalog import Catalog, packaged_rules_dir
 
 FIX = Path(__file__).parent.parent / "fixtures"
-RULES = Path(__file__).parent.parent.parent / "rules"
+RULES = packaged_rules_dir()
 MODULAR = FIX / "modular_project"
 
 

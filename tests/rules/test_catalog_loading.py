@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from arch_standard.rules.catalog import Catalog, CatalogError
+from arch_standard.rules.catalog import Catalog, CatalogError, packaged_rules_dir
 
 
 def test_given_a_missing_rules_dir__when_loading__then_raises(tmp_path: Path) -> None:
@@ -28,5 +28,5 @@ def test_given_yaml_with_no_rules__when_loading__then_raises(tmp_path: Path) -> 
 
 def test_given_the_real_catalog__when_loading__then_all_rules_load() -> None:
     """Guards against the strict checks above rejecting the genuine catalog."""
-    catalog = Catalog.load(Path("rules").resolve())
+    catalog = Catalog.load(packaged_rules_dir())
     assert len(catalog) == 53

@@ -3,10 +3,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from arch_standard.rules.catalog import Catalog
+from arch_standard.rules.catalog import Catalog, packaged_rules_dir
 from arch_standard.rules.model import Automation, Level
 
-RULES_DIR = Path(__file__).parent.parent.parent / "rules"
+RULES_DIR = packaged_rules_dir()
 
 # A context name directly followed by domain/application/infrastructure (no
 # aggregate module segment in between) is the pre-aggregate-module flat

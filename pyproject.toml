@@ -18,6 +18,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/arch_standard"]
+# The catalog is package data. `.released/` is a dotted dir, which hatchling
+# excludes by default, so include it explicitly.
+artifacts = ["src/arch_standard/rules/_catalog/.released/**/*.yaml"]
 
 [tool.uv.workspace]
 members = ["packages/*"]

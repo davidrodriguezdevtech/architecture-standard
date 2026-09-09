@@ -3,18 +3,18 @@ from __future__ import annotations
 from pathlib import Path
 
 from arch_standard.docgen import render_standard
-from arch_standard.rules.catalog import Catalog
+from arch_standard.rules.catalog import Catalog, packaged_rules_dir
 
 ROOT = Path(__file__).parent.parent
 
 
 def test_packaged_catalog_loads() -> None:
-    cat = Catalog.load(ROOT / "rules")
+    cat = Catalog.load(packaged_rules_dir())
     assert len(cat) >= 45
 
 
 def test_committed_doc_matches_catalog() -> None:
-    text = render_standard(Catalog.load(ROOT / "rules"), ROOT / "docs" / "standard")
+    text = render_standard(Catalog.load(packaged_rules_dir()), ROOT / "docs" / "standard")
     assert (ROOT / "ARCHITECTURE_STANDARD.md").read_text(encoding="utf-8") == text
 
 

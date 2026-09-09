@@ -4,10 +4,10 @@ from pathlib import Path
 
 from arch_standard.checks.base import CheckReport, Outcome, ProjectLayout
 from arch_standard.checks.structure import StructureCheck
-from arch_standard.rules.catalog import Catalog
+from arch_standard.rules.catalog import Catalog, packaged_rules_dir
 
 FIX = Path(__file__).parent.parent / "fixtures"
-RULES = Path(__file__).parent.parent.parent / "rules"
+RULES = packaged_rules_dir()
 
 
 def _reports(root: Path) -> dict[str, CheckReport]:

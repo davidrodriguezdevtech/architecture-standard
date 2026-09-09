@@ -7,10 +7,10 @@ from arch_standard.checks import all_checks
 from arch_standard.checks.adr_waivers import Waiver
 from arch_standard.checks.base import CheckReport, Outcome, ProjectLayout
 from arch_standard.report import Report
-from arch_standard.rules.catalog import Catalog
+from arch_standard.rules.catalog import Catalog, packaged_rules_dir
 
 FIX = Path(__file__).parent / "fixtures"
-RULES = Path(__file__).parent.parent / "rules"
+RULES = packaged_rules_dir()
 
 
 def test_collect_runs_every_check_and_covers_rules() -> None:

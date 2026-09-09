@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from arch_standard.rules.catalog import Catalog
+from arch_standard.rules.catalog import Catalog, packaged_rules_dir
 from arch_standard.rules.model import Rule
 
 _MARKER = "<!-- RULES_CATALOG -->"
-_PACKAGED_RULES = Path(__file__).resolve().parents[2] / "rules"
 
 
 def _rule_block(rule: Rule) -> str:
@@ -64,7 +63,7 @@ def render_standard(catalog: Catalog, prose_dir: Path) -> str:
 
 
 def write_standard(root: Path) -> Path:
-    catalog = Catalog.load(_PACKAGED_RULES)
+    catalog = Catalog.load(packaged_rules_dir())
     text = render_standard(catalog, root / "docs" / "standard")
     target = root / "ARCHITECTURE_STANDARD.md"
     target.write_text(text, encoding="utf-8")
