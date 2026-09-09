@@ -211,8 +211,20 @@ def _run_changelog(
         if changelog_path.is_file()
         else "# Changelog\n\n"
     )
-    header, _, rest = existing.partition("\n\n")
-    changelog_path.write_text(f"{header}\n\n{entry}\n{rest}", encoding="utf-8")
+    # Anchor on the first version heading so a multi-line intro paragraph stays
+    # under the title instead of being pushed below the newly inserted entry.
+    lines = existing.splitlines(keepends=True)
+    heading_index = next((i for i, line in enumerate(lines) if line.startswith("## ")), None)
+    if heading_index is None:
+        # No entries yet: the first blank line is the only seam available.
+        header, _, rest = existing.partition("\n\n")
+        changelog_path.write_text(f"{header}\n\n{entry}\n{rest}", encoding="utf-8")
+    else:
+        header = "".join(lines[:heading_index])
+        rest = "".join(lines[heading_index:])
+        if not header.endswith("\n\n"):
+            header = header.rstrip("\n") + "\n\n"
+        changelog_path.write_text(f"{header}{entry}\n{rest}", encoding="utf-8")
     print(f"wrote {changelog_path}")
     return 0
 
