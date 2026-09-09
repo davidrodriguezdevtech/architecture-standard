@@ -47,6 +47,8 @@ class Report:
     def exit_code(self, catalog: Catalog) -> int:
         must = {r.id for r in catalog.musts()}
         for report in self.reports:
+            if report.outcome is Outcome.ERROR:
+                return 1
             if report.outcome is Outcome.FAIL and report.rule_id in must:
                 return 1
         return 0
@@ -79,6 +81,8 @@ class Report:
         lines.append("")
         lines.append(
             f"{counts[Outcome.PASS]} passed, {counts[Outcome.FAIL]} failed, "
-            f"{counts[Outcome.WARN]} warnings, {counts[Outcome.SKIP]} skipped"
+            f"{counts[Outcome.WARN]} warnings, {counts[Outcome.SKIP]} skipped, "
+            f"{counts[Outcome.NOT_AUTOMATED]} not automated, "
+            f"{counts[Outcome.ERROR]} errored"
         )
         return "\n".join(lines)

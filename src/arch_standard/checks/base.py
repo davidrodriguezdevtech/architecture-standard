@@ -24,6 +24,8 @@ class Outcome(StrEnum):
     FAIL = "FAIL"
     WARN = "WARN"
     SKIP = "SKIP"
+    ERROR = "ERROR"
+    NOT_AUTOMATED = "N/A"
 
 
 def outcome_for(level: Level, has_findings: bool) -> Outcome:
