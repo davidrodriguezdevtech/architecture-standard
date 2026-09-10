@@ -19,10 +19,18 @@ from arch_standard.rules.catalog import Catalog
 _MODULE_LAYERS: tuple[str, ...] = ("infrastructure", "application", "domain")
 
 # The layering rules encoded by the per-module ``layers`` contract. ARCH-007/008
-# ride this same contract: once application cannot import infrastructure, it
-# cannot name an adapter class to construct one (007), and domain/application
-# are left importing only the abstractions (008) -- there is no separate check,
-# these are the same import facts ARCH-001/002/005 already enforce.
+# ride this same contract, but only partially:
+#   - ARCH-007 (application does not construct concrete adapters) is fully
+#     covered -- once application cannot import infrastructure at all, it
+#     cannot name an adapter class to construct one.
+#   - ARCH-008 (infrastructure implements ports; the core imports abstractions
+#     only) is only half covered: this contract proves domain/application
+#     import nothing from infrastructure, but it does NOT verify that
+#     infrastructure's adapters actually implement the Protocol declared in
+#     the module's ``ports.py`` -- that half is unverified by any machine
+#     check and is reviewed at PR time.
+# There is no separate check for either rule; both ride the same import facts
+# ARCH-001/002/005 already enforce.
 _MODULE_LAYER_RULES: tuple[str, ...] = (
     "ARCH-001",
     "ARCH-002",
@@ -219,6 +227,15 @@ def build_contracts(project: ProjectLayout) -> str:
         for context in project.contexts:
             lines += _module_contracts(project, context)
 
+        # ARCH-013/025 ride this same independence contract, but not equally:
+        #   - ARCH-013 (no dependency cycles between contexts) is fully
+        #     implied -- zero imports between any pair of contexts strictly
+        #     subsumes acyclicity; there is no partial case to caveat.
+        #   - ARCH-025 (cross-context communication never by import) is only
+        #     half proven: this contract establishes the "never imports"
+        #     half, but does NOT verify that a declared contract or ACL
+        #     actually exists on the other side -- that half is unverified
+        #     by any machine check and is reviewed at PR time.
         lines += [
             "[importlinter:contract:ARCH-012]",
             "name = ARCH-012 ARCH-013 ARCH-025 bounded-context independence",
