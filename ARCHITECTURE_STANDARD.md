@@ -816,7 +816,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 | ARCH-003 | Domain does not depend on frameworks | MUST | full |
 | ARCH-005 | Application does not depend on infrastructure | MUST | full |
 | ARCH-006 | Application does not depend on entrypoints | MUST | full |
-| ARCH-008 | Infrastructure implements ports; the core imports abstractions only | MUST | full |
+| ARCH-008 | Infrastructure implements ports; the core imports abstractions only | MUST | partial |
 | ARCH-012 | A context imports nothing from another context | MUST | full |
 | ARCH-023 | Domain events are immutable and past-tense | MUST | full |
 | ARCH-031 | Value Objects are immutable and validate on construction | MUST | partial |
@@ -834,8 +834,8 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 | ARCH-004 | Domain performs no I/O | MUST | partial |
 | ARCH-005 | Application does not depend on infrastructure | MUST | full |
 | ARCH-006 | Application does not depend on entrypoints | MUST | full |
-| ARCH-007 | Application does not construct concrete adapters | MUST | full |
-| ARCH-008 | Infrastructure implements ports; the core imports abstractions only | MUST | full |
+| ARCH-007 | Application does not construct concrete adapters | MUST | partial |
+| ARCH-008 | Infrastructure implements ports; the core imports abstractions only | MUST | partial |
 | ARCH-009 | Entrypoints obtain wired services from providers; never construct or call infrastructure directly | MUST | partial |
 | ARCH-010 | Entrypoints contain no business logic | SHOULD | partial |
 | ARCH-011 | Entrypoints call application services, not other entrypoints | MUST | full |
@@ -869,15 +869,15 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 | ID | Rule | Level | Automation |
 |---|---|---|---|
-| ARCH-024 | When published, integration events have a versioned schema at the context root | MUST* | partial |
-| ARCH-025 | Cross-context communication is through a declared contract, never imports | MUST | full |
+| ARCH-024 | When published, integration events have a versioned schema at the context root | MUST* | manual |
+| ARCH-025 | Cross-context communication is through a declared contract, never imports | MUST | partial |
 | ARCH-026 | External-provider dependencies sit behind a port | SHOULD | partial |
 | ARCH-027 | The domain does not cross the application boundary | SHOULD | manual |
 | ARCH-029 | Use cases express intent, not generic CRUD | SHOULD | manual |
 | ARCH-030 | One general application service class per context by default | SHOULD | partial |
 | ARCH-036 | Integration events are published via transactional outbox when a guarantee is required | MUST* | manual |
-| ARCH-042 | Port placement follows the three-homes rule | SHOULD | partial |
-| ARCH-045 | A context depends only on consumer-driven contracts it declares | MUST | partial |
+| ARCH-042 | Port placement follows the three-homes rule | SHOULD | manual |
+| ARCH-045 | A context depends only on consumer-driven contracts it declares | MUST | manual |
 
 ### testing
 
@@ -1012,7 +1012,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 
 #### ARCH-007 — Application does not construct concrete adapters
-- **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** dependencies
+- **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** dependencies
 - **Description:** No module under a context's application/ package instantiates an infrastructure adapter class such as SqlAlchemyOrderRepository(...) or HttpCreditGateway(...).
 - **Rationale:** Constructing an adapter couples the use case to one technology choice and defeats dependency injection.
 - **Correct:**
@@ -1029,7 +1029,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Related:** ARCH-005
 
 #### ARCH-008 — Infrastructure implements ports; the core imports abstractions only
-- **Level:** MUST · **Automation:** full · **Tier:** core · **Category:** dependencies
+- **Level:** MUST · **Automation:** partial · **Tier:** core · **Category:** dependencies
 - **Description:** Every concrete adapter in a context's infrastructure/ package implements a Protocol declared in domain/model/ports.py or a colocated application Protocol; domain/ and application/ import only those abstractions.
 - **Rationale:** The core names the contract it needs and infrastructure plugs in behind it, so the store can be replaced without editing business rules.
 - **Correct:**
@@ -1303,7 +1303,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 
 #### ARCH-024 — When published, integration events have a versioned schema at the context root
-- **Level:** MUST* · **Automation:** partial · **Tier:** full · **Category:** application
+- **Level:** MUST* · **Automation:** manual · **Tier:** full · **Category:** application
 - **Description:** A context does not publish integration events by default. When it starts being consumed by another context, the promoted event moves out of its aggregate module's domain/model/events.py into a dedicated <context>/integration_events.py with an explicit version field, and its wire schema is exported to the events catalog; consumers never import the event class.
 - **Rationale:** Integration events are a cross-team contract; expressed as importable classes they would couple producer and consumer lifecycles. There is no context-level application/ package (ARCH-048), so the promoted module lives at the context root, not under any aggregate module.
 - **Correct:**
@@ -1322,7 +1322,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Related:** ARCH-025, ARCH-044
 
 #### ARCH-025 — Cross-context communication is through a declared contract, never imports
-- **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** application
+- **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** application
 - **Description:** A context reaches another context only through a contract it declares (a consumer-driven port wired in bootstrap/, or a serialized integration event with an ACL), with zero imports between contexts; synchronous by default, asynchronous when the use case tolerates eventual consistency.
 - **Rationale:** Contract-mediated communication keeps contexts independently deployable and makes the seam explicit for the teams on each side.
 - **Correct:**
@@ -1618,7 +1618,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 
 #### ARCH-042 — Port placement follows the three-homes rule
-- **Level:** SHOULD · **Automation:** partial · **Tier:** full · **Category:** application
+- **Level:** SHOULD · **Automation:** manual · **Tier:** full · **Category:** application
 - **Description:** A Protocol is placed by the three-homes rule (generic technical Protocols in commons/types/, domain-vocabulary contracts in domain/model/ports.py, non-domain outbound contracts colocated in the use-case module), and there is no application/ports.py until a context has 3+ application ports shared across use-case modules.
 - **Rationale:** Keeping domain/model/ports.py a faithful list of domain concepts keeps integration-contract churn out of the stable domain file.
 - **Correct:**
@@ -1664,7 +1664,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Related:** ARCH-024
 
 #### ARCH-045 — A context depends only on consumer-driven contracts it declares
-- **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** application
+- **Level:** MUST · **Automation:** manual · **Tier:** full · **Category:** application
 - **Description:** For anything a context needs from another context it declares its own narrow port carrying only the fields and operations it uses; it does not consume the other context's full interface or full event shape.
 - **Rationale:** Consumer-driven contracts mean removing a field the consumer does not use never breaks it, and the contract documents exactly what the boundary carries.
 - **Correct:**

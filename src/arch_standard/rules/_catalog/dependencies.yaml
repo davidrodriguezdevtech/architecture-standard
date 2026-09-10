@@ -135,7 +135,7 @@ rules:
   - id: ARCH-007
     name: Application does not construct concrete adapters
     level: MUST
-    automation: full
+    automation: partial
     category: dependencies
     description: >
       No module under a context's application/ package instantiates an
@@ -153,12 +153,12 @@ rules:
       self._orders = SqlAlchemyOrderRepository(SqlAlchemyUnitOfWork())
     validation:
       tool: grimp
-      detail: import-graph assert; no application module reaches an infrastructure symbol
+      detail: import-graph assert (import half); direct instantiation within infrastructure is still unchecked
     related: [ARCH-005]
   - id: ARCH-008
     name: Infrastructure implements ports; the core imports abstractions only
     level: MUST
-    automation: full
+    automation: partial
     tier: core
     category: dependencies
     description: >
@@ -177,7 +177,7 @@ rules:
       from sales.orders.infrastructure.order_repository import SqlAlchemyOrderRepository
     validation:
       tool: import-linter
-      detail: layered contract; domain/application import ports, never adapters
+      detail: layered contract (import half); Protocol conformance of adapters is reviewed at PR time
     related: [ARCH-001, ARCH-042]
   - id: ARCH-009
     name: Entrypoints obtain wired services from providers; never construct or call infrastructure directly
@@ -201,8 +201,8 @@ rules:
       repo = SqlAlchemyOrderRepository(SqlAlchemyUnitOfWork())
       repo.save(order)
     validation:
-      tool: ast-checker
-      detail: entrypoints/ must not import infrastructure/ or call repo/session/http_client
+      tool: import-linter
+      detail: forbidden contract (import half); entrypoints calling persistence/session/http-client directly is a runtime fact the import graph cannot see
     related: [ARCH-037]
   - id: ARCH-010
     name: Entrypoints contain no business logic

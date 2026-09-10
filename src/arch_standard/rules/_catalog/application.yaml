@@ -2,7 +2,7 @@ rules:
   - id: ARCH-024
     name: When published, integration events have a versioned schema at the context root
     level: "MUST*"
-    automation: partial
+    automation: manual
     category: application
     description: >
       A context does not publish integration events by default. When it starts
@@ -26,13 +26,13 @@ rules:
       # billing/invoices/application/consume.py
       from sales.orders.domain.model.events import OrderPlaced
     validation:
-      tool: schema
-      detail: pydantic/jsonschema export per event; version field required
+      tool: review
+      detail: PR checklist; "starts being consumed" is a judgment about intent, not an import/AST fact
     related: [ARCH-025, ARCH-044]
   - id: ARCH-025
     name: Cross-context communication is through a declared contract, never imports
     level: MUST
-    automation: full
+    automation: partial
     category: application
     description: >
       A context reaches another context only through a contract it declares (a
@@ -52,7 +52,7 @@ rules:
       from billing.invoices.application.invoice_service import InvoiceService
     validation:
       tool: import-linter
-      detail: independence contract between context packages
+      detail: independence contract (import half); declared contract/ACL presence on the other side is reviewed at PR time
     related: [ARCH-012, ARCH-045]
   - id: ARCH-026
     name: External-provider dependencies sit behind a port
@@ -174,7 +174,7 @@ rules:
   - id: ARCH-042
     name: Port placement follows the three-homes rule
     level: SHOULD
-    automation: partial
+    automation: manual
     category: application
     description: >
       A Protocol is placed by the three-homes rule (generic technical Protocols
@@ -192,13 +192,13 @@ rules:
     incorrect: |
       # sales/orders/application/ports.py -> EmailSender, Clock, OrderRepository (one dumping file)
     validation:
-      tool: ast-checker
-      detail: no application/ports.py until 3+ shared; Clock/EventBus not in domain ports
+      tool: review
+      detail: PR checklist; "shared across use-case modules" and the 3+ threshold need cross-module usage analysis, not an AST fact
     related: [ARCH-008, ARCH-026]
   - id: ARCH-045
     name: A context depends only on consumer-driven contracts it declares
     level: MUST
-    automation: partial
+    automation: manual
     category: application
     description: >
       For anything a context needs from another context it declares its own
@@ -216,6 +216,6 @@ rules:
       # sales/orders/infrastructure/credit_gateway.py
       from billing.invoices.application.invoice_service import InvoiceService  # calls 8 of 20 methods
     validation:
-      tool: ast-checker
-      detail: consumer port surface stays within what the consumer calls; ACL present in infrastructure/
+      tool: review
+      detail: PR checklist; "carries only the fields and operations it uses" is intent, not an AST fact (import half is ARCH-012/025)
     related: [ARCH-012, ARCH-025]

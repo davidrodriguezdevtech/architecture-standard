@@ -28,15 +28,15 @@ def test_main_with_unknown_subcommand_returns_two(
     assert code == 2
 
 
-def test_check_on_good_project_reports_arch_001_and_exits_one_on_unimplemented_checks(
+def test_check_on_good_project_reports_arch_001_and_exits_zero(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    # A few catalog rules still declare a machine tool with no check
-    # implementing it yet (Task 10 relabels them); Report.collect reports
-    # those as ERROR rather than silently omitting them, so even a fully
-    # compliant project exits 1 until those checks land.
+    # Every catalog rule that declares a machine tool now has a check
+    # implementing it (Tasks 6-10); the three that could not be were
+    # relabelled to validation.tool: review. A fully compliant project
+    # exits 0 with zero ERROR rows.
     code = main(["check", str(FIX / "good_project")])
-    assert code == 1
+    assert code == 0
     assert "ARCH-001" in capsys.readouterr().out
 
 

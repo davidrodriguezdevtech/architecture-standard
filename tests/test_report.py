@@ -19,10 +19,11 @@ def test_collect_runs_every_check_and_covers_rules() -> None:
     report = Report.collect(layout, catalog, all_checks())
     covered = {r.rule_id for r in report.reports}
     assert {r.id for r in catalog} <= covered
-    # 14 catalog rules declare a machine tool with no check implementing it
-    # yet (Tasks 6-9); Report.collect reports those as ERROR rather than
-    # silently omitting them, which fails the exit code until they land.
-    assert report.exit_code(catalog) == 1
+    # Every rule that declares a machine tool now has a check implementing it
+    # (Tasks 6-10); the three that could not be (ARCH-024/042/045) were
+    # relabelled to validation.tool: review. So a fully compliant project
+    # exits 0 with zero ERROR rows.
+    assert report.exit_code(catalog) == 0
 
 
 def test_bad_project_exit_code_is_one() -> None:
