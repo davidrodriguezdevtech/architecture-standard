@@ -33,7 +33,9 @@ def test_good_project_passes() -> None:
     reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, Catalog.load(RULES))}
     # good_project has only one module and no read/ dir: ARCH-046/052 have
     # nothing to check (I3: uncovered means SKIP, not a vacuous PASS).
-    skipped = {"ARCH-046", "ARCH-052"}
+    # good_project has no shared_kernel/ (Task 7: zero fixture presence, see
+    # ``_shared_kernel_available``), so ARCH-014 has nothing to check either.
+    skipped = {"ARCH-046", "ARCH-052", "ARCH-014"}
     for rule_id, report in reports.items():
         expected = Outcome.SKIP if rule_id in skipped else Outcome.PASS
         assert report.outcome is expected, rule_id
@@ -93,10 +95,24 @@ def test_minimal_project_with_no_commons_or_bootstrap_passes() -> None:
     # repo's own workspace), so both contracts ARE genuinely emitted and genuinely
     # satisfied (nothing in minimal_project imports commons.infrastructure, and
     # commons.types imports no forbidden framework) — a real PASS, not a vacuous one.
+    # Task 7: minimal_project also has no entrypoints/ (ARCH-009/011 have nothing
+    # to check) and no shared_kernel/ (ARCH-014 has nothing to check). ARCH-017
+    # also has nothing to check (no bootstrap/). ARCH-015 DOES get evaluated: its
+    # source is commons.types, which resolves via the installed arch-commons
+    # dependency the same way ARCH-034/035 do, and nothing in minimal_project
+    # imports the sales context from commons.types, so it is a genuine PASS.
     layout = ProjectLayout.detect(FIX / "minimal_project")
     reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, Catalog.load(RULES))}
     assert reports
-    skipped = {"ARCH-006", "ARCH-046", "ARCH-052"}
+    skipped = {
+        "ARCH-006",
+        "ARCH-046",
+        "ARCH-052",
+        "ARCH-009",
+        "ARCH-011",
+        "ARCH-014",
+        "ARCH-017",
+    }
     for rule_id, report in reports.items():
         expected = Outcome.SKIP if rule_id in skipped else Outcome.PASS
         assert report.outcome is expected, rule_id
@@ -165,13 +181,21 @@ def test_given_the_modular_fixture__when_checked__then_every_rule_passes() -> No
     # interpreter running this test (Task 10 correction), so ARCH-034/035 are
     # genuinely emitted (not SKIPped) here too. Every rule's contract is
     # genuinely emitted (sales has 2 modules, entrypoints, and a read/ dir;
-    # billing has entrypoints) and nothing in the fixture violates any of them,
-    # so every rule PASSes.
+    # billing has entrypoints; both contexts have 2 entrypoint modules each as
+    # of Task 7, so ARCH-011 is genuinely emitted too) and nothing in the
+    # fixture violates any of them, so every rule PASSes -- except ARCH-014
+    # (no shared_kernel/ anywhere in this fixture; Task 7 gives it zero
+    # fixture presence, see ``_shared_kernel_available``) and ARCH-017 (no
+    # bootstrap/ in this fixture either), which both SKIP instead.
     layout = ProjectLayout.detect(MODULAR)
     reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, Catalog.load(RULES))}
+    skipped_here = {"ARCH-014", "ARCH-017"}
     for rule_id, report in reports.items():
+        if rule_id in skipped_here:
+            assert report.outcome is Outcome.SKIP, (rule_id, [f.message for f in report.findings])
+            continue
         assert report.outcome is Outcome.PASS, (rule_id, [f.message for f in report.findings])
-    # All 9 rules must be present and accounted for.
+    # All 18 rules must be present and accounted for.
     assert set(reports) == set(ImportContractsCheck.rule_ids)
 
 
@@ -188,7 +212,9 @@ def test_migrated_fixtures_report_the_expected_outcomes() -> None:
             ProjectLayout.detect(FIX / "good_project"), Catalog.load(RULES)
         )
     }
-    good_skipped = {"ARCH-046", "ARCH-052"}
+    # good_project has no shared_kernel/ (Task 7: zero fixture presence), so
+    # ARCH-014 has nothing to check either.
+    good_skipped = {"ARCH-046", "ARCH-052", "ARCH-014"}
     for rule_id, report in good.items():
         expected = Outcome.SKIP if rule_id in good_skipped else Outcome.PASS
         assert report.outcome is expected, rule_id
@@ -386,3 +412,184 @@ def test_given_contexts__when_building__then_independence_names_arch_013_and_025
 def test_given_the_check__when_listing_rules__then_attributed_rules_are_claimed() -> None:
     for rid in ("ARCH-007", "ARCH-008", "ARCH-013", "ARCH-025"):
         assert rid in ImportContractsCheck.rule_ids
+
+
+# --- Task 7: ARCH-009, ARCH-011, ARCH-014, ARCH-015, ARCH-017 -------------------
+
+
+def test_given_a_bootstrap_dir__when_building__then_arch_017_forbids_importing_it(
+    tmp_path: Path,
+) -> None:
+    src = tmp_path / "src"
+    (src / "bootstrap").mkdir(parents=True)
+    (src / "sales" / "orders" / "domain").mkdir(parents=True)
+    layout = ProjectLayout.detect(tmp_path)
+    ini = build_contracts(layout)
+    assert "ARCH-017" in ini
+    assert "bootstrap" in ini
+
+
+def test_given_a_shared_kernel__when_building__then_arch_014_contract_is_emitted(
+    tmp_path: Path,
+) -> None:
+    src = tmp_path / "src"
+    (src / "shared_kernel").mkdir(parents=True)
+    (src / "sales" / "orders" / "domain").mkdir(parents=True)
+    layout = ProjectLayout.detect(tmp_path)
+    ini = build_contracts(layout)
+    assert "ARCH-014" in ini
+
+
+def test_given_no_shared_kernel__when_building__then_no_arch_014_contract(
+    tmp_path: Path,
+) -> None:
+    src = tmp_path / "src"
+    (src / "sales" / "orders" / "domain").mkdir(parents=True)
+    layout = ProjectLayout.detect(tmp_path)
+    assert "ARCH-014" not in build_contracts(layout)
+
+
+def test_given_commons_types__when_building__then_arch_015_forbids_contexts() -> None:
+    layout = ProjectLayout.detect(FIX / "good_project")
+    ini = build_contracts(layout)
+    assert "ARCH-015" in ini
+
+
+def test_given_entrypoints__when_building__then_arch_009_and_011_contracts_exist() -> None:
+    layout = ProjectLayout.detect(FIX / "good_project")
+    ini = build_contracts(layout)
+    assert "ARCH-009" in ini
+    assert "ARCH-011" in ini
+
+
+def test_given_no_shared_kernel_dir__when_checked__then_arch_014_skips_cleanly() -> None:
+    # good_project has no shared_kernel/ anywhere -- ARCH-014's contract must
+    # never be emitted for it, so the rule SKIPs (I3), not ERRORs or PASSes
+    # vacuously.
+    layout = ProjectLayout.detect(FIX / "good_project")
+    reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, Catalog.load(RULES))}
+    assert reports["ARCH-014"].outcome is Outcome.SKIP
+    assert reports["ARCH-014"].findings == ()
+
+
+def test_given_a_context_importing_bootstrap__when_checked__then_arch_017_fails(
+    tmp_path: Path,
+) -> None:
+    src = tmp_path / "src"
+    (src / "bootstrap").mkdir(parents=True)
+    (src / "bootstrap" / "__init__.py").write_text("container = 1\n", encoding="utf-8")
+    app = src / "sales" / "orders" / "application"
+    app.mkdir(parents=True)
+    (src / "sales" / "__init__.py").write_text("", encoding="utf-8")
+    (src / "sales" / "orders" / "__init__.py").write_text("", encoding="utf-8")
+    (app / "__init__.py").write_text("", encoding="utf-8")
+    (app / "svc.py").write_text("from bootstrap import container\n", encoding="utf-8")
+    (src / "sales" / "orders" / "domain").mkdir(parents=True)
+    (src / "sales" / "orders" / "domain" / "__init__.py").write_text("", encoding="utf-8")
+
+    layout = ProjectLayout.detect(tmp_path)
+    catalog = Catalog.load(packaged_rules_dir())
+    reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, catalog)}
+    assert reports["ARCH-017"].outcome is Outcome.FAIL
+
+
+def test_given_a_shared_kernel_importing_a_context__when_checked__then_arch_014_fails(
+    tmp_path: Path,
+) -> None:
+    src = tmp_path / "src"
+    sk = src / "shared_kernel"
+    sk.mkdir(parents=True)
+    (sk / "__init__.py").write_text("", encoding="utf-8")
+    (sk / "leak.py").write_text("from sales.orders.domain import model\n", encoding="utf-8")
+    domain_model = src / "sales" / "orders" / "domain" / "model"
+    domain_model.mkdir(parents=True)
+    (src / "sales" / "__init__.py").write_text("", encoding="utf-8")
+    (src / "sales" / "orders" / "__init__.py").write_text("", encoding="utf-8")
+    (src / "sales" / "orders" / "domain" / "__init__.py").write_text("", encoding="utf-8")
+    (domain_model / "__init__.py").write_text("", encoding="utf-8")
+
+    layout = ProjectLayout.detect(tmp_path)
+    catalog = Catalog.load(packaged_rules_dir())
+    reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, catalog)}
+    assert reports["ARCH-014"].outcome is Outcome.FAIL
+
+
+def test_given_commons_types_importing_a_context__when_checked__then_arch_015_fails(
+    tmp_path: Path,
+) -> None:
+    # commons.types is vendored under this project's own src/, so ARCH-015's
+    # contract is emitted with an on-disk source-module import-linter can
+    # actually parse a genuine violation into.
+    src = tmp_path / "src"
+    types_dir = src / "commons" / "types"
+    types_dir.mkdir(parents=True)
+    (src / "commons" / "__init__.py").write_text("", encoding="utf-8")
+    (types_dir / "__init__.py").write_text("", encoding="utf-8")
+    (types_dir / "leak.py").write_text("from sales.orders.domain import model\n", encoding="utf-8")
+    domain_model = src / "sales" / "orders" / "domain" / "model"
+    domain_model.mkdir(parents=True)
+    (src / "sales" / "__init__.py").write_text("", encoding="utf-8")
+    (src / "sales" / "orders" / "__init__.py").write_text("", encoding="utf-8")
+    (src / "sales" / "orders" / "domain" / "__init__.py").write_text("", encoding="utf-8")
+    (domain_model / "__init__.py").write_text("", encoding="utf-8")
+
+    layout = ProjectLayout.detect(tmp_path)
+    catalog = Catalog.load(packaged_rules_dir())
+    reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, catalog)}
+    assert reports["ARCH-015"].outcome is Outcome.FAIL
+
+
+def test_given_an_entrypoint_importing_infrastructure__when_checked__then_arch_009_fails(
+    tmp_path: Path,
+) -> None:
+    src = tmp_path / "src"
+    (src / "sales" / "__init__.py").parent.mkdir(parents=True)
+    (src / "sales" / "__init__.py").write_text("", encoding="utf-8")
+
+    orders = src / "sales" / "orders"
+    (orders / "domain" / "model").mkdir(parents=True)
+    (orders / "__init__.py").write_text("", encoding="utf-8")
+    (orders / "domain" / "__init__.py").write_text("", encoding="utf-8")
+    (orders / "domain" / "model" / "__init__.py").write_text("", encoding="utf-8")
+    (orders / "infrastructure").mkdir(parents=True)
+    (orders / "infrastructure" / "__init__.py").write_text("class Repo: ...\n", encoding="utf-8")
+
+    entrypoints = src / "sales" / "entrypoints"
+    entrypoints.mkdir(parents=True)
+    (entrypoints / "__init__.py").write_text("", encoding="utf-8")
+    (entrypoints / "http.py").write_text(
+        "from sales.orders.infrastructure import Repo\n", encoding="utf-8"
+    )
+
+    layout = ProjectLayout.detect(tmp_path)
+    assert layout.contexts == ("sales",)
+    catalog = Catalog.load(packaged_rules_dir())
+    reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, catalog)}
+    assert reports["ARCH-009"].outcome is Outcome.FAIL
+
+
+def test_given_an_entrypoint_importing_a_sibling__when_checked__then_arch_011_fails(
+    tmp_path: Path,
+) -> None:
+    src = tmp_path / "src"
+    orders = src / "sales" / "orders"
+    (orders / "domain" / "model").mkdir(parents=True)
+    (src / "sales" / "__init__.py").write_text("", encoding="utf-8")
+    (orders / "__init__.py").write_text("", encoding="utf-8")
+    (orders / "domain" / "__init__.py").write_text("", encoding="utf-8")
+    (orders / "domain" / "model" / "__init__.py").write_text("", encoding="utf-8")
+
+    entrypoints = src / "sales" / "entrypoints"
+    entrypoints.mkdir(parents=True)
+    (entrypoints / "__init__.py").write_text("", encoding="utf-8")
+    (entrypoints / "http.py").write_text("value = 1\n", encoding="utf-8")
+    # Deliberate ARCH-011 violation: one entrypoint module imports its sibling.
+    (entrypoints / "cli.py").write_text(
+        "from sales.entrypoints.http import value\n", encoding="utf-8"
+    )
+
+    layout = ProjectLayout.detect(tmp_path)
+    assert layout.contexts == ("sales",)
+    catalog = Catalog.load(packaged_rules_dir())
+    reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, catalog)}
+    assert reports["ARCH-011"].outcome is Outcome.FAIL

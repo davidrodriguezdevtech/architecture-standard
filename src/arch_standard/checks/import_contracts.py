@@ -76,14 +76,28 @@ def _commons_root_available(project: ProjectLayout) -> bool:
     return _importable("commons")
 
 
+def _shared_kernel_available(project: ProjectLayout) -> bool:
+    """True only when ``shared_kernel/`` actually exists on disk under src/.
+
+    Unlike ``commons``, shared_kernel has no installed-package fallback and no
+    template/fixture presence as of this task (it is a real spec concept,
+    §8.2, that no current project uses) -- its ARCH-014 contract must be
+    gated on this so absence yields a clean SKIP (I3), never an ERROR or a
+    spurious PASS.
+    """
+    return (project.src / "shared_kernel").is_dir()
+
+
 def _roots(project: ProjectLayout) -> list[str]:
     """Root packages import-linter should know about: real contexts plus commons/
-    bootstrap, but only when those directories actually exist (C1), or commons
-    when it resolves via an installed arch-commons instead of being vendored."""
+    bootstrap/shared_kernel, but only when those directories actually exist (C1),
+    or commons when it resolves via an installed arch-commons instead of being
+    vendored."""
     return [
         *project.contexts,
         *(["commons"] if _commons_root_available(project) else []),
-        *(d for d in ("bootstrap",) if (project.src / d).is_dir()),
+        *(["bootstrap"] if (project.src / "bootstrap").is_dir() else []),
+        *(["shared_kernel"] if _shared_kernel_available(project) else []),
     ]
 
 
@@ -245,6 +259,98 @@ def build_contracts(project: ProjectLayout) -> str:
             "",
         ]
 
+    if (project.src / "bootstrap").is_dir() and project.contexts:
+        lines += [
+            "[importlinter:contract:ARCH-017]",
+            "name = ARCH-017 nothing imports bootstrap",
+            "type = forbidden",
+            "source_modules =",
+            *(f"    {context}" for context in project.contexts),
+            "forbidden_modules =",
+            "    bootstrap",
+            "",
+        ]
+
+    # ARCH-014's contract only exists when shared_kernel/ is actually present.
+    # shared_kernel has zero presence in the generator template and zero
+    # fixtures as of this task -- it is a real spec concept (spec §8.2) no
+    # current project uses. Its absence must SKIP cleanly (I3), never ERROR
+    # or a vacuous PASS -- see ``ImportContractsCheck.run``'s ``covered`` set.
+    if _shared_kernel_available(project) and project.contexts:
+        lines += [
+            "[importlinter:contract:ARCH-014]",
+            "name = ARCH-014 shared_kernel imports nothing from any context",
+            "type = forbidden",
+            "source_modules =",
+            "    shared_kernel",
+            "forbidden_modules =",
+            *(f"    {context}" for context in project.contexts),
+            "",
+        ]
+
+    if _commons_types_importable(project) and project.contexts:
+        forbidden_015 = [f"    {context}" for context in project.contexts]
+        if _shared_kernel_available(project):
+            forbidden_015.append("    shared_kernel")
+        lines += [
+            "[importlinter:contract:ARCH-015]",
+            "name = ARCH-015 commons.types depends on nothing above it",
+            "type = forbidden",
+            "source_modules =",
+            "    commons.types",
+            "forbidden_modules =",
+            *forbidden_015,
+            "",
+        ]
+
+    for context in project.contexts:
+        if not project.entrypoints_dir(context).is_dir():
+            continue
+        # ARCH-009: entrypoints do not import infrastructure. This is only a
+        # partial proof of the rule -- ARCH-009 also requires entrypoints not
+        # to *call* persistence/session/HTTP-client code directly, which is a
+        # runtime-behaviour fact an import contract cannot see. This contract
+        # closes the "does not import" half only.
+        infra = [
+            f"    {context}.{module}.infrastructure"
+            for module in project.modules(context)
+            if project.module_infrastructure_dir(context, module).is_dir()
+        ]
+        if infra:
+            lines += [
+                f"[importlinter:contract:ARCH-009-{context}]",
+                f"name = ARCH-009 entrypoints do not touch infrastructure ({context})",
+                "type = forbidden",
+                "source_modules =",
+                f"    {context}.entrypoints",
+                "forbidden_modules =",
+                *infra,
+                "",
+            ]
+        # ARCH-011: an entrypoint module may not import a sibling entrypoint.
+        # providers.py is the sanctioned wiring seam and is exempt. Source and
+        # forbidden lists deliberately overlap (each sibling appears in both):
+        # import-linter skips a source/forbidden pair where one module is the
+        # other (or a subpackage of it), so a sibling is never reported as
+        # forbidden from itself -- the same property ARCH-046 already relies
+        # on (see ``_module_contracts``'s docstring).
+        siblings = sorted(
+            p.stem
+            for p in project.entrypoints_dir(context).glob("*.py")
+            if p.stem not in ("__init__", "providers")
+        )
+        if len(siblings) > 1:
+            lines += [
+                f"[importlinter:contract:ARCH-011-{context}]",
+                f"name = ARCH-011 entrypoints do not import each other ({context})",
+                "type = forbidden",
+                "source_modules =",
+                *(f"    {context}.entrypoints.{name}" for name in siblings),
+                "forbidden_modules =",
+                *(f"    {context}.entrypoints.{name}" for name in siblings),
+                "",
+            ]
+
     domain_app = _domain_application_modules(project)
     if domain_app and _commons_root_available(project):
         lines += [
@@ -320,8 +426,13 @@ class ImportContractsCheck:
         "ARCH-006",
         "ARCH-007",
         "ARCH-008",
+        "ARCH-009",
+        "ARCH-011",
         "ARCH-012",
         "ARCH-013",
+        "ARCH-014",
+        "ARCH-015",
+        "ARCH-017",
         "ARCH-025",
         "ARCH-034",
         "ARCH-035",
