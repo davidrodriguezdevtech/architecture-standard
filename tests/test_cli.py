@@ -44,6 +44,27 @@ def test_check_on_bad_project_exits_one() -> None:
     assert main(["check", str(FIX / "bad_project")]) == 1
 
 
+def test_given_a_project_with_a_non_catalog_rules_dir__when_checking__then_it_fails_cleanly(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # rules/ is a common directory name (business rules, Rego, Semgrep
+    # policies). `_run_check` overrides the packaged catalog with a
+    # project-local `rules/` when one exists; if that directory isn't
+    # actually this tool's catalog, Catalog.load raises CatalogError. That
+    # must produce a clean error on stderr and an exit code distinct from
+    # both "violations found" (1) and "clean" (0) -- never a traceback.
+    project = tmp_path / "proj"
+    (project / "rules").mkdir(parents=True)
+    (project / "rules" / "business.yaml").write_text("not: a-catalog\n", encoding="utf-8")
+    code = main(["check", str(project)])
+    captured = capsys.readouterr()
+    assert code not in (0, 1)
+    assert "Traceback" not in captured.err
+    assert "Traceback" not in captured.out
+    assert "error:" in captured.err.lower()
+
+
 def test_given_core_mode__when_checking__then_only_core_rules_are_reported(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

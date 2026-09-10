@@ -11,7 +11,7 @@ from arch_standard.checks.base import ProjectLayout
 from arch_standard.checks.import_contracts import _roots, build_contracts
 from arch_standard.docgen import render_standard, write_standard
 from arch_standard.report import Report
-from arch_standard.rules.catalog import Catalog, packaged_rules_dir
+from arch_standard.rules.catalog import Catalog, CatalogError, packaged_rules_dir
 from arch_standard.version_stamp import StampError, majors_crossed, read_stamp
 
 
@@ -262,20 +262,30 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_usage()
         return 2
     args = parser.parse_args(argv)
-    if args.command == "check":
-        return _run_check(args.path, core=args.core)
-    if args.command == "docs":
-        return _run_docs(check=args.check)
-    if args.command == "release-snapshot":
-        return _run_release_snapshot(args.version)
-    if args.command == "release-check":
-        return _run_release_check(args.version, args.rules_dir)
-    if args.command == "changelog":
-        return _run_changelog(
-            args.version, args.rules_dir, args.changelog_file, args.migration_notes
-        )
-    if args.command == "render-importlinter":
-        return _run_render_importlinter(args.path)
+    try:
+        if args.command == "check":
+            return _run_check(args.path, core=args.core)
+        if args.command == "docs":
+            return _run_docs(check=args.check)
+        if args.command == "release-snapshot":
+            return _run_release_snapshot(args.version)
+        if args.command == "release-check":
+            return _run_release_check(args.version, args.rules_dir)
+        if args.command == "changelog":
+            return _run_changelog(
+                args.version, args.rules_dir, args.changelog_file, args.migration_notes
+            )
+        if args.command == "render-importlinter":
+            return _run_render_importlinter(args.path)
+    except CatalogError as exc:
+        # A rule-catalog load failure (e.g. a project-local `rules/` directory
+        # that isn't actually this tool's catalog) is a tool-configuration
+        # problem, not an architecture violation -- it must never share exit
+        # code 1 with "violations found". Exit 2 follows the same convention
+        # as an unknown subcommand: something is wrong with how this was
+        # invoked, not with the project being checked.
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     return 0
 
 
