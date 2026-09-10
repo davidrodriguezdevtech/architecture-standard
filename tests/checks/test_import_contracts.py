@@ -491,6 +491,17 @@ def test_given_a_context_importing_bootstrap__when_checked__then_arch_017_fails(
     catalog = Catalog.load(packaged_rules_dir())
     reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, catalog)}
     assert reports["ARCH-017"].outcome is Outcome.FAIL
+    # Discriminate a genuine contract break from ImportContractsCheck._fail_all
+    # (which FAILs every rule wholesale when the subprocess errors before
+    # reporting any broken contract): _fail_all's messages are distinct
+    # strings ("... did not run: ...", "timed out ...", "... exited ... without
+    # reporting a broken contract"); only the real per-contract path emits
+    # this exact message.
+    assert reports["ARCH-017"].findings[0].message == "import-linter contract broken"
+    # And an unrelated rule this fixture does not violate must stay PASS, not
+    # be swept into FAIL alongside ARCH-017 -- which is exactly what _fail_all
+    # would do to every rule.
+    assert reports["ARCH-001"].outcome is Outcome.PASS
 
 
 def test_given_a_shared_kernel_importing_a_context__when_checked__then_arch_014_fails(
@@ -512,6 +523,10 @@ def test_given_a_shared_kernel_importing_a_context__when_checked__then_arch_014_
     catalog = Catalog.load(packaged_rules_dir())
     reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, catalog)}
     assert reports["ARCH-014"].outcome is Outcome.FAIL
+    # See the ARCH-017 test above for why both of these are needed to
+    # discriminate a genuine contract break from ImportContractsCheck._fail_all.
+    assert reports["ARCH-014"].findings[0].message == "import-linter contract broken"
+    assert reports["ARCH-001"].outcome is Outcome.PASS
 
 
 def test_given_commons_types_importing_a_context__when_checked__then_arch_015_fails(
@@ -537,6 +552,10 @@ def test_given_commons_types_importing_a_context__when_checked__then_arch_015_fa
     catalog = Catalog.load(packaged_rules_dir())
     reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, catalog)}
     assert reports["ARCH-015"].outcome is Outcome.FAIL
+    # See the ARCH-017 test above for why both of these are needed to
+    # discriminate a genuine contract break from ImportContractsCheck._fail_all.
+    assert reports["ARCH-015"].findings[0].message == "import-linter contract broken"
+    assert reports["ARCH-001"].outcome is Outcome.PASS
 
 
 def test_given_an_entrypoint_importing_infrastructure__when_checked__then_arch_009_fails(
@@ -566,6 +585,10 @@ def test_given_an_entrypoint_importing_infrastructure__when_checked__then_arch_0
     catalog = Catalog.load(packaged_rules_dir())
     reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, catalog)}
     assert reports["ARCH-009"].outcome is Outcome.FAIL
+    # See the ARCH-017 test above for why both of these are needed to
+    # discriminate a genuine contract break from ImportContractsCheck._fail_all.
+    assert reports["ARCH-009"].findings[0].message == "import-linter contract broken"
+    assert reports["ARCH-001"].outcome is Outcome.PASS
 
 
 def test_given_an_entrypoint_importing_a_sibling__when_checked__then_arch_011_fails(
@@ -593,3 +616,7 @@ def test_given_an_entrypoint_importing_a_sibling__when_checked__then_arch_011_fa
     catalog = Catalog.load(packaged_rules_dir())
     reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, catalog)}
     assert reports["ARCH-011"].outcome is Outcome.FAIL
+    # See the ARCH-017 test above for why both of these are needed to
+    # discriminate a genuine contract break from ImportContractsCheck._fail_all.
+    assert reports["ARCH-011"].findings[0].message == "import-linter contract broken"
+    assert reports["ARCH-001"].outcome is Outcome.PASS
