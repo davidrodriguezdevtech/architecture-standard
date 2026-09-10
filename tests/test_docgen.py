@@ -78,3 +78,20 @@ def test_given_the_catalog__when_rendered__then_the_core_table_comes_first() -> 
 def test_given_a_rule_block__when_rendered__then_the_tier_is_shown() -> None:
     text = render_standard(Catalog.load(RULES), PROSE)
     assert "**Tier:**" in text
+
+
+def test_given_a_rule_block__when_rendered__then_the_validation_tool_is_shown() -> None:
+    # `MUST | partial` alone never says which part is proven; every rule
+    # block must render its validation.tool so the tool used is visible.
+    text = render_standard(Catalog.load(RULES), PROSE)
+    assert "- **Validation:** `ast-checker`" in text
+    assert "- **Validation:** `import-linter`" in text
+
+
+def test_given_a_rule_with_a_validation_detail__when_rendered__then_the_caveat_is_shown() -> None:
+    # ARCH-008's caveat (Task 6/10 honesty language): the generated document
+    # is the one artifact readers actually read, so it must say which half
+    # of the contract is machine-checked and which is reviewed at PR time.
+    text = render_standard(Catalog.load(RULES), PROSE)
+    assert "layered contract (import half)" in text
+    assert "Protocol conformance of adapters is reviewed at PR time" in text

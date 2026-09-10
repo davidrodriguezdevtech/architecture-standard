@@ -916,6 +916,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-001 — Domain does not depend on infrastructure
 - **Level:** MUST · **Automation:** full · **Tier:** core · **Category:** dependencies
+- **Validation:** `import-linter` — layered contract; domain is the innermost layer
 - **Description:** No module under a context's domain/ package may import from that context's infrastructure/ package or from commons/infrastructure/.
 - **Rationale:** Inverting this dependency (DIP) lets the core be tested without a database and lets the store be swapped without touching business rules.
 - **Correct:**
@@ -933,6 +934,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-002 — Domain does not depend on application
 - **Level:** MUST · **Automation:** full · **Tier:** core · **Category:** dependencies
+- **Validation:** `import-linter` — layered contract
 - **Description:** No module under a context's domain/ package imports from that context's application/ package.
 - **Rationale:** The domain is the innermost layer; use-case orchestration depends on it, never the reverse.
 - **Correct:**
@@ -948,6 +950,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-003 — Domain does not depend on frameworks
 - **Level:** MUST · **Automation:** full · **Tier:** core · **Category:** dependencies
+- **Validation:** `import-linter` — forbidden contract; domain -/-> (pydantic, sqlalchemy, fastapi, ...)
 - **Description:** No module under a context's domain/ package imports a web framework, an ORM, a DI container, or pydantic.
 - **Rationale:** A framework-free domain stays unit-testable without a runtime and keeps vendor choices out of the business core.
 - **Correct:**
@@ -965,6 +968,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-004 — Domain performs no I/O
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** dependencies
+- **Validation:** `ruff` — flake8-tidy-imports banned-api (datetime.now, uuid4, open, socket) in domain/
 - **Description:** No module under a context's domain/ package calls the wall clock, a random source, the network, or the disk; time and identity arrive through the Clock and IdGenerator ports.
 - **Rationale:** A domain that reads datetime.now() or a socket is non-deterministic and cannot be tested in microseconds.
 - **Correct:**
@@ -983,6 +987,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-005 — Application does not depend on infrastructure
 - **Level:** MUST · **Automation:** full · **Tier:** core · **Category:** dependencies
+- **Validation:** `import-linter` — layered contract
 - **Description:** No module under a context's application/ package imports from that context's infrastructure/ package or from commons/infrastructure/.
 - **Rationale:** Orchestration names ports only; the concrete adapter is injected from providers.py and is never imported by the use case.
 - **Correct:**
@@ -998,6 +1003,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-006 — Application does not depend on entrypoints
 - **Level:** MUST · **Automation:** full · **Tier:** core · **Category:** dependencies
+- **Validation:** `import-linter` — layered contract
 - **Description:** No module under a context's application/ package imports from that context's entrypoints/ package.
 - **Rationale:** Entrypoints are inbound adapters that call the application; the dependency arrow never points back out to transport code.
 - **Correct:**
@@ -1013,6 +1019,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-007 — Application does not construct concrete adapters
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** dependencies
+- **Validation:** `grimp` — import-graph assert; catches adapters imported from infrastructure/, not an adapter class defined and instantiated within application/ itself
 - **Description:** No module under a context's application/ package instantiates an infrastructure adapter class such as SqlAlchemyOrderRepository(...) or HttpCreditGateway(...).
 - **Rationale:** Constructing an adapter couples the use case to one technology choice and defeats dependency injection.
 - **Correct:**
@@ -1030,6 +1037,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-008 — Infrastructure implements ports; the core imports abstractions only
 - **Level:** MUST · **Automation:** partial · **Tier:** core · **Category:** dependencies
+- **Validation:** `import-linter` — layered contract (import half); Protocol conformance of adapters is reviewed at PR time
 - **Description:** Every concrete adapter in a context's infrastructure/ package implements a Protocol declared in domain/model/ports.py or a colocated application Protocol; domain/ and application/ import only those abstractions.
 - **Rationale:** The core names the contract it needs and infrastructure plugs in behind it, so the store can be replaced without editing business rules.
 - **Correct:**
@@ -1047,6 +1055,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-009 — Entrypoints obtain wired services from providers; never construct or call infrastructure directly
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** dependencies
+- **Validation:** `import-linter` — forbidden contract (import half); entrypoints calling persistence/session/http-client directly is a runtime fact the import graph cannot see
 - **Description:** No module under a context's entrypoints/ package constructs an infrastructure adapter or calls persistence, sessions, or HTTP clients directly; it obtains a fully wired service from providers.py and calls only that service.
 - **Rationale:** An entrypoint that news up a repository or calls session.execute is untestable without transport and leaks wiring across the boundary.
 - **Correct:**
@@ -1065,6 +1074,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-010 — Entrypoints contain no business logic
 - **Level:** SHOULD · **Automation:** partial · **Tier:** full · **Category:** dependencies
+- **Validation:** `review` — PR checklist; does the handler decide anything about business meaning?
 - **Description:** A module under a context's entrypoints/ package does not branch on business meaning; it translates the stimulus into a command, calls one service method, and maps the result or exception back to the transport.
 - **Rationale:** Business rules in a controller are hidden from domain tests and cannot be reused by another entrypoint.
 - **Correct:**
@@ -1082,6 +1092,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-011 — Entrypoints call application services, not other entrypoints
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** dependencies
+- **Validation:** `import-linter` — forbidden contract; entrypoints/*.py -/-> entrypoints/*.py except providers
 - **Description:** No module under a context's entrypoints/ package imports or calls another entrypoint module (providers.py aside).
 - **Rationale:** Chaining entrypoints hides a use case behind transport translation and duplicates orchestration.
 - **Correct:**
@@ -1098,6 +1109,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-012 — A context imports nothing from another context
 - **Level:** MUST · **Automation:** full · **Tier:** core · **Category:** dependencies
+- **Validation:** `import-linter` — independence contract
 - **Description:** A bounded context imports nothing from another bounded context (its domain/, application/, or infrastructure/ packages).
 - **Rationale:** Keeps contexts substitutable and independently deployable; a change inside one context cannot break another; the contract between teams stays explicit.
 - **Correct:**
@@ -1114,6 +1126,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-013 — No dependency cycles between contexts
 - **Level:** SHOULD · **Automation:** full · **Tier:** full · **Category:** dependencies
+- **Validation:** `grimp` — import-graph cycle detection across top-level context packages
 - **Description:** The import graph over the top-level context packages is acyclic; no two contexts import each other, directly or transitively.
 - **Rationale:** A cycle fuses two contexts into one unit that cannot be reasoned about, tested, or extracted separately.
 - **Correct:**
@@ -1130,6 +1143,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-014 — shared_kernel imports nothing from any context
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** dependencies
+- **Validation:** `import-linter` — forbidden contract; shared_kernel -/-> contexts
 - **Description:** No module under shared_kernel/ imports from any src/<context> package.
 - **Rationale:** The shared kernel is upstream of every context; importing a context would invert the governance direction and couple all consumers.
 - **Correct:**
@@ -1145,6 +1159,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-015 — commons/types imports nothing from contexts, application, infrastructure, or shared_kernel
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** dependencies
+- **Validation:** `import-linter` — forbidden contract; commons.types -/-> everything above it
 - **Description:** No module under commons/types/ imports from any context package, from any application/ or infrastructure/ package, or from shared_kernel/.
 - **Rationale:** commons/types is the dependency-free base importable by everyone including domain/; any upward import would create a cycle.
 - **Correct:**
@@ -1161,6 +1176,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-016 — commons/types contains no business logic
 - **Level:** MUST · **Automation:** manual · **Tier:** full · **Category:** dependencies
+- **Validation:** `review` — PR checklist; would you mention this when describing the business?
 - **Description:** Modules under commons/types/ hold only dependency-free technical primitives and Protocols, with no rule a business person would recognise.
 - **Rationale:** A business policy hidden in commons/types is invisible to the owning context and silently shared with every other one.
 - **Correct:**
@@ -1179,6 +1195,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-017 — Nothing imports bootstrap
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** dependencies
+- **Validation:** `import-linter` — forbidden contract; * -/-> bootstrap (allow main.py)
 - **Description:** No module outside bootstrap/ imports from bootstrap/, with main.py the only exception.
 - **Rationale:** bootstrap/ is the composition root; importing it from a context pulls wiring and config into business code and creates a god-module dependency.
 - **Correct:**
@@ -1194,6 +1211,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-018 — No setters that permit invalid aggregate/entity state
 - **Level:** SHOULD · **Automation:** partial · **Tier:** full · **Category:** model_integrity
+- **Validation:** `ast-checker` — flag public setters or assignable public attributes on domain model classes
 - **Description:** Aggregate and entity classes expose no public attribute setter or property setter that can move the object into a state violating its invariants; mutation happens only through business-named methods that validate.
 - **Rationale:** Setter-driven aggregates allow illegal transitions and bypass the invariant checks that intention-revealing methods enforce.
 - **Correct:**
@@ -1214,6 +1232,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-019 — Internal aggregate collections are not exposed mutable
 - **Level:** SHOULD · **Automation:** partial · **Tier:** full · **Category:** model_integrity
+- **Validation:** `ast-checker` — flag accessors returning a bare internal mutable container
 - **Description:** A property or accessor on an aggregate that surfaces an internal list, dict, or set returns a copy or an immutable view, never the backing collection.
 - **Rationale:** Handing out the live collection lets callers mutate aggregate state without passing through invariant-checking methods.
 - **Correct:**
@@ -1233,6 +1252,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-020 — Inter-aggregate references are by ID, not object
 - **Level:** SHOULD · **Automation:** partial · **Tier:** full · **Category:** model_integrity
+- **Validation:** `review` — PR checklist; does any aggregate field hold another aggregate instance?
 - **Description:** An aggregate root holds another aggregate's identifier (for example CustomerId), not a reference to the other aggregate instance.
 - **Rationale:** Object references across aggregates build large graphs, blur the consistency boundary, and make the context hard to extract.
 - **Correct:**
@@ -1250,6 +1270,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-021 — One transaction modifies one aggregate (UoW boundary)
 - **Level:** MUST* · **Automation:** partial · **Tier:** full · **Category:** model_integrity
+- **Validation:** `review` — PR checklist plus ADR waiver expiry check over docs/adr/
 - **Description:** A single unit-of-work block loads and mutates exactly one aggregate instance; touching a second aggregate in the same transaction requires a documented ADR justification.
 - **Rationale:** One aggregate per transaction keeps the Unit of Work portable to stores without multi-item transactions and keeps the extraction path open.
 - **Correct:**
@@ -1270,6 +1291,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-022 — Repositories operate at root level and return aggregates, not rows/DTOs
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** model_integrity
+- **Validation:** `review` — PR checklist; do repo methods return aggregates and stay at root level?
 - **Description:** Repository port methods are named at aggregate-root level (get, add, save, next_identity, specification queries) and return aggregate instances, never ORM rows, tuples, or DTOs, and never a find_x_with_y() -> DTO business query.
 - **Rationale:** A repository that returns rows or answers business questions leaks persistence and grows into an unbounded business service.
 - **Correct:**
@@ -1287,6 +1309,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-023 — Domain events are immutable and past-tense
 - **Level:** MUST · **Automation:** full · **Tier:** core · **Category:** model_integrity
+- **Validation:** `ast-checker` — frozen dataclass plus past-tense name regex
 - **Description:** Every class defined in a context's domain/model/events.py is a frozen dataclass and is named in the past tense (e.g. OrderPlaced).
 - **Rationale:** A past fact does not change, so the object is immutable; the past-tense name signals it is a fact, not a command.
 - **Correct:**
@@ -1304,6 +1327,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-024 — When published, integration events have a versioned schema at the context root
 - **Level:** MUST* · **Automation:** manual · **Tier:** full · **Category:** application
+- **Validation:** `review` — PR checklist; "starts being consumed" is a judgment about intent, not an import/AST fact
 - **Description:** A context does not publish integration events by default. When it starts being consumed by another context, the promoted event moves out of its aggregate module's domain/model/events.py into a dedicated <context>/integration_events.py with an explicit version field, and its wire schema is exported to the events catalog; consumers never import the event class.
 - **Rationale:** Integration events are a cross-team contract; expressed as importable classes they would couple producer and consumer lifecycles. There is no context-level application/ package (ARCH-048), so the promoted module lives at the context root, not under any aggregate module.
 - **Correct:**
@@ -1323,6 +1347,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-025 — Cross-context communication is through a declared contract, never imports
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** application
+- **Validation:** `import-linter` — independence contract (import half); declared contract/ACL presence on the other side is reviewed at PR time
 - **Description:** A context reaches another context only through a contract it declares (a consumer-driven port wired in bootstrap/, or a serialized integration event with an ACL), with zero imports between contexts; synchronous by default, asynchronous when the use case tolerates eventual consistency.
 - **Rationale:** Contract-mediated communication keeps contexts independently deployable and makes the seam explicit for the teams on each side.
 - **Correct:**
@@ -1341,6 +1366,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-026 — External-provider dependencies sit behind a port
 - **Level:** SHOULD · **Automation:** partial · **Tier:** full · **Category:** application
+- **Validation:** `review` — PR checklist; is every external provider injected behind a Protocol?
 - **Description:** Any dependency on an external provider (email, payment, SMS, third-party API) is used through a Protocol injected into the use case, not by importing the vendor SDK into application/.
 - **Rationale:** A port at the integration seam keeps the use case testable with a fake and lets the provider be swapped without touching orchestration.
 - **Correct:**
@@ -1358,6 +1384,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-027 — The domain does not cross the application boundary
 - **Level:** SHOULD · **Automation:** manual · **Tier:** full · **Category:** application
+- **Validation:** `review` — PR checklist; does any service method return a domain type?
 - **Description:** An application service method returns a DTO or a primitive, never an aggregate, entity, or domain value object; the mapping happens in the application layer.
 - **Rationale:** Returning the aggregate couples the transport and its callers to the internal model, so the model can no longer change freely.
 - **Correct:**
@@ -1374,6 +1401,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-028 — No Active Record
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** model_integrity
+- **Validation:** `ruff` — banned-api; no ORM base or import in domain/, plus ast check for save/delete on model classes
 - **Description:** An aggregate class has no persistence base class, ORM decorator, or ORM import and no save()/delete() method; translation between the aggregate and its stored form lives entirely in infrastructure/.
 - **Rationale:** An Active Record aggregate entangles invariants with the database and cannot be unit-tested without it.
 - **Correct:**
@@ -1395,6 +1423,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-029 — Use cases express intent, not generic CRUD
 - **Level:** SHOULD · **Automation:** manual · **Tier:** full · **Category:** application
+- **Validation:** `review` — PR checklist; does the method name a business action?
 - **Description:** Application service methods are named for the business action (place_order, cancel_order, add_item) and carry an intent-revealing command, not create/update/delete over a data shape.
 - **Rationale:** CRUD method names hide the business intent, so invariants cannot be verified per change.
 - **Correct:**
@@ -1410,6 +1439,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-030 — One general application service class per context by default
 - **Level:** SHOULD · **Automation:** partial · **Tier:** full · **Category:** application
+- **Validation:** `ast-checker` — service size warning at ~7 methods / ~200 lines / 5 constructor params
 - **Description:** A context has one application service class by default with one public method per use case; the checker warns (does not fail) past about 7 public methods, 200 lines, or 5 constructor parameters and adds a review-checklist item.
 - **Rationale:** A single general service is simpler than pre-split capability services; splitting is mechanical and only pays off once cohesion actually drops.
 - **Correct:**
@@ -1427,6 +1457,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-031 — Value Objects are immutable and validate on construction
 - **Level:** MUST · **Automation:** partial · **Tier:** core · **Category:** model_integrity
+- **Validation:** `ast-checker` — value_objects.py classes must be frozen dataclasses with __post_init__
 - **Description:** Every value object class is a frozen dataclass with no setters, validates its invariants in __post_init__, and returns new instances from its methods rather than mutating self.
 - **Rationale:** A value object is defined by its values; mutability or unvalidated construction lets invalid values propagate through the model.
 - **Correct:**
@@ -1451,6 +1482,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-032 — The domain raises only exceptions derived from commons DomainError
 - **Level:** SHOULD · **Automation:** partial · **Tier:** full · **Category:** model_integrity
+- **Validation:** `review` — PR checklist plus ast scan for raise of non-DomainError types in domain/
 - **Description:** Code under domain/ raises only exception types defined in domain/model/exceptions.py, each subclassing commons.types.errors.DomainError, never a bare ValueError, KeyError, or library exception.
 - **Rationale:** A consistent domain exception hierarchy lets the application and entrypoints map failures predictably and keeps library exceptions from carrying business meaning.
 - **Correct:**
@@ -1468,6 +1500,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-033 — Every use-case write goes through a Unit of Work
 - **Level:** MUST · **Automation:** partial · **Tier:** core · **Category:** model_integrity
+- **Validation:** `ast-checker` — state-changing service methods must contain a `with uow:` and uow.commit()
 - **Description:** Every application service method that changes state opens a UnitOfWork block and commits through it; the service never calls commit on a repository or a session directly.
 - **Rationale:** A single transaction boundary per use case is also the point where domain events are collected for publication.
 - **Correct:**
@@ -1489,6 +1522,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-034 — commons/infrastructure is not imported by domain or application
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** dependencies
+- **Validation:** `import-linter` — forbidden contract; domain|application -/-> commons.infrastructure
 - **Description:** No module under any context's domain/ or application/ package imports from commons/infrastructure/.
 - **Rationale:** commons/infrastructure holds framework-bound implementations; only infrastructure/, entrypoints/, bootstrap/, and tests may touch them.
 - **Correct:**
@@ -1504,6 +1538,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-035 — commons/types does not import any framework
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** dependencies
+- **Validation:** `import-linter` — forbidden contract; commons.types -/-> (sqlalchemy, fastapi, pydantic, ...)
 - **Description:** No module under commons/types/ imports a web framework, an ORM, a DI container, pydantic, or any other third-party runtime library.
 - **Rationale:** commons/types must stay importable with zero third-party dependencies so the domain that depends on it stays pure.
 - **Correct:**
@@ -1520,6 +1555,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-036 — Integration events are published via transactional outbox when a guarantee is required
 - **Level:** MUST* · **Automation:** manual · **Tier:** full · **Category:** application
+- **Validation:** `review` — PR checklist plus ADR check; applies only when a delivery guarantee is declared
 - **Description:** When a use case requires a delivery or transactional side-effect guarantee, its integration events are written to the outbox table in the same transaction as the state change and published by a separate process; publish-after-commit is allowed only when no such guarantee is required.
 - **Rationale:** Publishing after commit can lose events if the process dies; the outbox makes the event durable together with the state change.
 - **Correct:**
@@ -1540,6 +1576,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-037 — Entrypoint wiring is defined in per-context providers.py, backed by bootstrap
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** dependencies
+- **Validation:** `ast-checker` — providers.py present per context; entrypoints import wired services only from it
 - **Description:** Each context exposes its wired services through entrypoints/providers.py, which pulls singletons and factories from the bootstrap/ container; entrypoints import services only from providers.py.
 - **Rationale:** One per-context wiring seam keeps construction out of handlers and gives the composition root a single place to assemble each service.
 - **Correct:**
@@ -1558,6 +1595,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-038 — Domain objects are never mocked
 - **Level:** SHOULD · **Automation:** partial · **Tier:** full · **Category:** testing
+- **Validation:** `review` — PR checklist plus grep for Mock(spec=<domain type>) in tests
 - **Description:** Tests never replace an aggregate, entity, domain value object, domain service, or shared_kernel value object with a mock or stub; they exercise the real object.
 - **Rationale:** Mocking the domain couples tests to its implementation and stops them verifying the real invariants.
 - **Correct:**
@@ -1575,6 +1613,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-039 — In-memory fakes share the contract test with the real adapter
 - **Level:** SHOULD · **Automation:** manual · **Tier:** full · **Category:** testing
+- **Validation:** `review` — PR checklist; is the fake bound to the shared contract test?
 - **Description:** Each in-memory fake (repository, event bus, clock) is exercised by the same contract test as the real adapter, and the repository contract test asserts that domain events surface in uow.collect_new_events() after add/get.
 - **Rationale:** A fake not held to the real adapter's contract can silently diverge, for instance a custom UnitOfWork that forgets track() and drops events.
 - **Correct:**
@@ -1590,6 +1629,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-040 — Test names follow given_<state>__when_<action>__then_<result>
 - **Level:** SHOULD · **Automation:** full · **Tier:** full · **Category:** testing
+- **Validation:** `ast-checker` — regex over test function names; ^given_.+__when_.+__then_.+$
 - **Description:** Every test function name matches given_<state>__when_<action>__then_<result>, with double underscores separating the three parts.
 - **Rationale:** A uniform three-part name states the scenario and the expectation without reading the body and keeps the suite to one test per rule.
 - **Correct:**
@@ -1605,6 +1645,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-041 — A module is promoted to a package only past the Section 15 thresholds
 - **Level:** MAY · **Automation:** partial · **Tier:** full · **Category:** progressive_structure
+- **Validation:** `ast-checker` — promotion thresholds check (line count, aggregate count, port count)
 - **Description:** A flat module (domain/model.py, application/<capability>.py, infrastructure/<adapter>.py) is split into a package only once it crosses a Section 15 threshold, for example domain/model.py past about 400 lines or 2 aggregates.
 - **Rationale:** Structure should grow when it hurts, not before; promoting a module early adds indirection with no payoff.
 - **Correct:**
@@ -1619,6 +1660,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-042 — Port placement follows the three-homes rule
 - **Level:** SHOULD · **Automation:** manual · **Tier:** full · **Category:** application
+- **Validation:** `review` — PR checklist; "shared across use-case modules" and the 3+ threshold need cross-module usage analysis, not an AST fact
 - **Description:** A Protocol is placed by the three-homes rule (generic technical Protocols in commons/types/, domain-vocabulary contracts in domain/model/ports.py, non-domain outbound contracts colocated in the use-case module), and there is no application/ports.py until a context has 3+ application ports shared across use-case modules.
 - **Rationale:** Keeping domain/model/ports.py a faithful list of domain concepts keeps integration-contract churn out of the stable domain file.
 - **Correct:**
@@ -1635,6 +1677,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-043 — Every published message uses the commons event envelope
 - **Level:** MUST* · **Automation:** partial · **Tier:** full · **Category:** cross_cutting
+- **Validation:** `ast-checker` — publish call argument must be an EventEnvelope with the six required fields
 - **Description:** Every published integration message is wrapped in the commons/ EventEnvelope carrying correlation_id, causation_id, occurred_at, event_type, event_version, and payload, and the correlation id is read from the contextvar set by the entrypoint.
 - **Rationale:** A uniform envelope with a correlation id on a contextvar is what makes an asynchronous flow traceable through a broker.
 - **Correct:**
@@ -1650,6 +1693,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-044 — Every integration event has a published schema in the events catalog
 - **Level:** MUST* · **Automation:** partial · **Tier:** full · **Category:** cross_cutting
+- **Validation:** `schema` — every published event has a catalog schema; producer fixtures validate against it
 - **Description:** For every integration event a context publishes there is a versioned schema file in the events catalog, and the producer contract test validates each emitted event against it.
 - **Rationale:** The published schema is the Published Language, the single artifact producers and consumers agree on, versioned so a change is a new event version rather than an in-place edit.
 - **Correct:**
@@ -1665,6 +1709,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-045 — A context depends only on consumer-driven contracts it declares
 - **Level:** MUST · **Automation:** manual · **Tier:** full · **Category:** application
+- **Validation:** `review` — PR checklist; "carries only the fields and operations it uses" is intent, not an AST fact (import half is ARCH-012/025)
 - **Description:** For anything a context needs from another context it declares its own narrow port carrying only the fields and operations it uses; it does not consume the other context's full interface or full event shape.
 - **Rationale:** Consumer-driven contracts mean removing a field the consumer does not use never breaks it, and the contract documents exactly what the boundary carries.
 - **Correct:**
@@ -1682,6 +1727,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-046 — Aggregate module isolation
 - **Level:** MUST · **Automation:** full · **Tier:** core · **Category:** structure
+- **Validation:** `import-linter` — forbidden contract between sibling modules' application and infrastructure
 - **Description:** An aggregate module does not import another aggregate module's application/ or infrastructure/ package. References between aggregates are by ID, and those ID types live in the context's shared/ids.py.
 - **Rationale:** Aggregate modules are consistency boundaries. Reaching into a sibling's service or repository re-couples them and makes the one-transaction-one-aggregate rule unenforceable.
 - **Correct:**
@@ -1700,6 +1746,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-047 — Context shared area is strictly limited
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** structure
+- **Validation:** `ast-checker` — no class named *Service/*Repository outside shared/services.py; no aggregate roots; shared/services.py classes must not mutate their own state
 - **Description:** <context>/shared/ contains only ID types, policy-free value objects used by two or more aggregates of that context, and domain services spanning them. Those spanning services live specifically in shared/services.py — the one file in shared/ exempt from the *Service/*Repository name-suffix ban, since it is the standard's own documented home for them. Every other file in shared/ keeps the full name-suffix ban, and shared/services.py classes still may not mutate their own state.
 - **Rationale:** It is the only context-level code area, so without a narrow admission test it becomes the junk drawer that couples every aggregate module together. Naming the one legitimate exception explicitly (rather than banning *Service outright) keeps the carve-out narrow instead of inviting every file in shared/ to claim it.
 - **Correct:**
@@ -1726,6 +1773,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-048 — No context-level application package
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** structure
+- **Validation:** `ast-checker` — filesystem check for <context>/application
 - **Description:** A context has no application/ package of its own. Application services live in aggregate modules, one per aggregate.
 - **Rationale:** DDD has no "application service of the context"; application services are per use case and belong with the model they coordinate. A context-level one becomes a coordination layer that hides non-atomic multi-aggregate flow.
 - **Correct:**
@@ -1739,6 +1787,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-049 — One aggregate root per aggregate module
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** structure
+- **Validation:** `ast-checker` — exactly one non-reserved module in domain/model
 - **Description:** An aggregate module's domain/model/ declares exactly one aggregate root, in a file named after it.
 - **Rationale:** The 1:1 mapping is what makes "where does this go?" answerable without judgement, and it makes the transaction boundary visible in the tree.
 - **Correct:**
@@ -1752,6 +1801,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-050 — Declared context dependency graph
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** structure
+- **Validation:** `schema` — parse contexts.toml, topological sort
 - **Description:** Every cross-context dependency is declared in contexts.toml, and the declared graph is acyclic.
 - **Rationale:** Contexts never import each other, so no import analysis can see a runtime cycle wired through the composition root. Declaring the graph is the only way to check it, and it turns adding an edge into a reviewable diff.
 - **Correct:**
@@ -1770,6 +1820,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-051 — Repositories are not query interfaces
 - **Level:** MUST · **Automation:** partial · **Tier:** core · **Category:** model_integrity
+- **Validation:** `ast-checker` — repository methods returning non-aggregate collections
 - **Description:** Repositories persist and retrieve aggregate roots. They are not general-purpose query interfaces: projection-oriented, reporting, search, dashboard, and cross-aggregate reads belong to the context's read/ layer.
 - **Rationale:** A repository that grows report queries stops being a collection of roots, drags query pressure into the write model, and starts returning DTOs instead of aggregates.
 - **Correct:**
@@ -1787,6 +1838,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-052 — Read layer does not import the write side
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** structure
+- **Validation:** `import-linter` — forbidden contract read -> modules' domain/application
 - **Description:** <context>/read/ imports no aggregate module's domain/ or application/ package.
 - **Rationale:** The read layer exists to answer queries the write model is not shaped for. Importing the write side re-couples them and pulls invariant-carrying objects into query paths.
 - **Correct:**
@@ -1804,6 +1856,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-053 — The core does not log
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** cross_cutting
+- **Validation:** `ruff` — banned logging imports/calls under domain/ and application/
 - **Description:** Modules under domain/ and application/ import no logging library and make no logging calls. They raise domain exceptions and emit domain events; entrypoints and infrastructure adapters log.
 - **Rationale:** Logging is an observability concern of the adapters. Keeping it out of the core keeps the core free of ambient I/O and makes behavior fully assertable from the state and events a use case produces.
 - **Correct:**

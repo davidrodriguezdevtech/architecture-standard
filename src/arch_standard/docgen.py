@@ -8,11 +8,17 @@ from arch_standard.rules.model import Rule
 _MARKER = "<!-- RULES_CATALOG -->"
 
 
+def _validation_line(rule: Rule) -> str:
+    detail = f" — {rule.validation.detail.strip()}" if rule.validation.detail else ""
+    return f"- **Validation:** `{rule.validation.tool}`{detail}"
+
+
 def _rule_block(rule: Rule) -> str:
     parts = [
         f"#### {rule.id} — {rule.name}",
         f"- **Level:** {rule.level.value} · **Automation:** {rule.automation.value} "
         f"· **Tier:** {rule.tier.value} · **Category:** {rule.category}",
+        _validation_line(rule),
         f"- **Description:** {rule.description.strip()}",
         f"- **Rationale:** {rule.rationale.strip()}",
         "- **Correct:**",
