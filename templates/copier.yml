@@ -38,13 +38,22 @@ template_version:
   help: "This template's own version, recorded in the .arch-standard stamp"
   default: "0.1.0"
 
-standard_git_url:
+dependency_source:
   type: str
   help: >-
-    Git URL of the architecture-standard repo. arch-standard and arch-commons are
-    not published to a package index yet, so they are installed from here directly --
-    replace with your actual remote before generating a real project.
-  default: "https://github.com/CHANGE_ME/architecture-standard.git"
+    Where the generated project resolves arch-standard and arch-commons from.
+    'index' emits plain version pins (use a package index, or `uv sync` with
+    --find-links against locally built wheels). 'git' emits direct git
+    references and requires standard_git_url below.
+  choices:
+    - index
+    - git
+  default: index
+
+standard_git_url:
+  type: str
+  when: "{{ dependency_source == 'git' }}"
+  help: "Git URL of your architecture-standard remote (no default -- supply your own)"
 
 _tasks:
   - "arch-standard render-importlinter ."

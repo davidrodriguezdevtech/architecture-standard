@@ -4,8 +4,13 @@ version = "0.1.0"
 description = "{{ project_name }}"
 requires-python = ">=3.12"
 dependencies = [
+{%- if dependency_source == 'git' %}
     "arch-standard @ git+{{ standard_git_url }}@v{{ arch_standard_version }}",
     "arch-commons @ git+{{ standard_git_url }}@v{{ arch_commons_version }}#subdirectory=packages/arch-commons",
+{%- else %}
+    "arch-standard=={{ arch_standard_version }}",
+    "arch-commons=={{ arch_commons_version }}",
+{%- endif %}
 ]
 
 [build-system]
@@ -13,7 +18,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.metadata]
-# arch-standard and arch-commons are pinned as direct git references above.
+# Harmless for plain version pins; required when dependency_source == 'git',
+# where arch-standard and arch-commons are direct git references above.
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
