@@ -108,3 +108,61 @@ def test_given_a_module_with_two_aggregate_files__when_checked__then_arch_049_fa
     layout = ProjectLayout.detect(root)
     reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
     assert reports["ARCH-049"].outcome is Outcome.FAIL
+
+
+def _app_module(tmp_path: Path, body: str) -> ProjectLayout:
+    app = tmp_path / "src" / "sales" / "orders" / "application"
+    app.mkdir(parents=True)
+    (tmp_path / "src" / "sales" / "orders" / "domain").mkdir(parents=True)
+    (app / "order_service.py").write_text(body, encoding="utf-8")
+    return ProjectLayout.detect(tmp_path)
+
+
+def test_given_a_direct_session_commit__when_checked__then_arch_033_fails(
+    tmp_path: Path,
+) -> None:
+    layout = _app_module(
+        tmp_path,
+        "class OrderService:\n"
+        "    def cancel(self, cmd):\n"
+        "        order = self._orders.get(cmd.id)\n"
+        "        self._orders.session.commit()\n",
+    )
+    reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
+    assert reports["ARCH-033"].outcome is Outcome.FAIL
+
+
+def test_given_a_uow_block__when_checked__then_arch_033_passes(tmp_path: Path) -> None:
+    layout = _app_module(
+        tmp_path,
+        "class OrderService:\n"
+        "    def cancel(self, cmd):\n"
+        "        with self._uow as uow:\n"
+        "            order = self._orders.get(cmd.id)\n"
+        "            uow.commit()\n",
+    )
+    reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
+    assert reports["ARCH-033"].outcome is Outcome.PASS
+
+
+def test_given_no_commit_at_all__when_checked__then_arch_033_passes(tmp_path: Path) -> None:
+    layout = _app_module(
+        tmp_path,
+        "class OrderService:\n    def find(self, cmd):\n        return self._orders.get(cmd.id)\n",
+    )
+    reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
+    assert reports["ARCH-033"].outcome is Outcome.PASS
+
+
+def test_bad_project_commits_outside_unit_of_work() -> None:
+    r = _reports("bad_project")["ARCH-033"]
+    assert r.outcome is Outcome.FAIL
+    assert any("cancel" in f.message for f in r.findings)
+
+
+def test_given_the_modular_fixture__when_checked__then_arch_033_passes() -> None:
+    assert _reports("modular_project")["ARCH-033"].outcome is Outcome.PASS
+
+
+def test_given_the_good_fixture__when_checked__then_arch_033_passes() -> None:
+    assert _reports("good_project")["ARCH-033"].outcome is Outcome.PASS

@@ -69,10 +69,10 @@ def test_given_a_freshly_generated_project__when_render_importlinter_and_check__
     check_exit_code = main(["check", str(dest), "--core"])
     output = capsys.readouterr().out
 
-    # ARCH-033 declares a machine tool (ast-checker) with no check implementing
-    # it yet (Tasks 8-9), so Report.collect honestly reports it as ERROR and
-    # the run exits 1 until that lands. ARCH-008 is now attributed to the
-    # per-module layers contract (Task 6) and genuinely passes.
-    # The generated project itself violates nothing: no FAIL rows.
-    assert check_exit_code == 1, output
+    # ARCH-033 (Task 9) now has a real AST check; the generated service commits
+    # through `with self._uow: ... self._uow.commit()`, which the check
+    # recognizes as committing through the entered Unit of Work. ARCH-008 is
+    # attributed to the per-module layers contract (Task 6). Both genuinely
+    # pass, so the generated project violates nothing: no FAIL rows, exit 0.
+    assert check_exit_code == 0, output
     assert "FAIL" not in output

@@ -31,10 +31,10 @@ def test_main_with_unknown_subcommand_returns_two(
 def test_check_on_good_project_reports_arch_001_and_exits_one_on_unimplemented_checks(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    # 14 catalog rules declare a machine tool with no check implementing it
-    # yet (Tasks 6-9); Report.collect reports those as ERROR rather than
-    # silently omitting them, so even a fully compliant project exits 1
-    # until those checks land.
+    # A few catalog rules still declare a machine tool with no check
+    # implementing it yet (Task 10 relabels them); Report.collect reports
+    # those as ERROR rather than silently omitting them, so even a fully
+    # compliant project exits 1 until those checks land.
     code = main(["check", str(FIX / "good_project")])
     assert code == 1
     assert "ARCH-001" in capsys.readouterr().out
@@ -47,11 +47,11 @@ def test_check_on_bad_project_exits_one() -> None:
 def test_given_core_mode__when_checking__then_only_core_rules_are_reported(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    # ARCH-033 is core but declares a machine tool with no check implementing
-    # it yet (Tasks 8-9), so Report.collect honestly reports it as ERROR and
-    # the run exits 1 until that lands. ARCH-008 is now attributed to the
-    # per-module layers contract (Task 6) and genuinely passes.
-    assert main(["check", str(FIX / "modular_project"), "--core"]) == 1
+    # ARCH-033 (Task 9) now has a real AST check, and modular_project commits
+    # nothing outside a Unit of Work, so it genuinely passes like the rest of
+    # the compliant core tier. ARCH-008 is attributed to the per-module
+    # layers contract (Task 6) and also genuinely passes.
+    assert main(["check", str(FIX / "modular_project"), "--core"]) == 0
     out = capsys.readouterr().out
     assert "core rules only" in out
     assert "ARCH-041" not in out
@@ -60,12 +60,11 @@ def test_given_core_mode__when_checking__then_only_core_rules_are_reported(
 def test_given_core_mode__when_checking__then_all_12_core_rules_are_shown(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    # ARCH-033 is tier: core but no check implements it yet; Report.collect
-    # guarantees completeness for every catalog rule, so --core still shows
-    # exactly the 12 core rows it claims, marking the uncovered rule honestly
-    # as ERROR (a validator defect) rather than silently omitting it or
-    # disguising it as SKIP. ARCH-008 was attributed to the per-module layers
-    # contract in Task 6 and now genuinely PASSes on this compliant fixture.
+    # ARCH-033 (Task 9) now has a real AST check; Report.collect guarantees
+    # completeness for every catalog rule, and --core shows exactly the 12
+    # core rows it claims. ARCH-008 was attributed to the per-module layers
+    # contract in Task 6, and ARCH-033 is now backed by a check -- both
+    # genuinely PASS on this compliant fixture.
     main(["check", str(FIX / "modular_project"), "--core"])
     out = capsys.readouterr().out
     assert "core rules only (12)" in out
@@ -85,7 +84,7 @@ def test_given_core_mode__when_checking__then_all_12_core_rules_are_shown(
     ):
         assert rid in out, rid
     assert "ARCH-008  PASS" in out
-    assert "ARCH-033  ERROR" in out
+    assert "ARCH-033  PASS" in out
     total = sum(
         int(n)
         for n in re.findall(r"(\d+) (?:passed|failed|warnings|skipped|not automated|errored)", out)

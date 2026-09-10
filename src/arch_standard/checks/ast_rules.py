@@ -283,12 +283,70 @@ def _check_promotion_thresholds(project: ProjectLayout) -> list[Finding]:
     return findings
 
 
+def _check_unit_of_work_commit(project: ProjectLayout) -> list[Finding]:
+    """Flag a ``.commit()`` call whose receiver is not bound by an enclosing ``with``.
+
+    This proves exactly one syntactic property: within a function, does every
+    ``.commit()`` call's receiver expression trace back to something a
+    ``with`` statement in that function opened -- either the name after
+    ``as`` (``with self._uow as uow: uow.commit()``) or, when there is no
+    ``as``, the context-manager expression itself, verbatim
+    (``with self._uow: self._uow.commit()``). It does NOT and cannot decide
+    "does this method change state" -- that is a semantic question the AST
+    has no way to answer, so no attempt is made to guess it from method
+    names, verbs, or repository access. A method that mutates state and never
+    calls ``.commit()`` at all is not caught by this check; that is a known,
+    deliberate false-negative, not an oversight.
+    """
+    findings: list[Finding] = []
+    for context, module in project.iter_modules():
+        app_dir = project.module_application_dir(context, module)
+        if not app_dir.is_dir():
+            continue
+        for path in iter_python_files(app_dir):
+            rel = str(path.relative_to(project.root))
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for func in (
+                n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            ):
+                bound_names: set[str] = set()
+                bound_exprs: set[str] = set()
+                for with_node in (n for n in ast.walk(func) if isinstance(n, ast.With)):
+                    for item in with_node.items:
+                        if isinstance(item.optional_vars, ast.Name):
+                            bound_names.add(item.optional_vars.id)
+                        elif isinstance(item.context_expr, (ast.Name, ast.Attribute)):
+                            bound_exprs.add(ast.unparse(item.context_expr))
+                for call in (n for n in ast.walk(func) if isinstance(n, ast.Call)):
+                    fn = call.func
+                    if not isinstance(fn, ast.Attribute) or fn.attr != "commit":
+                        continue
+                    receiver = fn.value
+                    if isinstance(receiver, ast.Name) and receiver.id in bound_names:
+                        continue
+                    if isinstance(receiver, (ast.Name, ast.Attribute)) and (
+                        ast.unparse(receiver) in bound_exprs
+                    ):
+                        continue
+                    findings.append(
+                        Finding(
+                            "ARCH-033",
+                            rel,
+                            call.lineno,
+                            f"{func.name} commits outside a Unit of Work block; "
+                            "open `with self._uow as uow:` and commit through uow",
+                        )
+                    )
+    return findings
+
+
 _IMPLEMENTED: dict[str, Callable[[ProjectLayout], list[Finding]]] = {
     "ARCH-018": _check_aggregate_encapsulation,
     "ARCH-019": _check_aggregate_encapsulation,
     "ARCH-023": _check_domain_events,
     "ARCH-030": _check_service_size,
     "ARCH-031": _check_value_objects,
+    "ARCH-033": _check_unit_of_work_commit,
     "ARCH-040": _check_test_naming,
     "ARCH-041": _check_promotion_thresholds,
     "ARCH-049": _check_one_aggregate_per_module,
@@ -302,6 +360,7 @@ class AstRulesCheck:
         "ARCH-023",
         "ARCH-030",
         "ARCH-031",
+        "ARCH-033",
         "ARCH-040",
         "ARCH-041",
         "ARCH-049",
