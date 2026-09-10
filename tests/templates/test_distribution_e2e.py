@@ -37,14 +37,30 @@ def test_given_built_wheels__when_a_generated_project_is_installed_clean__then_a
     _run(["uv", "build", "--out-dir", str(dist)], cwd=REPO)
     _run(["uv", "build", "--package", "arch-commons", "--out-dir", str(dist)], cwd=REPO)
     wheels = sorted(p.name for p in dist.glob("*.whl"))
-    assert any(w.startswith("arch_standard-") for w in wheels), wheels
-    assert any(w.startswith("arch_commons-") for w in wheels), wheels
+    standard_wheel = next((w for w in wheels if w.startswith("arch_standard-")), None)
+    commons_wheel = next((w for w in wheels if w.startswith("arch_commons-")), None)
+    assert standard_wheel is not None, wheels
+    assert commons_wheel is not None, wheels
+
+    # A wheel filename is `{name}-{version}-{python tag}-{abi tag}-{platform}.whl`;
+    # pin the generated project to the version this test actually just built, not a
+    # template default -- otherwise the test can pass or fail for reasons unrelated
+    # to distribution the moment either package's version diverges from the
+    # template's hardcoded default (see test_template_version_defaults.py for the
+    # guard on the default itself).
+    standard_version = standard_wheel.split("-")[1]
+    commons_version = commons_wheel.split("-")[1]
 
     project = tmp_path / "acme"
     copier.run_copy(
         str(TEMPLATE_ROOT),
         str(project),
-        data={"dependency_source": "index", "project_name": "Acme"},
+        data={
+            "dependency_source": "index",
+            "project_name": "Acme",
+            "arch_standard_version": standard_version,
+            "arch_commons_version": commons_version,
+        },
         defaults=True,
         overwrite=True,
         unsafe=True,

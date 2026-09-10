@@ -26,7 +26,7 @@ aggregate_module:
 arch_standard_version:
   type: str
   help: "arch-standard version to pin as a dependency"
-  default: "0.1.0"
+  default: "0.1.1"
 
 arch_commons_version:
   type: str

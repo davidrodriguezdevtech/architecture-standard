@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import copier
+import yaml
 
 from tests.templates.conftest import TEMPLATE_ROOT
 
@@ -27,7 +28,16 @@ def test_given_defaults__when_copied__then_root_files_render_with_no_leftover_ji
     assert (dest / ".github" / "workflows" / "ci.yml").is_file()
     assert 'name = "sales"' not in (dest / "pyproject.toml").read_text(encoding="utf-8")
     assert "[contexts.sales]" in (dest / "contexts.toml").read_text(encoding="utf-8")
-    assert 'standard-version = "0.1.0"' in (dest / ".arch-standard").read_text(encoding="utf-8")
+
+    # Read the expected pin from copier.yml's own default rather than hardcoding a
+    # version string here -- a hardcoded expectation is exactly the staleness bug
+    # that let the template drift from the package's real version (see
+    # test_template_version_defaults.py for the guard against that drift).
+    copier_config = yaml.safe_load((TEMPLATE_ROOT / "copier.yml").read_text(encoding="utf-8"))
+    expected_version = copier_config["arch_standard_version"]["default"]
+    assert f'standard-version = "{expected_version}"' in (dest / ".arch-standard").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_given_index_source__when_rendered__then_deps_have_no_git_url(tmp_path: Path) -> None:
