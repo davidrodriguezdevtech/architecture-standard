@@ -20,9 +20,13 @@ _MODULE_LAYERS: tuple[str, ...] = ("infrastructure", "application", "domain")
 
 # The layering rules encoded by the per-module ``layers`` contract. ARCH-007/008
 # ride this same contract, but only partially:
-#   - ARCH-007 (application does not construct concrete adapters) is fully
-#     covered -- once application cannot import infrastructure at all, it
-#     cannot name an adapter class to construct one.
+#   - ARCH-007 (application does not construct concrete adapters) is only
+#     half covered: this contract (plus ARCH-034) proves application cannot
+#     import an adapter class from infrastructure/ or commons.infrastructure
+#     to construct it, but it does NOT catch a concrete adapter class
+#     defined inside application/ itself and instantiated there -- nothing
+#     is imported, so no import contract fires; that half is unverified by
+#     any machine check and is reviewed at PR time.
 #   - ARCH-008 (infrastructure implements ports; the core imports abstractions
 #     only) is only half covered: this contract proves domain/application
 #     import nothing from infrastructure, but it does NOT verify that

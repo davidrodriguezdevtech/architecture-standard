@@ -153,7 +153,7 @@ rules:
       self._orders = SqlAlchemyOrderRepository(SqlAlchemyUnitOfWork())
     validation:
       tool: grimp
-      detail: import-graph assert (import half); direct instantiation within infrastructure is still unchecked
+      detail: import-graph assert; catches adapters imported from infrastructure/, not an adapter class defined and instantiated within application/ itself
     related: [ARCH-005]
   - id: ARCH-008
     name: Infrastructure implements ports; the core imports abstractions only
