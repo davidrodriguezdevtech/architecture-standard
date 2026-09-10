@@ -28,7 +28,9 @@ jobs:
             exit 1
           fi
       # Catalog governance: the compatibility policy is enforced, not advisory.
-      - run: uv run arch-standard release-check --version 0.1.0
+      # The version comes from the project's own declared metadata, not a
+      # hardcoded literal, so this stays meaningful as the catalog changes.
+      - run: uv run arch-standard release-check --version "$(uv run python -c 'import importlib.metadata as m; print(m.version("arch-standard"))')"
   e2e:
     runs-on: ubuntu-latest
     steps:

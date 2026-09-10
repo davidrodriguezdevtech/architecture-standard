@@ -12,7 +12,7 @@ selfcheck:
 	uv run arch-standard check tests/fixtures/good_project
 	uv run arch-standard check tests/fixtures/modular_project
 	if uv run arch-standard check tests/fixtures/bad_project; then echo "bad_project passed -- the validator is not detecting violations"; exit 1; fi
-	uv run arch-standard release-check --version 0.1.0
+	uv run arch-standard release-check --version "$$(uv run python -c 'import importlib.metadata as m; print(m.version("arch-standard"))')"
 docs:
 	uv run arch-standard docs
 e2e:
