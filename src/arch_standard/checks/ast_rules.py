@@ -283,14 +283,50 @@ def _check_promotion_thresholds(project: ProjectLayout) -> list[Finding]:
     return findings
 
 
+_WITH_NODES = (ast.With, ast.AsyncWith)
+_SCOPE_BOUNDARY_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+
+
+def _own_scope_nodes(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.AST]:
+    """Descendants of ``func``, not descending into a nested function/lambda body.
+
+    A nested ``def``/``async def``/``lambda`` introduces its own scope; a
+    ``with`` binding inside it must not leak into the enclosing function's
+    bound-name set, and a ``.commit()`` call inside it belongs to that
+    nested scope, not this one. The nested function node itself is still
+    analyzed -- separately, as its own unit -- by the caller's outer loop
+    over every ``FunctionDef``/``AsyncFunctionDef`` in the module.
+    """
+    nodes: list[ast.AST] = []
+    stack = list(ast.iter_child_nodes(func))
+    while stack:
+        node = stack.pop()
+        nodes.append(node)
+        if isinstance(node, _SCOPE_BOUNDARY_NODES):
+            continue
+        stack.extend(ast.iter_child_nodes(node))
+    return nodes
+
+
+def _names_bound_by_target(target: ast.expr) -> list[str]:
+    """Names bound by a ``with ... as TARGET`` target, including tuple/list targets."""
+    if isinstance(target, ast.Name):
+        return [target.id]
+    if isinstance(target, (ast.Tuple, ast.List)):
+        return [name for elt in target.elts for name in _names_bound_by_target(elt)]
+    return []
+
+
 def _check_unit_of_work_commit(project: ProjectLayout) -> list[Finding]:
     """Flag a ``.commit()`` call whose receiver is not bound by an enclosing ``with``.
 
-    This proves exactly one syntactic property: within a function, does every
-    ``.commit()`` call's receiver expression trace back to something a
-    ``with`` statement in that function opened -- either the name after
-    ``as`` (``with self._uow as uow: uow.commit()``) or, when there is no
-    ``as``, the context-manager expression itself, verbatim
+    This proves exactly one syntactic property: within a function's own
+    scope (a nested ``def``/``async def``/``lambda`` is analyzed as its own
+    unit, not as part of its parent), does every ``.commit()`` call's
+    receiver expression trace back to something a ``with`` or ``async with``
+    statement in that same scope opened -- either a name bound after ``as``
+    (including tuple/list targets: ``with x as (a, b):``) or, when there is
+    no ``as``, the context-manager expression itself, verbatim
     (``with self._uow: self._uow.commit()``). It does NOT and cannot decide
     "does this method change state" -- that is a semantic question the AST
     has no way to answer, so no attempt is made to guess it from method
@@ -309,15 +345,16 @@ def _check_unit_of_work_commit(project: ProjectLayout) -> list[Finding]:
             for func in (
                 n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
             ):
+                scope_nodes = _own_scope_nodes(func)
                 bound_names: set[str] = set()
                 bound_exprs: set[str] = set()
-                for with_node in (n for n in ast.walk(func) if isinstance(n, ast.With)):
+                for with_node in (n for n in scope_nodes if isinstance(n, _WITH_NODES)):
                     for item in with_node.items:
-                        if isinstance(item.optional_vars, ast.Name):
-                            bound_names.add(item.optional_vars.id)
+                        if item.optional_vars is not None:
+                            bound_names.update(_names_bound_by_target(item.optional_vars))
                         elif isinstance(item.context_expr, (ast.Name, ast.Attribute)):
                             bound_exprs.add(ast.unparse(item.context_expr))
-                for call in (n for n in ast.walk(func) if isinstance(n, ast.Call)):
+                for call in (n for n in scope_nodes if isinstance(n, ast.Call)):
                     fn = call.func
                     if not isinstance(fn, ast.Attribute) or fn.attr != "commit":
                         continue

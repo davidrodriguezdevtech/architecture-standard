@@ -166,3 +166,64 @@ def test_given_the_modular_fixture__when_checked__then_arch_033_passes() -> None
 
 def test_given_the_good_fixture__when_checked__then_arch_033_passes() -> None:
     assert _reports("good_project")["ARCH-033"].outcome is Outcome.PASS
+
+
+def test_given_an_async_with_uow_block__when_checked__then_arch_033_passes(
+    tmp_path: Path,
+) -> None:
+    layout = _app_module(
+        tmp_path,
+        "class OrderService:\n"
+        "    async def cancel(self, cmd):\n"
+        "        async with self._uow as uow:\n"
+        "            uow.commit()\n",
+    )
+    reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
+    assert reports["ARCH-033"].outcome is Outcome.PASS
+
+
+def test_given_a_nested_with_binding__when_checked__then_arch_033_still_fails_on_outer_commit(
+    tmp_path: Path,
+) -> None:
+    layout = _app_module(
+        tmp_path,
+        "class OrderService:\n"
+        "    def cancel(self, cmd):\n"
+        "        session = self._orders.session\n"
+        "        session.commit()\n"
+        "        def helper():\n"
+        "            with self._uow as session:\n"
+        "                session.commit()\n",
+    )
+    reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
+    r = reports["ARCH-033"]
+    assert r.outcome is Outcome.FAIL
+    assert any(f.line == 4 for f in r.findings)
+
+
+def test_given_a_tuple_target_uow_binding__when_checked__then_arch_033_passes(
+    tmp_path: Path,
+) -> None:
+    layout = _app_module(
+        tmp_path,
+        "class OrderService:\n"
+        "    def cancel(self, cmd):\n"
+        "        with self._uow as (uow, ctx):\n"
+        "            uow.commit()\n",
+    )
+    reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
+    assert reports["ARCH-033"].outcome is Outcome.PASS
+
+
+def test_given_a_with_block_with_no_as_clause__when_checked__then_arch_033_passes(
+    tmp_path: Path,
+) -> None:
+    layout = _app_module(
+        tmp_path,
+        "class OrderService:\n"
+        "    def cancel(self, cmd):\n"
+        "        with self._uow:\n"
+        "            self._uow.commit()\n",
+    )
+    reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
+    assert reports["ARCH-033"].outcome is Outcome.PASS
