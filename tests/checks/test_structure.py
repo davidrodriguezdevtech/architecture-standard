@@ -18,7 +18,7 @@ def _reports(root: Path) -> dict[str, CheckReport]:
 
 def test_given_the_modular_fixture__when_checked__then_structure_rules_pass() -> None:
     reports = _reports(FIX / "modular_project")
-    for rid in ("ARCH-047", "ARCH-048", "ARCH-051"):
+    for rid in ("ARCH-037", "ARCH-047", "ARCH-048", "ARCH-051"):
         assert reports[rid].outcome is Outcome.PASS, rid
 
 
