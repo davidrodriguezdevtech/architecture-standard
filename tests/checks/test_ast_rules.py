@@ -227,3 +227,32 @@ def test_given_a_with_block_with_no_as_clause__when_checked__then_arch_033_passe
     )
     reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
     assert reports["ARCH-033"].outcome is Outcome.PASS
+
+
+def test_given_a_lambda_that_commits_directly__when_checked__then_arch_033_fails(
+    tmp_path: Path,
+) -> None:
+    layout = _app_module(
+        tmp_path,
+        "class OrderService:\n"
+        "    def cancel(self, cmd):\n"
+        "        commit_fn = lambda: self._orders.session.commit()\n"
+        "        commit_fn()\n",
+    )
+    reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
+    assert reports["ARCH-033"].outcome is Outcome.FAIL
+
+
+def test_given_a_lambda_that_commits_through_a_bound_uow__when_checked__then_arch_033_passes(
+    tmp_path: Path,
+) -> None:
+    layout = _app_module(
+        tmp_path,
+        "class OrderService:\n"
+        "    def cancel(self, cmd):\n"
+        "        with self._uow as uow:\n"
+        "            f = lambda: uow.commit()\n"
+        "            f()\n",
+    )
+    reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
+    assert reports["ARCH-033"].outcome is Outcome.PASS

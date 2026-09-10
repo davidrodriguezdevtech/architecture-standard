@@ -284,18 +284,27 @@ def _check_promotion_thresholds(project: ProjectLayout) -> list[Finding]:
 
 
 _WITH_NODES = (ast.With, ast.AsyncWith)
-_SCOPE_BOUNDARY_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+_SCOPE_BOUNDARY_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 
 def _own_scope_nodes(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.AST]:
-    """Descendants of ``func``, not descending into a nested function/lambda body.
+    """Descendants of ``func``, not descending into a nested def/async def body.
 
-    A nested ``def``/``async def``/``lambda`` introduces its own scope; a
-    ``with`` binding inside it must not leak into the enclosing function's
+    A nested ``def``/``async def`` introduces its own scope; a ``with``
+    binding inside it must not leak into the enclosing function's
     bound-name set, and a ``.commit()`` call inside it belongs to that
     nested scope, not this one. The nested function node itself is still
     analyzed -- separately, as its own unit -- by the caller's outer loop
     over every ``FunctionDef``/``AsyncFunctionDef`` in the module.
+
+    A ``lambda`` is deliberately NOT a boundary here: its body is a single
+    expression and can never contain a ``with`` statement, so descending
+    into it cannot leak a binding -- and stopping at it would instead make
+    any ``.commit()`` call inside the lambda invisible to this check
+    entirely, including a direct violation with no enclosing ``with`` at
+    all. A commit inside a lambda is still correctly attributed to whatever
+    ``with`` bindings are in scope in the *enclosing* function, since a
+    lambda has no scope of its own that a `with` binding could leak out of.
     """
     nodes: list[ast.AST] = []
     stack = list(ast.iter_child_nodes(func))
@@ -321,8 +330,10 @@ def _check_unit_of_work_commit(project: ProjectLayout) -> list[Finding]:
     """Flag a ``.commit()`` call whose receiver is not bound by an enclosing ``with``.
 
     This proves exactly one syntactic property: within a function's own
-    scope (a nested ``def``/``async def``/``lambda`` is analyzed as its own
-    unit, not as part of its parent), does every ``.commit()`` call's
+    scope (a nested ``def``/``async def`` is analyzed as its own unit, not
+    as part of its parent; a ``lambda`` has no scope of its own and is
+    analyzed as part of its enclosing function, since its body cannot
+    contain a ``with`` statement), does every ``.commit()`` call's
     receiver expression trace back to something a ``with`` or ``async with``
     statement in that same scope opened -- either a name bound after ``as``
     (including tuple/list targets: ``with x as (a, b):``) or, when there is
