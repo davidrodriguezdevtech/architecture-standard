@@ -3,7 +3,8 @@
 All notable changes to the Architecture Standard's rule catalog are recorded here,
 one version per section. The compatibility policy (spec Section 16.3) governs
 what kind of change requires which version bump; `arch-standard release-check`
-enforces it, `arch-standard changelog` renders these entries.
+enforces it in CI on every push and pull request, `arch-standard changelog`
+renders these entries.
 
 ## 0.1.0
 
