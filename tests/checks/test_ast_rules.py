@@ -243,7 +243,36 @@ def test_given_a_lambda_that_commits_directly__when_checked__then_arch_033_fails
     assert reports["ARCH-033"].outcome is Outcome.FAIL
 
 
-def test_given_a_lambda_that_commits_through_a_bound_uow__when_checked__then_arch_033_passes(
+def test_given_a_lambda_committing_via_a_binding_live_in_block__when_checked__then_fails_outside(
+    tmp_path: Path,
+) -> None:
+    # Both lambdas commit through the same bound name ("uow"), but only the
+    # first is textually inside the `with` body; the second runs after the
+    # block has closed. A flat (non-containment) implementation would treat
+    # "uow" as bound for the whole function and wrongly pass both -- this is
+    # the earlier version of this test, and it passed regardless of whether
+    # `lambda` was (incorrectly) treated as a scope boundary, since either
+    # way the sole lambda call was either correctly matched or invisible.
+    # Splitting the commit across in-block and post-block lambdas forces a
+    # genuine containment check: exactly one finding, for the one outside.
+    layout = _app_module(
+        tmp_path,
+        "class OrderService:\n"
+        "    def cancel(self, cmd):\n"
+        "        with self._uow as uow:\n"
+        "            f = lambda: uow.commit()\n"
+        "            f()\n"
+        "        g = lambda: uow.commit()\n"
+        "        g()\n",
+    )
+    reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
+    r = reports["ARCH-033"]
+    assert r.outcome is Outcome.FAIL
+    assert len(r.findings) == 1
+    assert r.findings[0].line == 6
+
+
+def test_given_a_commit_dedented_out_of_the_with_block__when_checked__then_arch_033_fails(
     tmp_path: Path,
 ) -> None:
     layout = _app_module(
@@ -251,8 +280,71 @@ def test_given_a_lambda_that_commits_through_a_bound_uow__when_checked__then_arc
         "class OrderService:\n"
         "    def cancel(self, cmd):\n"
         "        with self._uow as uow:\n"
-        "            f = lambda: uow.commit()\n"
-        "            f()\n",
+        "            pass\n"
+        "        uow.commit()\n",
     )
     reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
-    assert reports["ARCH-033"].outcome is Outcome.PASS
+    r = reports["ARCH-033"]
+    assert r.outcome is Outcome.FAIL
+    assert any(f.line == 5 for f in r.findings)
+
+
+def test_given_a_with_block_inside_a_dead_branch__when_checked__then_arch_033_still_fails(
+    tmp_path: Path,
+) -> None:
+    layout = _app_module(
+        tmp_path,
+        "class OrderService:\n"
+        "    def cancel(self, cmd):\n"
+        "        if False:\n"
+        "            with self._uow as uow:\n"
+        "                pass\n"
+        "        uow.commit()\n",
+    )
+    reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
+    r = reports["ARCH-033"]
+    assert r.outcome is Outcome.FAIL
+    assert any(f.line == 6 for f in r.findings)
+
+
+def test_given_a_no_as_with_block_and_a_commit_after_it_closes__when_checked__then_arch_033_fails(
+    tmp_path: Path,
+) -> None:
+    layout = _app_module(
+        tmp_path,
+        "class OrderService:\n"
+        "    def cancel(self, cmd):\n"
+        "        with self._uow:\n"
+        "            pass\n"
+        "        self._uow.commit()\n",
+    )
+    reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
+    r = reports["ARCH-033"]
+    assert r.outcome is Outcome.FAIL
+    assert any(f.line == 5 for f in r.findings)
+
+
+def test_given_a_module_level_commit__when_checked__then_arch_033_fails(
+    tmp_path: Path,
+) -> None:
+    layout = _app_module(
+        tmp_path,
+        "from somewhere import uow\n\nuow.commit()\n\n\nclass OrderService:\n    pass\n",
+    )
+    reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
+    r = reports["ARCH-033"]
+    assert r.outcome is Outcome.FAIL
+    assert any(f.line == 3 and "module-level code" in f.message for f in r.findings)
+
+
+def test_given_a_class_body_commit__when_checked__then_arch_033_fails(
+    tmp_path: Path,
+) -> None:
+    layout = _app_module(
+        tmp_path,
+        "class OrderService:\n    uow = object()\n    uow.commit()\n",
+    )
+    reports = {r.rule_id: r for r in AstRulesCheck().run(layout, Catalog.load(RULES))}
+    r = reports["ARCH-033"]
+    assert r.outcome is Outcome.FAIL
+    assert any(f.line == 3 for f in r.findings)

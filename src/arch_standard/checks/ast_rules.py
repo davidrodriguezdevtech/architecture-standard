@@ -287,36 +287,6 @@ _WITH_NODES = (ast.With, ast.AsyncWith)
 _SCOPE_BOUNDARY_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 
-def _own_scope_nodes(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.AST]:
-    """Descendants of ``func``, not descending into a nested def/async def body.
-
-    A nested ``def``/``async def`` introduces its own scope; a ``with``
-    binding inside it must not leak into the enclosing function's
-    bound-name set, and a ``.commit()`` call inside it belongs to that
-    nested scope, not this one. The nested function node itself is still
-    analyzed -- separately, as its own unit -- by the caller's outer loop
-    over every ``FunctionDef``/``AsyncFunctionDef`` in the module.
-
-    A ``lambda`` is deliberately NOT a boundary here: its body is a single
-    expression and can never contain a ``with`` statement, so descending
-    into it cannot leak a binding -- and stopping at it would instead make
-    any ``.commit()`` call inside the lambda invisible to this check
-    entirely, including a direct violation with no enclosing ``with`` at
-    all. A commit inside a lambda is still correctly attributed to whatever
-    ``with`` bindings are in scope in the *enclosing* function, since a
-    lambda has no scope of its own that a `with` binding could leak out of.
-    """
-    nodes: list[ast.AST] = []
-    stack = list(ast.iter_child_nodes(func))
-    while stack:
-        node = stack.pop()
-        nodes.append(node)
-        if isinstance(node, _SCOPE_BOUNDARY_NODES):
-            continue
-        stack.extend(ast.iter_child_nodes(node))
-    return nodes
-
-
 def _names_bound_by_target(target: ast.expr) -> list[str]:
     """Names bound by a ``with ... as TARGET`` target, including tuple/list targets."""
     if isinstance(target, ast.Name):
@@ -326,24 +296,106 @@ def _names_bound_by_target(target: ast.expr) -> list[str]:
     return []
 
 
-def _check_unit_of_work_commit(project: ProjectLayout) -> list[Finding]:
-    """Flag a ``.commit()`` call whose receiver is not bound by an enclosing ``with``.
+def _bindings_opened_by(with_node: ast.With | ast.AsyncWith) -> tuple[set[str], set[str]]:
+    """Names and no-``as`` context expressions a ``with`` opens for its own body."""
+    names: set[str] = set()
+    exprs: set[str] = set()
+    for item in with_node.items:
+        if item.optional_vars is not None:
+            names.update(_names_bound_by_target(item.optional_vars))
+        elif isinstance(item.context_expr, (ast.Name, ast.Attribute)):
+            exprs.add(ast.unparse(item.context_expr))
+    return names, exprs
 
-    This proves exactly one syntactic property: within a function's own
-    scope (a nested ``def``/``async def`` is analyzed as its own unit, not
-    as part of its parent; a ``lambda`` has no scope of its own and is
-    analyzed as part of its enclosing function, since its body cannot
-    contain a ``with`` statement), does every ``.commit()`` call's
-    receiver expression trace back to something a ``with`` or ``async with``
-    statement in that same scope opened -- either a name bound after ``as``
-    (including tuple/list targets: ``with x as (a, b):``) or, when there is
-    no ``as``, the context-manager expression itself, verbatim
-    (``with self._uow: self._uow.commit()``). It does NOT and cannot decide
-    "does this method change state" -- that is a semantic question the AST
-    has no way to answer, so no attempt is made to guess it from method
-    names, verbs, or repository access. A method that mutates state and never
-    calls ``.commit()`` at all is not caught by this check; that is a known,
-    deliberate false-negative, not an oversight.
+
+def _scan_for_uncontained_commits(
+    node: ast.AST,
+    bound_names: frozenset[str],
+    bound_exprs: frozenset[str],
+    rel: str,
+    scope_name: str,
+    findings: list[Finding],
+) -> None:
+    """Walk ``node``, flagging every ``.commit()`` not lexically inside a matching ``with``.
+
+    ``bound_names``/``bound_exprs`` are the bindings open *at this exact
+    point in the tree* -- containment, not "some ``with`` exists somewhere
+    in this scope". They are extended only for the recursive calls that
+    descend into that ``with``'s own body; a sibling statement after the
+    block closes, or a statement in an unrelated branch (e.g. a dead
+    ``if False:``), is scanned with the unextended set and so cannot see a
+    binding that isn't lexically enclosing it. A nested ``def``/``async
+    def`` is its own scope and is skipped entirely here -- the caller
+    visits it independently with a fresh, empty binding set, so a binding
+    never leaks out of it and a call inside it is never double-counted. A
+    ``lambda`` is deliberately NOT a boundary: its body is a single
+    expression that can never contain a ``with``, so descending into it
+    only ever looks up bindings an *enclosing* ``with`` already
+    established.
+    """
+    if isinstance(node, _SCOPE_BOUNDARY_NODES):
+        return
+    if isinstance(node, _WITH_NODES):
+        for item in node.items:
+            _scan_for_uncontained_commits(
+                item.context_expr, bound_names, bound_exprs, rel, scope_name, findings
+            )
+            if item.optional_vars is not None:
+                _scan_for_uncontained_commits(
+                    item.optional_vars, bound_names, bound_exprs, rel, scope_name, findings
+                )
+        new_names, new_exprs = _bindings_opened_by(node)
+        inner_names = bound_names | new_names
+        inner_exprs = bound_exprs | new_exprs
+        for stmt in node.body:
+            _scan_for_uncontained_commits(stmt, inner_names, inner_exprs, rel, scope_name, findings)
+        return
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "commit"
+    ):
+        receiver = node.func.value
+        bound = (isinstance(receiver, ast.Name) and receiver.id in bound_names) or (
+            isinstance(receiver, (ast.Name, ast.Attribute)) and ast.unparse(receiver) in bound_exprs
+        )
+        if not bound:
+            findings.append(
+                Finding(
+                    "ARCH-033",
+                    rel,
+                    node.lineno,
+                    f"{scope_name} commits outside a Unit of Work block; "
+                    "open `with self._uow as uow:` and commit through uow",
+                )
+            )
+    for child in ast.iter_child_nodes(node):
+        _scan_for_uncontained_commits(child, bound_names, bound_exprs, rel, scope_name, findings)
+
+
+def _check_unit_of_work_commit(project: ProjectLayout) -> list[Finding]:
+    """Flag a ``.commit()`` call that is not lexically contained by a matching ``with``.
+
+    This proves exactly one syntactic property: is every ``.commit()``
+    call, at its exact position in the tree, inside the body of a ``with``
+    or ``async with`` whose bound name (or, when there is no ``as``, whose
+    context-manager expression, verbatim: ``with self._uow:
+    self._uow.commit()``) matches the call's receiver -- including
+    tuple/list ``as`` targets (``with x as (a, b):``). A commit after the
+    block has closed, or reachable only through a branch that does not
+    lexically contain the block (e.g. a dead ``if False:``), is NOT
+    covered and is flagged like any other unbound commit. A nested
+    ``def``/``async def`` is analyzed as its own unit, not as part of its
+    parent; a ``lambda`` has no scope of its own and is analyzed as part
+    of its enclosing scope, since its body cannot contain a ``with``.
+    Module-level and class-body statements are scanned too (labelled
+    "module-level code" in findings), not just function bodies. It does
+    NOT and cannot decide "does this method change state" -- that is a
+    semantic question the AST has no way to answer, so no attempt is made
+    to guess it from method names, verbs, or repository access. A method
+    that mutates state and never calls ``.commit()`` at all is not caught
+    by this check; that is a known, deliberate false-negative, not an
+    oversight.
     """
     findings: list[Finding] = []
     for context, module in project.iter_modules():
@@ -353,37 +405,20 @@ def _check_unit_of_work_commit(project: ProjectLayout) -> list[Finding]:
         for path in iter_python_files(app_dir):
             rel = str(path.relative_to(project.root))
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            # Module-level and class-body code: skips every FunctionDef /
+            # AsyncFunctionDef it meets (they're handled below, fresh).
+            _scan_for_uncontained_commits(
+                tree, frozenset(), frozenset(), rel, "module-level code", findings
+            )
             for func in (
                 n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
             ):
-                scope_nodes = _own_scope_nodes(func)
-                bound_names: set[str] = set()
-                bound_exprs: set[str] = set()
-                for with_node in (n for n in scope_nodes if isinstance(n, _WITH_NODES)):
-                    for item in with_node.items:
-                        if item.optional_vars is not None:
-                            bound_names.update(_names_bound_by_target(item.optional_vars))
-                        elif isinstance(item.context_expr, (ast.Name, ast.Attribute)):
-                            bound_exprs.add(ast.unparse(item.context_expr))
-                for call in (n for n in scope_nodes if isinstance(n, ast.Call)):
-                    fn = call.func
-                    if not isinstance(fn, ast.Attribute) or fn.attr != "commit":
-                        continue
-                    receiver = fn.value
-                    if isinstance(receiver, ast.Name) and receiver.id in bound_names:
-                        continue
-                    if isinstance(receiver, (ast.Name, ast.Attribute)) and (
-                        ast.unparse(receiver) in bound_exprs
-                    ):
-                        continue
-                    findings.append(
-                        Finding(
-                            "ARCH-033",
-                            rel,
-                            call.lineno,
-                            f"{func.name} commits outside a Unit of Work block; "
-                            "open `with self._uow as uow:` and commit through uow",
-                        )
+                # Start from func's own children (body, decorators, defaults)
+                # rather than func itself, since func matches the
+                # scope-boundary check and would otherwise be skipped outright.
+                for child in ast.iter_child_nodes(func):
+                    _scan_for_uncontained_commits(
+                        child, frozenset(), frozenset(), rel, func.name, findings
                     )
     return findings
 
