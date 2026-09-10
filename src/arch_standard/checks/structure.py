@@ -165,8 +165,34 @@ def _check_repositories_are_not_queries(project: ProjectLayout) -> list[Finding]
     return findings
 
 
+# ARCH-037: "each context exposes its wired services through
+# entrypoints/providers.py ... entrypoints import services only from
+# providers.py" has two halves. This check proves only the structural half --
+# a context with an entrypoints/ dir must also have entrypoints/providers.py.
+# It does NOT prove the import-discipline half (entrypoints importing services
+# only from providers.py); that is the ARCH-009/011 import-contract family in
+# import_contracts.py. A context lacking entrypoints/ entirely is genuinely
+# not applicable and SKIPs rather than vacuously PASSing.
+def _check_providers_present(project: ProjectLayout) -> list[Finding]:
+    findings: list[Finding] = []
+    for context in project.contexts:
+        entrypoints = project.entrypoints_dir(context)
+        if not entrypoints.is_dir():
+            continue
+        if not (entrypoints / "providers.py").is_file():
+            findings.append(
+                Finding(
+                    "ARCH-037",
+                    str(entrypoints.relative_to(project.root)),
+                    None,
+                    f"{context}/entrypoints/ has no providers.py",
+                )
+            )
+    return findings
+
+
 class StructureCheck:
-    rule_ids: tuple[str, ...] = ("ARCH-047", "ARCH-048", "ARCH-051")
+    rule_ids: tuple[str, ...] = ("ARCH-037", "ARCH-047", "ARCH-048", "ARCH-051")
 
     def run(self, project: ProjectLayout, catalog: Catalog) -> list[CheckReport]:
         if not project.is_scannable():
@@ -176,7 +202,7 @@ class StructureCheck:
             "ARCH-048": _check_no_context_application(project),
             "ARCH-051": _check_repositories_are_not_queries(project),
         }
-        return [
+        reports = [
             CheckReport(
                 rule_id=rid,
                 outcome=outcome_for(catalog.get(rid).level, bool(findings)),
@@ -184,3 +210,15 @@ class StructureCheck:
             )
             for rid, findings in by_rule.items()
         ]
+        if not any(project.entrypoints_dir(c).is_dir() for c in project.contexts):
+            reports.append(CheckReport(rule_id="ARCH-037", outcome=Outcome.SKIP))
+        else:
+            findings = _check_providers_present(project)
+            reports.append(
+                CheckReport(
+                    rule_id="ARCH-037",
+                    outcome=outcome_for(catalog.get("ARCH-037").level, bool(findings)),
+                    findings=tuple(findings),
+                )
+            )
+        return reports
