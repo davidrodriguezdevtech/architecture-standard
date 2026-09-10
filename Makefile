@@ -1,4 +1,4 @@
-.PHONY: install lint test check docs
+.PHONY: install lint test check docs e2e
 install:
 	uv sync
 lint:
@@ -10,3 +10,5 @@ check:
 	uv run arch-standard check .
 docs:
 	uv run arch-standard docs
+e2e:
+	uv run pytest tests/templates/test_distribution_e2e.py -m e2e -v

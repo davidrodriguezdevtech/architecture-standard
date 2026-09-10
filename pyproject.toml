@@ -46,5 +46,6 @@ exclude = ["tests/fixtures/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -m 'not e2e'"
 norecursedirs = ["fixtures"]
+markers = ["e2e: full build/install/generate/validate loop (slow)"]

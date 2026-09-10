@@ -1,12 +1,17 @@
 from __future__ import annotations
 
-from bootstrap import build_container
 from {{ context_name }}.{{ aggregate_module }}.application.{{ aggregate_name }}_service import (
     {{ aggregate_name | capitalize }}Service,
 )
 
-_container = build_container()
 
+def {{ aggregate_name }}_service(
+    service: {{ aggregate_name | capitalize }}Service,
+) -> {{ aggregate_name | capitalize }}Service:
+    """Expose the wired {{ aggregate_name }} service to entrypoints.
 
-def {{ aggregate_name }}_service() -> {{ aggregate_name | capitalize }}Service:
-    return _container.{{ aggregate_name }}_service
+    ARCH-017 forbids any context module from importing bootstrap/ directly, so
+    this provider does not import it either -- main.py, outside any context,
+    builds the container and passes its wired services in.
+    """
+    return service

@@ -28,5 +28,10 @@ def test_given_defaults__when_copied__then_bootstrap_and_providers_reference_ord
     providers = (dest / "src" / "sales" / "entrypoints" / "providers.py").read_text(
         encoding="utf-8"
     )
-    assert "def order_service() -> OrderService:" in providers
-    assert "from bootstrap import build_container" in providers
+    # ARCH-017 forbids any module outside bootstrap/ (other than main.py) from
+    # importing it, so providers.py receives the wired service as an argument
+    # instead of building or importing the container itself.
+    assert "def order_service(" in providers
+    assert "service: OrderService" in providers
+    assert "-> OrderService:" in providers
+    assert "from bootstrap import build_container" not in providers
