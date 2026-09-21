@@ -26,8 +26,10 @@ Rule IDs and rule levels do not change. Only paths, names and prose change.
 Clean break. Nothing is published (no tags on the remote) and no project repo consumes
 the standard yet, so no legacy alias is built.
 
-- The validator recognizes only `adapters/`. A project still using `infrastructure/`
-  fails the normal structure checks; the migration note is the remedy.
+- The validator recognizes only `adapters/`: no alias, nothing treats the old name as a
+  layer. A module still holding an `infrastructure/` directory is reported by the
+  structure check (ARCH-048) with a rename hint, and the run exits non-zero; the
+  migration note is the remedy.
 - `arch-standard` (and so the catalog: its version is the project metadata version)
   `0.1.1` -> `0.2.0` in `pyproject.toml`. Classified minor (paths renamed, no `level`
   change; `release-check` requires only a patch for content-only diffs, so a minor bump

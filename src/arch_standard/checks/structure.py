@@ -17,6 +17,14 @@ from arch_standard.rules.catalog import Catalog
 _QUERY_PREFIXES = ("find_", "search_", "list_", "report_", "query_")
 _COLLECTION_ROOTS = {"list", "List", "Sequence", "Iterable", "tuple", "set"}
 
+# The outbound-adapter layer's pre-0.2.0 directory name. It is NOT an accepted
+# alias: nothing in the validator treats it as a layer (the layering contracts
+# name only `adapters`). It is recognised here solely so that a project still
+# using it is told to rename, instead of having its whole outbound layer
+# silently vanish from every contract -- which is what happened before, and
+# what made the 0.2.0 migration note's "the validator reports it" untrue.
+_LEGACY_ADAPTERS_DIR = "infrastructure"
+
 
 def _classes(path: Path) -> list[ast.ClassDef]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -53,6 +61,33 @@ def _check_no_context_application(project: ProjectLayout) -> list[Finding]:
                     f"{context} has a context-level application/ package",
                 )
             )
+    return findings
+
+
+def _check_no_legacy_adapters_layer(project: ProjectLayout) -> list[Finding]:
+    """ARCH-048's second half: a layer package under a name the standard dropped.
+
+    ARCH-048 is the catalog's layer-package placement rule -- it says which
+    layer packages may exist and where. `<context>/<module>/infrastructure/` is
+    one that may not: since 0.2.0 the module's layers are domain/, application/
+    and adapters/, and a directory under the old name is a half-migrated
+    project, not a compliant one.
+    """
+    findings: list[Finding] = []
+    for context, module in project.iter_modules():
+        legacy = project.src / context / module / _LEGACY_ADAPTERS_DIR
+        if not legacy.is_dir():
+            continue
+        findings.append(
+            Finding(
+                "ARCH-048",
+                str(legacy.relative_to(project.root)),
+                None,
+                f"{context}/{module}/{_LEGACY_ADAPTERS_DIR}/ is the pre-0.2.0 name of the "
+                "adapters layer; rename it to adapters/ and update the imports "
+                "(see CHANGELOG 0.2.0)",
+            )
+        )
     return findings
 
 
@@ -199,7 +234,10 @@ class StructureCheck:
             return [CheckReport(rule_id=rid, outcome=Outcome.SKIP) for rid in self.rule_ids]
         by_rule = {
             "ARCH-047": _check_shared_is_limited(project),
-            "ARCH-048": _check_no_context_application(project),
+            "ARCH-048": [
+                *_check_no_context_application(project),
+                *_check_no_legacy_adapters_layer(project),
+            ],
             "ARCH-051": _check_repositories_are_not_queries(project),
         }
         reports = [

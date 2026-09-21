@@ -35,6 +35,30 @@ def test_given_a_context_level_application_dir__when_checked__then_arch_048_fail
     assert _reports(root)["ARCH-048"].outcome is Outcome.FAIL
 
 
+def test_given_a_legacy_infrastructure_layer__when_checked__then_arch_048_fails_with_rename() -> (
+    None
+):
+    # The 0.2.0 clean break: `adapters/` is the only name for the outbound-adapter
+    # layer. A module still on the pre-0.2.0 `infrastructure/` name simply
+    # disappears from every layer contract, so without this check the whole
+    # project passed silently (the spec's "fails the normal structure checks"
+    # was false). ARCH-048 is the catalog's layer-package placement rule, so it
+    # carries the finding -- loudly, with the rename in the message.
+    report = _reports(FIX / "legacy_infrastructure_project")["ARCH-048"]
+    assert report.outcome is Outcome.FAIL
+    assert len(report.findings) == 1
+    finding = report.findings[0]
+    assert finding.rule_id == "ARCH-048"
+    assert "adapters/" in finding.message
+    assert "sales/orders" in finding.message.replace("\\", "/")
+
+
+def test_given_an_adapters_layer__when_checked__then_arch_048_passes() -> None:
+    # The mirror of the test above: the migrated shape must stay clean, so the
+    # legacy-name finding cannot be a blanket FAIL for every module.
+    assert _reports(FIX / "good_project")["ARCH-048"].outcome is Outcome.PASS
+
+
 def test_given_a_service_in_shared__when_checked__then_arch_047_fails(tmp_path: Path) -> None:
     root = tmp_path / "p"
     (root / "src/sales/shared").mkdir(parents=True)

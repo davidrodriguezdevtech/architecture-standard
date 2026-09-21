@@ -1777,7 +1777,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-048 — No context-level application package
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** structure
-- **Validation:** `ast-checker` — filesystem check for <context>/application
+- **Validation:** `ast-checker` — filesystem check for <context>/application, plus any aggregate-module layer directory still carrying the pre-0.2.0 layer name (infrastructure), which is reported with the rename to adapters
 - **Description:** A context has no application/ package of its own. Application services live in aggregate modules, one per aggregate.
 - **Rationale:** DDD has no "application service of the context"; application services are per use case and belong with the model they coordinate. A context-level one becomes a coordination layer that hides non-atomic multi-aggregate flow.
 - **Correct:**

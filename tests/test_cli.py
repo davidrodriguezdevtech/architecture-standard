@@ -44,6 +44,19 @@ def test_check_on_bad_project_exits_one() -> None:
     assert main(["check", str(FIX / "bad_project")]) == 1
 
 
+def test_check_on_a_pre_0_2_0_infrastructure_project_exits_one_with_a_rename_hint(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # CHANGELOG 0.2.0 and the rename spec both promise that a project still on
+    # the pre-0.2.0 layer name fails the validator. It used to exit 0: the layer
+    # was invisible rather than wrong. The remedy has to be in the output.
+    code = main(["check", str(FIX / "legacy_infrastructure_project")])
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "ARCH-048  FAIL" in out
+    assert "adapters/" in out
+
+
 def test_given_a_project_with_a_non_catalog_rules_dir__when_checking__then_it_fails_cleanly(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

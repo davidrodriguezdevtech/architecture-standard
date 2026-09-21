@@ -21,9 +21,14 @@ released as 0.2.0 alongside, since its import path changed.
 - Every rule whose text or examples named the layer: wording/examples updated (the exact
   count is in the `release-check` line below).
 - The copier template generates `adapters/` and imports `commons.adapters`.
+- `arch-standard check` now reports an aggregate module still holding an
+  `infrastructure/` directory as an ARCH-048 failure, with the rename in the message, so a
+  half-migrated project exits non-zero instead of passing silently (the old name made the
+  whole outbound layer invisible to the layer contracts). This is detection, not an alias:
+  the layering contracts still name only `adapters`.
 
 Classified **minor** per spec Section 16.3; `uv run arch-standard release-check --version 0.2.0`
-confirms: `OK  0.1.0 -> 0.2.0 (minor bump, 17 rule change(s))`.
+confirms: `OK  0.1.0 -> 0.2.0 (minor bump, 18 rule change(s))`.
 
 #### Migration notes
 
@@ -33,8 +38,9 @@ For each existing project:
    aggregate module.
 2. Replace imports: `<context>.<module>.infrastructure` -> `<context>.<module>.adapters`, and
    `commons.infrastructure` -> `commons.adapters` (requires `arch-commons` >= 0.2.0).
-3. Re-run `arch-standard check .`. A project still using `infrastructure/` is reported by the
-   normal structure checks.
+3. Re-run `arch-standard check .`. A module still holding an `infrastructure/` directory is
+   reported by the structure check as an ARCH-048 failure carrying the rename hint, and the
+   run exits non-zero.
 
 ## 0.1.1
 

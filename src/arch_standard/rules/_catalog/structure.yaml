@@ -80,7 +80,10 @@ rules:
     incorrect: "sales/application/sales_service.py"
     validation:
       tool: ast-checker
-      detail: filesystem check for <context>/application
+      detail: >-
+        filesystem check for <context>/application, plus any aggregate-module layer
+        directory still carrying the pre-0.2.0 layer name (infrastructure), which is
+        reported with the rename to adapters
   - id: ARCH-049
     name: One aggregate root per aggregate module
     level: MUST
