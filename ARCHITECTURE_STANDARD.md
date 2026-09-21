@@ -840,7 +840,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 | ARCH-006 | Application does not depend on entrypoints | MUST | full |
 | ARCH-007 | Application does not construct concrete adapters | MUST | partial |
 | ARCH-008 | Adapters implement ports; the core imports abstractions only | MUST | partial |
-| ARCH-009 | Entrypoints obtain wired services from providers; never construct or call adapters directly | MUST | partial |
+| ARCH-009 | Entrypoints obtain wired services from providers; never construct or call outbound adapters directly | MUST | partial |
 | ARCH-010 | Entrypoints contain no business logic | SHOULD | partial |
 | ARCH-011 | Entrypoints call application services, not other entrypoints | MUST | full |
 | ARCH-012 | A context imports nothing from another context | MUST | full |
@@ -1023,7 +1023,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-007 — Application does not construct concrete adapters
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** dependencies
-- **Validation:** `grimp` — import-graph assert; catches adapters imported from adapters/, not an adapter class defined and instantiated within application/ itself
+- **Validation:** `grimp` — import-graph assert; catches adapter classes imported from the adapters/ package, not an adapter class defined and instantiated within application/ itself
 - **Description:** No module under a context's application/ package instantiates an adapter class such as SqlAlchemyOrderRepository(...) or HttpCreditGateway(...).
 - **Rationale:** Constructing an adapter couples the use case to one technology choice and defeats dependency injection.
 - **Correct:**
@@ -1057,10 +1057,10 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Related:** ARCH-001, ARCH-042
 
-#### ARCH-009 — Entrypoints obtain wired services from providers; never construct or call adapters directly
+#### ARCH-009 — Entrypoints obtain wired services from providers; never construct or call outbound adapters directly
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** dependencies
 - **Validation:** `import-linter` — forbidden contract (import half); entrypoints calling persistence/session/http-client directly is a runtime fact the import graph cannot see
-- **Description:** No module under a context's entrypoints/ package constructs an adapter or calls persistence, sessions, or HTTP clients directly; it obtains a fully wired service from providers.py and calls only that service.
+- **Description:** No module under a context's entrypoints/ package constructs an outbound adapter or calls persistence, sessions, or HTTP clients directly; it obtains a fully wired service from providers.py and calls only that service.
 - **Rationale:** An entrypoint that news up a repository or calls session.execute is untestable without transport and leaks wiring across the boundary.
 - **Correct:**
   ```
@@ -1862,7 +1862,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** cross_cutting
 - **Validation:** `ruff` — banned logging imports/calls under domain/ and application/
 - **Description:** Modules under domain/ and application/ import no logging library and make no logging calls. They raise domain exceptions and emit domain events; entrypoints and outbound adapters log.
-- **Rationale:** Logging is an observability concern of the adapters. Keeping it out of the core keeps the core free of ambient I/O and makes behavior fully assertable from the state and events a use case produces.
+- **Rationale:** Logging is an observability concern of the adapters on both sides of the core: entrypoints inbound, adapters/ outbound. Keeping it out of the core keeps the core free of ambient I/O and makes behavior fully assertable from the state and events a use case produces.
 - **Correct:**
   ```
   # application: emit a fact
@@ -2088,7 +2088,7 @@ rule on every PR.
 | ADR waiver expiry | validator date check over `docs/adr/` | 021*, 036, any waived MUST | CI |
 | Package boundaries with a public API | tach (`tach.toml`) | 012, 042, 045 | CI |
 | Event schema / contract testing | pydantic/jsonschema export + consumer fixtures; optionally Pact | 024, 043, 044 | CI (producer & consumer) |
-| Test taxonomy | pytest markers + a conftest rule forbidding infra imports in domain tests | 038 | CI |
+| Test taxonomy | pytest markers + a conftest rule forbidding adapter imports in domain tests | 038 | CI |
 | Coverage gates per layer | coverage.py with per-path thresholds | Section 11.5 | CI |
 | Manual review checklist | shipped PR checklist for the "manual" rules | 016, 021*, 027, 029, 036, 039, 042 | code review |
 

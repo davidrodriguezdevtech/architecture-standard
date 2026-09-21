@@ -27,8 +27,12 @@ released as 0.2.0 alongside, since its import path changed.
   whole outbound layer invisible to the layer contracts). This is detection, not an alias:
   the layering contracts still name only `adapters`.
 
-Classified **minor** per spec Section 16.3; `uv run arch-standard release-check --version 0.2.0`
-confirms: `OK  0.1.0 -> 0.2.0 (minor bump, 18 rule change(s))`.
+Classified **minor** per spec Section 16.3, which versions the *rule catalog* and nothing
+else: it counts rule-content changes, and no rule `id` or `level` moved here. The break this
+release is named for — the project layout and the `commons` import path — is not something
+that policy versions, which is why a breaking release still classifies as a minor catalog
+bump. `uv run arch-standard release-check --version 0.2.0` confirms:
+`OK  0.1.0 -> 0.2.0 (minor bump, 18 rule change(s))`.
 
 #### Migration notes
 
@@ -41,6 +45,10 @@ For each existing project:
 3. Re-run `arch-standard check .`. A module still holding an `infrastructure/` directory is
    reported by the structure check as an ARCH-048 failure carrying the rename hint, and the
    run exits non-zero.
+4. Steps 1-3 only cover code. Grep the whole repository for `infrastructure` and update the
+   non-code references too: docs and ADRs, CI config, coverage/per-path thresholds, and any
+   checked-in `.importlinter`. Re-render the static contracts with
+   `uv run arch-standard render-importlinter .`, then re-run `uv run arch-standard check .`.
 
 ## 0.1.1
 

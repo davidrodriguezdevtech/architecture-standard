@@ -153,7 +153,9 @@ rules:
       self._orders = SqlAlchemyOrderRepository(SqlAlchemyUnitOfWork())
     validation:
       tool: grimp
-      detail: import-graph assert; catches adapters imported from adapters/, not an adapter class defined and instantiated within application/ itself
+      detail: >-
+        import-graph assert; catches adapter classes imported from the adapters/ package,
+        not an adapter class defined and instantiated within application/ itself
     related: [ARCH-005]
   - id: ARCH-008
     name: Adapters implement ports; the core imports abstractions only
@@ -180,13 +182,13 @@ rules:
       detail: layered contract (import half); Protocol conformance of adapters is reviewed at PR time
     related: [ARCH-001, ARCH-042]
   - id: ARCH-009
-    name: Entrypoints obtain wired services from providers; never construct or call adapters directly
+    name: Entrypoints obtain wired services from providers; never construct or call outbound adapters directly
     level: MUST
     automation: partial
     category: dependencies
     description: >
       No module under a context's entrypoints/ package constructs an
-      adapter or calls persistence, sessions, or HTTP clients
+      outbound adapter or calls persistence, sessions, or HTTP clients
       directly; it obtains a fully wired service from providers.py and calls
       only that service.
     rationale: >

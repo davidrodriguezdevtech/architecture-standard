@@ -11,7 +11,7 @@
 | ADR waiver expiry | validator date check over `docs/adr/` | 021*, 036, any waived MUST | CI |
 | Package boundaries with a public API | tach (`tach.toml`) | 012, 042, 045 | CI |
 | Event schema / contract testing | pydantic/jsonschema export + consumer fixtures; optionally Pact | 024, 043, 044 | CI (producer & consumer) |
-| Test taxonomy | pytest markers + a conftest rule forbidding infra imports in domain tests | 038 | CI |
+| Test taxonomy | pytest markers + a conftest rule forbidding adapter imports in domain tests | 038 | CI |
 | Coverage gates per layer | coverage.py with per-path thresholds | Section 11.5 | CI |
 | Manual review checklist | shipped PR checklist for the "manual" rules | 016, 021*, 027, 029, 036, 039, 042 | code review |
 

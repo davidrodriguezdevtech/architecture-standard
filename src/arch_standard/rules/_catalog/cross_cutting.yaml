@@ -53,9 +53,10 @@ rules:
       logging calls. They raise domain exceptions and emit domain events; entrypoints and
       outbound adapters log.
     rationale: >
-      Logging is an observability concern of the adapters. Keeping it out of the core
-      keeps the core free of ambient I/O and makes behavior fully assertable from the
-      state and events a use case produces.
+      Logging is an observability concern of the adapters on both sides of the core:
+      entrypoints inbound, adapters/ outbound. Keeping it out of the core keeps the core
+      free of ambient I/O and makes behavior fully assertable from the state and events a
+      use case produces.
     correct: |
       # application: emit a fact
       self._bus.publish_all(self._uow.collect_new_events())
