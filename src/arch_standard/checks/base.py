@@ -12,7 +12,7 @@ from arch_standard.rules.model import Level
 _NON_CONTEXT_DIRS = {"commons", "shared_kernel", "bootstrap"}
 _SKIP_DIRS = {".venv", "venv", "__pycache__", ".git", ".mypy_cache", ".ruff_cache"}
 _CONTEXT_RESERVED = frozenset({"entrypoints", "shared", "read"})
-_MODULE_LAYER_DIRS = ("domain", "application", "infrastructure")
+_MODULE_LAYER_DIRS = ("domain", "application", "adapters")
 
 
 def _has_module_layer(path: Path) -> bool:
@@ -108,8 +108,8 @@ class ProjectLayout:
     def module_application_dir(self, context: str, module: str) -> Path:
         return self.src / context / module / "application"
 
-    def module_infrastructure_dir(self, context: str, module: str) -> Path:
-        return self.src / context / module / "infrastructure"
+    def module_adapters_dir(self, context: str, module: str) -> Path:
+        return self.src / context / module / "adapters"
 
     def shared_dir(self, context: str) -> Path:
         return self.src / context / "shared"

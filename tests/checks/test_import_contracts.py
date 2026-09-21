@@ -49,7 +49,7 @@ def test_bad_project_fails_arch_001() -> None:
     # Fails because import-linter reported a broken contract, not because it errored.
     assert reports["ARCH-001"].findings[0].message == "import-linter contract broken"
     # ARCH-002/ARCH-005 share the same per-module ``layers`` contract as ARCH-001
-    # (sales.orders' domain importing its own infrastructure breaks all three).
+    # (sales.orders' domain importing its own adapters breaks all three).
     assert reports["ARCH-002"].outcome is Outcome.FAIL
     assert reports["ARCH-005"].outcome is Outcome.FAIL
     # ARCH-006 is its own ``forbidden`` contract post-Task-10, only emitted when
@@ -93,7 +93,7 @@ def test_minimal_project_with_no_commons_or_bootstrap_passes() -> None:
     # is not vendored under minimal_project's own src/, but it resolves via the
     # installed arch-commons dependency in the interpreter running this test (this
     # repo's own workspace), so both contracts ARE genuinely emitted and genuinely
-    # satisfied (nothing in minimal_project imports commons.infrastructure, and
+    # satisfied (nothing in minimal_project imports commons.adapters, and
     # commons.types imports no forbidden framework) — a real PASS, not a vacuous one.
     # Task 7: minimal_project also has no entrypoints/ (ARCH-009/011 have nothing
     # to check) and no shared_kernel/ (ARCH-014 has nothing to check). ARCH-017
@@ -129,7 +129,7 @@ def test_non_ddd_tree_skips_instead_of_erroring(tmp_path: Path) -> None:
     # graph and genuinely evaluate ARCH-035 -- it PASSes (commons.types imports no
     # forbidden framework), not SKIPs. ARCH-034 still SKIPs: it additionally
     # requires a non-empty domain_app (there being anything to forbid commons.
-    # infrastructure FROM), which this contextless tree has none of.
+    # adapters FROM), which this contextless tree has none of.
     (tmp_path / "src" / "somepkg").mkdir(parents=True)
     (tmp_path / "src" / "somepkg" / "foo.py").write_text("x = 1\n")
     layout = ProjectLayout.detect(tmp_path)
@@ -368,7 +368,7 @@ def test_given_installed_commons__when_checked__then_arch_034_catches_violation(
     """Negative-case guardrail for Task 10's correction: commons being resolvable
     only via the installed arch-commons dependency (not vendored) must not turn
     ARCH-034 into a rule that can never fail. An application module that actually
-    imports commons.infrastructure must still be caught."""
+    imports commons.adapters must still be caught."""
     src = tmp_path / "src"
     (src / "sales" / "orders" / "domain" / "model").mkdir(parents=True)
     (src / "sales" / "orders" / "domain" / "model" / "__init__.py").write_text("")
@@ -380,9 +380,9 @@ def test_given_installed_commons__when_checked__then_arch_034_catches_violation(
     (src / "__init__.py").write_text("")
     assert not (src / "commons").exists()
 
-    # Deliberate ARCH-034 violation: application reaches into commons.infrastructure.
+    # Deliberate ARCH-034 violation: application reaches into commons.adapters.
     (src / "sales" / "orders" / "application" / "service.py").write_text(
-        "from commons.infrastructure import x\n"
+        "from commons.adapters import x\n"
     )
 
     layout = ProjectLayout.detect(tmp_path)
@@ -558,7 +558,7 @@ def test_given_commons_types_importing_a_context__when_checked__then_arch_015_fa
     assert reports["ARCH-001"].outcome is Outcome.PASS
 
 
-def test_given_an_entrypoint_importing_infrastructure__when_checked__then_arch_009_fails(
+def test_given_an_entrypoint_importing_adapters__when_checked__then_arch_009_fails(
     tmp_path: Path,
 ) -> None:
     src = tmp_path / "src"
@@ -570,14 +570,14 @@ def test_given_an_entrypoint_importing_infrastructure__when_checked__then_arch_0
     (orders / "__init__.py").write_text("", encoding="utf-8")
     (orders / "domain" / "__init__.py").write_text("", encoding="utf-8")
     (orders / "domain" / "model" / "__init__.py").write_text("", encoding="utf-8")
-    (orders / "infrastructure").mkdir(parents=True)
-    (orders / "infrastructure" / "__init__.py").write_text("class Repo: ...\n", encoding="utf-8")
+    (orders / "adapters").mkdir(parents=True)
+    (orders / "adapters" / "__init__.py").write_text("class Repo: ...\n", encoding="utf-8")
 
     entrypoints = src / "sales" / "entrypoints"
     entrypoints.mkdir(parents=True)
     (entrypoints / "__init__.py").write_text("", encoding="utf-8")
     (entrypoints / "http.py").write_text(
-        "from sales.orders.infrastructure import Repo\n", encoding="utf-8"
+        "from sales.orders.adapters import Repo\n", encoding="utf-8"
     )
 
     layout = ProjectLayout.detect(tmp_path)

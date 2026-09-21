@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from sales.orders.infrastructure.order_repository import (  # ARCH-001 violation
+from sales.orders.adapters.order_repository import (  # ARCH-001 violation
     PostgresOrderRepository,
 )
 

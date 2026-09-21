@@ -16,21 +16,21 @@ from arch_standard.rules.catalog import Catalog
 # modules (a context-level sibling, not nested under a module) so it is not part
 # of this contract; ARCH-006 (application does not depend on entrypoints) is
 # covered separately by a per-context ``forbidden`` contract instead.
-_MODULE_LAYERS: tuple[str, ...] = ("infrastructure", "application", "domain")
+_MODULE_LAYERS: tuple[str, ...] = ("adapters", "application", "domain")
 
 # The layering rules encoded by the per-module ``layers`` contract. ARCH-007/008
 # ride this same contract, but only partially:
 #   - ARCH-007 (application does not construct concrete adapters) is only
 #     half covered: this contract (plus ARCH-034) proves application cannot
-#     import an adapter class from infrastructure/ or commons.infrastructure
+#     import an adapter class from adapters/ or commons.adapters
 #     to construct it, but it does NOT catch a concrete adapter class
 #     defined inside application/ itself and instantiated there -- nothing
 #     is imported, so no import contract fires; that half is unverified by
 #     any machine check and is reviewed at PR time.
-#   - ARCH-008 (infrastructure implements ports; the core imports abstractions
+#   - ARCH-008 (adapters implement ports; the core imports abstractions
 #     only) is only half covered: this contract proves domain/application
-#     import nothing from infrastructure, but it does NOT verify that
-#     infrastructure's adapters actually implement the Protocol declared in
+#     import nothing from adapters/, but it does NOT verify that the
+#     concrete adapters actually implement the Protocol declared in
 #     the module's ``ports.py`` -- that half is unverified by any machine
 #     check and is reviewed at PR time.
 # There is no separate check for either rule; both ride the same import facts
@@ -68,7 +68,7 @@ def _commons_root_available(project: ProjectLayout) -> bool:
 
     import-linter's ``ForbiddenContract`` validation unconditionally rejects a
     forbidden target that is a subpackage of a module NOT present in
-    ``root_packages`` (e.g. ``commons.infrastructure`` when ``commons`` itself is
+    ``root_packages`` (e.g. ``commons.adapters`` when ``commons`` itself is
     only an external module) -- this holds regardless of
     ``include_external_packages``. So ``commons`` must be a genuine root package
     for ARCH-034 to validate at all once it is no longer vendored on disk.
@@ -109,12 +109,12 @@ def _module_contracts(project: ProjectLayout, context: str) -> list[str]:
     """Render the per-module contracts for a context that HAS aggregate modules.
 
     - One ``layers`` contract per module, covering ARCH-001/002/005 within that
-      module's own domain/application/infrastructure (no ``entrypoints`` layer:
+      module's own domain/application/adapters (no ``entrypoints`` layer:
       entrypoints sits above all modules, not nested under one).
     - One ``forbidden`` contract (ARCH-006) when the context has an
       ``entrypoints/`` dir: no module's application may import it.
     - One ``forbidden`` contract (ARCH-046) when the context has 2+ modules: no
-      module may import another module's application/infrastructure. Source and
+      module may import another module's application/adapters. Source and
       forbidden modules deliberately overlap for a module's OWN layers (e.g.
       source ``sales.orders`` vs forbidden ``sales.orders.application``) —
       import-linter's ``forbidden`` contract treats overlapping source/forbidden
@@ -161,7 +161,7 @@ def _module_contracts(project: ProjectLayout, context: str) -> list[str]:
         forbidden_046 = [
             f"    {context}.{other}.{layer}"
             for other in modules
-            for layer in ("application", "infrastructure")
+            for layer in ("application", "adapters")
             if (project.src / context / other / layer).is_dir()
         ]
         if forbidden_046:
@@ -310,25 +310,25 @@ def build_contracts(project: ProjectLayout) -> str:
     for context in project.contexts:
         if not project.entrypoints_dir(context).is_dir():
             continue
-        # ARCH-009: entrypoints do not import infrastructure. This is only a
+        # ARCH-009: entrypoints do not import adapters. This is only a
         # partial proof of the rule -- ARCH-009 also requires entrypoints not
         # to *call* persistence/session/HTTP-client code directly, which is a
         # runtime-behaviour fact an import contract cannot see. This contract
         # closes the "does not import" half only.
-        infra = [
-            f"    {context}.{module}.infrastructure"
+        outbound = [
+            f"    {context}.{module}.adapters"
             for module in project.modules(context)
-            if project.module_infrastructure_dir(context, module).is_dir()
+            if project.module_adapters_dir(context, module).is_dir()
         ]
-        if infra:
+        if outbound:
             lines += [
                 f"[importlinter:contract:ARCH-009-{context}]",
-                f"name = ARCH-009 entrypoints do not touch infrastructure ({context})",
+                f"name = ARCH-009 entrypoints do not touch adapters ({context})",
                 "type = forbidden",
                 "source_modules =",
                 f"    {context}.entrypoints",
                 "forbidden_modules =",
-                *infra,
+                *outbound,
                 "",
             ]
         # ARCH-011: an entrypoint module may not import a sibling entrypoint.
@@ -359,12 +359,12 @@ def build_contracts(project: ProjectLayout) -> str:
     if domain_app and _commons_root_available(project):
         lines += [
             "[importlinter:contract:ARCH-034]",
-            "name = ARCH-034 commons.infrastructure isolated from domain and application",
+            "name = ARCH-034 commons.adapters isolated from domain and application",
             "type = forbidden",
             "source_modules =",
             *domain_app,
             "forbidden_modules =",
-            "    commons.infrastructure",
+            "    commons.adapters",
             "",
         ]
 
