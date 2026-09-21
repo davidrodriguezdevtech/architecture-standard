@@ -8,7 +8,7 @@
 | Fat Controller / Fat Entrypoint | untestable without transport, logic not reusable | entrypoint only translates + calls one service method |
 | Business logic in adapters | hidden from domain tests, duplicated | adapters only translate; decisions in domain/application |
 | Repository as business service | business queries leak into persistence, repo grows unbounded | repo = collection of roots; complex reads -> read model |
-| Domain imports infrastructure / frameworks | domain not testable in isolation, tech locked in | DIP - domain defines ports, infra implements |
+| Domain imports adapters / frameworks | domain not testable in isolation, tech locked in | DIP - domain defines ports, adapters implement |
 | Active Record aggregate | invariants entangled with the DB, not unit-testable | data mapper; plain aggregate |
 | Shared module as junk drawer | global coupling, contexts cannot evolve independently | strict `commons` / `shared_kernel` rules; duplicate by default |
 | Cross-context coupling | contexts fused, not independently deployable | integration events + ACL; zero imports (ARCH-012) |

@@ -34,7 +34,7 @@ project/
 │   │   │   │   └── specifications.py      # optional
 │   │   │   ├── application/
 │   │   │   │   └── <aggregate>_service.py # one method per use case
-│   │   │   └── infrastructure/
+│   │   │   └── adapters/
 │   │   │       ├── <aggregate>_repository.py
 │   │   │       ├── mapping.py             # aggregate to stored-form translation
 │   │   │       └── <adapter>.py           # one module per outbound adapter
@@ -50,6 +50,10 @@ project/
 │                                     #   consumer startup
 └── tests/
 ```
+
+`adapters/` holds a module's **outbound (driven) adapters**: repositories, gateways,
+clients. `entrypoints/` holds the context's **inbound (driving) adapters**: HTTP, consumers,
+CLI. Both are adapters; the folder names say which side of the core they sit on.
 
 `commons/` is not part of `src/`. It is an installed, separately versioned package
 (`arch-commons`) that every project depends on, so a fix reaches all of them at once
@@ -79,7 +83,7 @@ visibly crossing a line.
 
 Isolation between aggregate modules is weaker than between contexts. They share the
 context's ubiquitous language. An aggregate module MUST NOT import another aggregate
-module's `application/` or `infrastructure/`; references between aggregates are by ID,
+module's `application/` or `adapters/`; references between aggregates are by ID,
 and those ID types live in `<context>/shared/ids.py`. (ARCH-046)
 
 ## 2.3 What goes where
@@ -92,7 +96,7 @@ and those ID types live in `<context>/shared/ids.py`. (ARCH-046)
 | A calculation over one aggregate that is not a method | `<module>/domain/services.py` |
 | A calculation spanning aggregates of the same context | `<context>/shared/services.py` |
 | A use case (state change on one aggregate) | a method on `<module>/application/<aggregate>_service.py` |
-| A persistence/broker/third-party integration | one module in `<module>/infrastructure/` |
+| A persistence/broker/third-party integration | one module in `<module>/adapters/` |
 | A contract the domain needs | `<module>/domain/model/ports.py` |
 | A non-domain outbound contract used by one use case | a `Protocol` colocated in that `application/` module |
 | A fact other parts of this context react to | a domain event in `<module>/domain/model/events.py` |
@@ -100,7 +104,7 @@ and those ID types live in `<context>/shared/ids.py`. (ARCH-046)
 | A value object used by 2+ aggregates of this context | `<context>/shared/value_objects.py` |
 | A projection, report, search, dashboard, or any cross-aggregate read | `<context>/read/` |
 | A dependency-free technical primitive | the `arch-commons` package, `commons.types` (propose upstream) |
-| A shared framework-bound technical implementation | the `arch-commons` package, `commons.infrastructure` (propose upstream) |
+| A shared framework-bound technical implementation | the `arch-commons` package, `commons.adapters` (propose upstream) |
 | A domain concept genuinely shared by 2+ contexts, with business policy | `shared_kernel/` (with governance) |
 | Wiring / config / DI | `bootstrap/` |
 

@@ -1,4 +1,4 @@
-# 7. Infrastructure
+# 7. Adapters
 
 ## 7.1 Rules
 
@@ -8,9 +8,9 @@
   abstractions only. (ARCH-008)
 - No Active Record. The aggregate has no persistence base class, decorator, or import,
   and no `save()`. Translation between the aggregate and its stored form lives entirely
-  in `infrastructure/`, in whatever form the store needs. (ARCH-028)
+  in `adapters/`, in whatever form the store needs. (ARCH-028)
 - Adapters contain no business logic and make no orchestration decisions.
-- `infrastructure/` MAY import `commons/infrastructure/`; `domain/` and `application/`
+- `adapters/` MAY import `commons/adapters/`; `domain/` and `application/`
   MUST NOT. (ARCH-034)
 
 ## 7.2 Unit of Work and persistence
@@ -36,7 +36,7 @@ class UnitOfWork(Protocol):
 - Repositories receive the UoW and run against the store handle it exposes; they call
   `uow.track(aggregate)` on every load and store so events can be drained.
 - Translation between the aggregate and its stored form lives entirely in
-  `infrastructure/`, in whatever form the store needs. The aggregate has no persistence
+  `adapters/`, in whatever form the store needs. The aggregate has no persistence
   knowledge. (ARCH-028)
 - One transaction modifies one aggregate (ARCH-021) - this keeps the UoW portable to
   stores without general multi-item transactions.
@@ -45,12 +45,12 @@ class UnitOfWork(Protocol):
 
 ### Reference implementation - SQLAlchemy
 
-Shipped in `commons/infrastructure/` and the template.
+Shipped in `commons/adapters/` and the template.
 
 - `SqlAlchemyUnitOfWork` owns a `Session`; `collect_new_events()` iterates
   `session.new | session.dirty | session.identity_map` and drains each aggregate
   root's pending events (so `track()` is effectively implicit for this store).
-- Per context: `infrastructure/mapping.py` holds `Table` definitions plus
+- Per context: `adapters/mapping.py` holds `Table` definitions plus
   `map_imperatively(Order, order_table, ...)`. There is no separate ORM model class and
   no manual mapper. Domain classes stay free of ORM base classes, decorators, and
   imports. `bootstrap/` calls each context's `configure_mappings()` once at startup.
@@ -58,7 +58,7 @@ Shipped in `commons/infrastructure/` and the template.
 - `InMemoryUnitOfWork` (dict-backed, explicit `track()`) ships alongside for tests.
 
 ```python
-# sales/orders/infrastructure/order_repository.py     - thin, intention-revealing
+# sales/orders/adapters/order_repository.py     - thin, intention-revealing
 class SqlAlchemyOrderRepository:                  # implements OrderRepository (domain port)
     def __init__(self, uow: SqlAlchemyUnitOfWork) -> None:
         self._uow = uow
@@ -113,4 +113,4 @@ individually. (ARCH-033)
   or consistency guarantee: integration events are written to an `outbox` table in the
   same transaction; a separate process publishes them. (ARCH-036)
 - Optional (`publish-after-commit`) when no such guarantee is required.
-- The machinery lives in `commons/infrastructure/outbox.py`.
+- The machinery lives in `commons/adapters/outbox.py`.

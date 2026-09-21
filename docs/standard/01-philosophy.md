@@ -7,8 +7,8 @@ contexts), never technology (`controllers/`, `services/`, `repositories/`).
 Three load-bearing ideas:
 
 1. **The Dependency Rule.** Source-code dependencies point inward:
-   `entrypoints -> application -> domain`, and `infrastructure -> domain/application`.
-   The domain depends on nothing. Infrastructure is plugged in, never imported by the
+   `entrypoints -> application -> domain`, and `adapters -> domain/application`.
+   The domain depends on nothing. Adapters are plugged in, never imported by the
    core.
 
 2. **Business-capability cohesion at the top.** A change to "how orders work" touches

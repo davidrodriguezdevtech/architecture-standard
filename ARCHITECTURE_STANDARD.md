@@ -22,7 +22,7 @@ The following framing decisions are fixed for v1:
   `domain/model/ports.py` (domain vocabulary), and colocated in the use-case module
   (non-domain outbound). There is no `application/ports.py` by default.
 - **Persistence.** The normative contract (the `UnitOfWork` Protocol, repository ports,
-  translation living in `infrastructure/`) is store-agnostic. SQLAlchemy is the shipped
+  translation living in `adapters/`) is store-agnostic. SQLAlchemy is the shipped
   reference implementation, with an `InMemoryUnitOfWork` for tests. Other stores
   (DynamoDB, sqlite, and others) provide their own `UnitOfWork` and repositories against
   the same contract.
@@ -41,7 +41,7 @@ The following framing decisions are fixed for v1:
   `domain/model/projections.py`. Query, dashboard, and presentation read models live
   outside the domain, in `<context>/read/`, introduced when complexity justifies them.
 - **Mapping (domain to DTO).** Manual mapping for domain-facing boundaries. Libraries
-  are allowed for mechanical mapping at infrastructure and transport boundaries.
+  are allowed for mechanical mapping at adapter and transport boundaries.
 - **Cross-context communication.** Synchronous by default, contract-mediated, wired in
   `bootstrap/`, with zero imports between contexts. Asynchronous integration events
   when the use case explicitly tolerates eventual consistency.
@@ -74,7 +74,7 @@ The following framing decisions are fixed for v1:
 - **Rule tiers.** Each rule is tagged `tier: core` or `tier: full`. The core rules
   bind from day one; `arch-standard check --core` runs only those.
 - **Logging.** `domain/` and `application/` do not log. They raise domain exceptions
-  and emit domain events; entrypoints and infrastructure adapters log.
+  and emit domain events; entrypoints and outbound adapters log.
 
 ## How to read this document (RFC 2119)
 
@@ -101,8 +101,8 @@ contexts), never technology (`controllers/`, `services/`, `repositories/`).
 Three load-bearing ideas:
 
 1. **The Dependency Rule.** Source-code dependencies point inward:
-   `entrypoints -> application -> domain`, and `infrastructure -> domain/application`.
-   The domain depends on nothing. Infrastructure is plugged in, never imported by the
+   `entrypoints -> application -> domain`, and `adapters -> domain/application`.
+   The domain depends on nothing. Adapters are plugged in, never imported by the
    core.
 
 2. **Business-capability cohesion at the top.** A change to "how orders work" touches
@@ -157,7 +157,7 @@ project/
 │   │   │   │   └── specifications.py      # optional
 │   │   │   ├── application/
 │   │   │   │   └── <aggregate>_service.py # one method per use case
-│   │   │   └── infrastructure/
+│   │   │   └── adapters/
 │   │   │       ├── <aggregate>_repository.py
 │   │   │       ├── mapping.py             # aggregate to stored-form translation
 │   │   │       └── <adapter>.py           # one module per outbound adapter
@@ -173,6 +173,10 @@ project/
 │                                     #   consumer startup
 └── tests/
 ```
+
+`adapters/` holds a module's **outbound (driven) adapters**: repositories, gateways,
+clients. `entrypoints/` holds the context's **inbound (driving) adapters**: HTTP, consumers,
+CLI. Both are adapters; the folder names say which side of the core they sit on.
 
 `commons/` is not part of `src/`. It is an installed, separately versioned package
 (`arch-commons`) that every project depends on, so a fix reaches all of them at once
@@ -202,7 +206,7 @@ visibly crossing a line.
 
 Isolation between aggregate modules is weaker than between contexts. They share the
 context's ubiquitous language. An aggregate module MUST NOT import another aggregate
-module's `application/` or `infrastructure/`; references between aggregates are by ID,
+module's `application/` or `adapters/`; references between aggregates are by ID,
 and those ID types live in `<context>/shared/ids.py`. (ARCH-046)
 
 ## 2.3 What goes where
@@ -215,7 +219,7 @@ and those ID types live in `<context>/shared/ids.py`. (ARCH-046)
 | A calculation over one aggregate that is not a method | `<module>/domain/services.py` |
 | A calculation spanning aggregates of the same context | `<context>/shared/services.py` |
 | A use case (state change on one aggregate) | a method on `<module>/application/<aggregate>_service.py` |
-| A persistence/broker/third-party integration | one module in `<module>/infrastructure/` |
+| A persistence/broker/third-party integration | one module in `<module>/adapters/` |
 | A contract the domain needs | `<module>/domain/model/ports.py` |
 | A non-domain outbound contract used by one use case | a `Protocol` colocated in that `application/` module |
 | A fact other parts of this context react to | a domain event in `<module>/domain/model/events.py` |
@@ -223,7 +227,7 @@ and those ID types live in `<context>/shared/ids.py`. (ARCH-046)
 | A value object used by 2+ aggregates of this context | `<context>/shared/value_objects.py` |
 | A projection, report, search, dashboard, or any cross-aggregate read | `<context>/read/` |
 | A dependency-free technical primitive | the `arch-commons` package, `commons.types` (propose upstream) |
-| A shared framework-bound technical implementation | the `arch-commons` package, `commons.infrastructure` (propose upstream) |
+| A shared framework-bound technical implementation | the `arch-commons` package, `commons.adapters` (propose upstream) |
 | A domain concept genuinely shared by 2+ contexts, with business policy | `shared_kernel/` (with governance) |
 | Wiring / config / DI | `bootstrap/` |
 
@@ -268,7 +272,7 @@ side (aggregate modules) free of query pressure. (ARCH-051, ARCH-052)
 - The first level of `src/` is bounded contexts. Each context owns its own model,
   language, and rules.
 - A context MUST NOT import another context's internals (`domain/`, `application/`,
-  `infrastructure/`). Zero imports between contexts. (ARCH-012)
+  `adapters/`). Zero imports between contexts. (ARCH-012)
 - Contracts (ports, event schemas, boundary DTOs) are defined as if the contexts were
   physically separable.
 - No dependency cycles between contexts. (ARCH-013)
@@ -277,7 +281,7 @@ side (aggregate modules) free of query pressure. (ARCH-051, ARCH-052)
 
 | Situation | Mechanism |
 |---|---|
-| Consumer needs data/decision from another context now, and staleness is unacceptable | Synchronous, contract-mediated. The consumer declares its own consumer-driven port; `bootstrap/` wires an adapter backed by the other context's application service; the consumer's `infrastructure/<x>_gateway.py` implements the port and does the ACL. Zero imports between contexts. |
+| Consumer needs data/decision from another context now, and staleness is unacceptable | Synchronous, contract-mediated. The consumer declares its own consumer-driven port; `bootstrap/` wires an adapter backed by the other context's application service; the consumer's `adapters/<x>_gateway.py` implements the port and does the ACL. Zero imports between contexts. |
 | The use case explicitly tolerates eventual consistency; or fan-out to many consumers; or crossing a future service boundary | Asynchronous integration events. The producer publishes a versioned, serialized event; each consumer has an ACL translating the raw message to its own model. Published via transactional outbox when delivery must be guaranteed. |
 | Producer needs a consumer to do something | Send a command, not an event. Events are facts (past tense); they never oblige a handler. |
 | A concept looks shared but means different things in each context | Duplicate. Each context models its own. Sharing is the exception. |
@@ -285,7 +289,7 @@ side (aggregate modules) free of query pressure. (ARCH-051, ARCH-052)
 ## 3.3 Anti-Corruption Layer
 
 Every inbound translation from another context (a synchronous response or an
-asynchronous message) passes through an ACL in the consumer's `infrastructure/`. The
+asynchronous message) passes through an ACL in the consumer's `adapters/`. The
 ACL is the only place that knows the other context's contract shape; the rest of the
 consumer sees only its own model.
 
@@ -308,7 +312,7 @@ both conditional MUSTs, applying once a context publishes integration events.)
 
 ## 3.5 Extraction path
 
-Because infrastructure is behind ports and cross-context contracts are already
+Because adapters sit behind ports and cross-context contracts are already
 explicit, extracting a context to its own service means: replace the in-process
 gateway adapter with an HTTP client, and replace the in-process bus with a real broker.
 `domain/` and `application/` are untouched.
@@ -387,7 +391,7 @@ External stimulus -> Entrypoint -> Application use case -> Domain
   serialization). (ARCH-004 family)
 - An entrypoint obtains a fully wired service from
   `<context>/entrypoints/providers.py` (which pulls from the `bootstrap/` container).
-  It MUST NOT construct infrastructure adapters itself. (ARCH-009)
+  It MUST NOT construct outbound adapters itself. (ARCH-009)
 - An entrypoint MUST NOT call persistence, adapters, or the database directly
   (`repo.save(...)`, `session.execute(...)`, `http_client.get(...)`). The only thing it
   calls is the application service. (ARCH-009)
@@ -399,7 +403,7 @@ External stimulus -> Entrypoint -> Application use case -> Domain
 
 ## 4.3 Exceptions to the rule
 
-- Health and readiness endpoints MAY read infrastructure state directly; they are not
+- Health and readiness endpoints MAY read backing-service state directly; they are not
   business use cases.
 - A pure pass-through admin or debug endpoint MAY be exempt if it is explicitly marked
   and excluded from the public surface. This is discouraged and requires justification.
@@ -479,7 +483,7 @@ or when rules combine dynamically. Do not use it for one-off rules
 
 **Policy.** Use when there are multiple real strategies for a decision chosen at
 runtime. Do not use it for a single rule, or when "policy" actually means
-authorization or rate-limiting (that is application or infrastructure). The interface
+authorization or rate-limiting (that is an application or adapter concern). The interface
 and its implementations live in `domain/`.
 
 ## 5.4 Exceptions
@@ -574,7 +578,7 @@ Guardrails (ARCH-030):
 Inbound versus outbound:
 
 - **Domain ports** (repositories, domain-service providers) are indispensable. DIP
-  requires them - the core must not name infrastructure. MUST.
+  requires them - the core must not name adapters. MUST.
 - **The application inbound port** is the use-case / service class itself, exposed to
   entrypoints. Its public methods are the port. There is no separate interface.
 - **Application outbound ports** that are not domain vocabulary (`EmailSender`,
@@ -623,7 +627,7 @@ serialized envelopes only.
 
 ---
 
-# 7. Infrastructure
+# 7. Adapters
 
 ## 7.1 Rules
 
@@ -633,9 +637,9 @@ serialized envelopes only.
   abstractions only. (ARCH-008)
 - No Active Record. The aggregate has no persistence base class, decorator, or import,
   and no `save()`. Translation between the aggregate and its stored form lives entirely
-  in `infrastructure/`, in whatever form the store needs. (ARCH-028)
+  in `adapters/`, in whatever form the store needs. (ARCH-028)
 - Adapters contain no business logic and make no orchestration decisions.
-- `infrastructure/` MAY import `commons/infrastructure/`; `domain/` and `application/`
+- `adapters/` MAY import `commons/adapters/`; `domain/` and `application/`
   MUST NOT. (ARCH-034)
 
 ## 7.2 Unit of Work and persistence
@@ -661,7 +665,7 @@ class UnitOfWork(Protocol):
 - Repositories receive the UoW and run against the store handle it exposes; they call
   `uow.track(aggregate)` on every load and store so events can be drained.
 - Translation between the aggregate and its stored form lives entirely in
-  `infrastructure/`, in whatever form the store needs. The aggregate has no persistence
+  `adapters/`, in whatever form the store needs. The aggregate has no persistence
   knowledge. (ARCH-028)
 - One transaction modifies one aggregate (ARCH-021) - this keeps the UoW portable to
   stores without general multi-item transactions.
@@ -670,12 +674,12 @@ class UnitOfWork(Protocol):
 
 ### Reference implementation - SQLAlchemy
 
-Shipped in `commons/infrastructure/` and the template.
+Shipped in `commons/adapters/` and the template.
 
 - `SqlAlchemyUnitOfWork` owns a `Session`; `collect_new_events()` iterates
   `session.new | session.dirty | session.identity_map` and drains each aggregate
   root's pending events (so `track()` is effectively implicit for this store).
-- Per context: `infrastructure/mapping.py` holds `Table` definitions plus
+- Per context: `adapters/mapping.py` holds `Table` definitions plus
   `map_imperatively(Order, order_table, ...)`. There is no separate ORM model class and
   no manual mapper. Domain classes stay free of ORM base classes, decorators, and
   imports. `bootstrap/` calls each context's `configure_mappings()` once at startup.
@@ -683,7 +687,7 @@ Shipped in `commons/infrastructure/` and the template.
 - `InMemoryUnitOfWork` (dict-backed, explicit `track()`) ships alongside for tests.
 
 ```python
-# sales/orders/infrastructure/order_repository.py     - thin, intention-revealing
+# sales/orders/adapters/order_repository.py     - thin, intention-revealing
 class SqlAlchemyOrderRepository:                  # implements OrderRepository (domain port)
     def __init__(self, uow: SqlAlchemyUnitOfWork) -> None:
         self._uow = uow
@@ -738,7 +742,7 @@ individually. (ARCH-033)
   or consistency guarantee: integration events are written to an `outbox` table in the
   same transaction; a separate process publishes them. (ARCH-036)
 - Optional (`publish-after-commit`) when no such guarantee is required.
-- The machinery lives in `commons/infrastructure/outbox.py`.
+- The machinery lives in `commons/adapters/outbox.py`.
 
 ---
 
@@ -751,11 +755,11 @@ declared as a dependency, so a fix or a new primitive reaches every project that
 upgrades instead of drifting into N divergent copies. This is what makes the standard
 usable as the base of many repositories rather than a one-off scaffold.
 
-| | `commons.types` | `commons.infrastructure` |
+| | `commons.types` | `commons.adapters` |
 |---|---|---|
 | Content | dependency-free technical primitives and Protocols | framework-bound shared implementations |
 | Examples | `DomainError`/`ApplicationError` bases, `EntityId`, `Pagination`, `Clock` / `EventBus` / `IdGenerator` / `UnitOfWork` Protocols | `SqlAlchemyUnitOfWork`, `InMemoryUnitOfWork`, outbox machinery |
-| Importable by | everyone, including `domain/` | only `infrastructure/`, `entrypoints/`, `bootstrap/`, tests |
+| Importable by | everyone, including `domain/` | only `adapters/`, `entrypoints/`, `bootstrap/`, tests |
 | Forbidden | any business meaning, any framework import | - |
 
 **Governance.** `arch-commons` follows semver, with the same compatibility policy as
@@ -768,8 +772,8 @@ that a second project would want, does not get copied - it is proposed upstream 
 `arch-commons`. Until it is accepted it lives in that project, clearly marked.
 
 Rules: ARCH-015 (`commons.types` imports nothing from
-contexts/application/infrastructure/shared_kernel), ARCH-016 (`commons.types` has no
-business logic), ARCH-034 (`commons.infrastructure` not imported by
+contexts/application/adapters/shared_kernel), ARCH-016 (`commons.types` has no
+business logic), ARCH-034 (`commons.adapters` not imported by
 domain/application), ARCH-035 (`commons.types` imports no framework).
 
 ## 8.2 shared_kernel/
@@ -1964,7 +1968,7 @@ Adding behavior?
 
 - **Use when:** there are multiple real strategies for a decision chosen at runtime.
 - **Do not use when:** there is a single rule, or "policy" actually means
-  authorization or rate-limiting (that is application or infrastructure).
+  authorization or rate-limiting (that is an application or adapter concern).
 - **Shape:** interface plus implementations in `domain/`.
 
 ---
@@ -2037,7 +2041,7 @@ only.
 | Fat Controller / Fat Entrypoint | untestable without transport, logic not reusable | entrypoint only translates + calls one service method |
 | Business logic in adapters | hidden from domain tests, duplicated | adapters only translate; decisions in domain/application |
 | Repository as business service | business queries leak into persistence, repo grows unbounded | repo = collection of roots; complex reads -> read model |
-| Domain imports infrastructure / frameworks | domain not testable in isolation, tech locked in | DIP - domain defines ports, infra implements |
+| Domain imports adapters / frameworks | domain not testable in isolation, tech locked in | DIP - domain defines ports, adapters implement |
 | Active Record aggregate | invariants entangled with the DB, not unit-testable | data mapper; plain aggregate |
 | Shared module as junk drawer | global coupling, contexts cannot evolve independently | strict `commons` / `shared_kernel` rules; duplicate by default |
 | Cross-context coupling | contexts fused, not independently deployable | integration events + ACL; zero imports (ARCH-012) |
@@ -2124,7 +2128,7 @@ problem, not a layout problem:
 | Cross-aggregate atomicity needed | more than occasionally | The aggregate boundaries are drawn wrong (Section 3.6). Redraw before adding any coordinating construct. |
 | Reads through the aggregate | complex joins, reporting, dashboard shapes | Introduce a dedicated read model in `<context>/read/` (Section 2.5). |
 | Cross-context integration | more than one team, or independent deployability needed | Move from an in-process gateway to async events + ACL as the default. |
-| Infrastructure adapters of one kind | many (e.g. 5+ external clients) in one module | Sub-folder within that module's `infrastructure/`. |
+| Outbound adapters of one kind | many (e.g. 5+ external clients) in one module | Sub-folder within that module's `adapters/`. |
 
 Most of these signals point at the model, not at the folders. That is the intended
 effect of fixing the shape: when something hurts, the structure is no longer a

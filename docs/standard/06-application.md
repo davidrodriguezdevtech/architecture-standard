@@ -66,7 +66,7 @@ Guardrails (ARCH-030):
 Inbound versus outbound:
 
 - **Domain ports** (repositories, domain-service providers) are indispensable. DIP
-  requires them - the core must not name infrastructure. MUST.
+  requires them - the core must not name adapters. MUST.
 - **The application inbound port** is the use-case / service class itself, exposed to
   entrypoints. Its public methods are the port. There is no separate interface.
 - **Application outbound ports** that are not domain vocabulary (`EmailSender`,

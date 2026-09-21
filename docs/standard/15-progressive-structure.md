@@ -13,7 +13,7 @@ problem, not a layout problem:
 | Cross-aggregate atomicity needed | more than occasionally | The aggregate boundaries are drawn wrong (Section 3.6). Redraw before adding any coordinating construct. |
 | Reads through the aggregate | complex joins, reporting, dashboard shapes | Introduce a dedicated read model in `<context>/read/` (Section 2.5). |
 | Cross-context integration | more than one team, or independent deployability needed | Move from an in-process gateway to async events + ACL as the default. |
-| Infrastructure adapters of one kind | many (e.g. 5+ external clients) in one module | Sub-folder within that module's `infrastructure/`. |
+| Outbound adapters of one kind | many (e.g. 5+ external clients) in one module | Sub-folder within that module's `adapters/`. |
 
 Most of these signals point at the model, not at the folders. That is the intended
 effect of fixing the shape: when something hurts, the structure is no longer a

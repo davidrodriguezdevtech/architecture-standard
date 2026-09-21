@@ -16,7 +16,7 @@ EXPECTED = {
     "04-entry-points",
     "05-domain",
     "06-application",
-    "07-infrastructure",
+    "07-adapters",
     "08-commons-shared-kernel",
     "09-dependency-rules",
     "10-ddd-rules",

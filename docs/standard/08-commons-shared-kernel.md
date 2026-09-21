@@ -7,11 +7,11 @@ declared as a dependency, so a fix or a new primitive reaches every project that
 upgrades instead of drifting into N divergent copies. This is what makes the standard
 usable as the base of many repositories rather than a one-off scaffold.
 
-| | `commons.types` | `commons.infrastructure` |
+| | `commons.types` | `commons.adapters` |
 |---|---|---|
 | Content | dependency-free technical primitives and Protocols | framework-bound shared implementations |
 | Examples | `DomainError`/`ApplicationError` bases, `EntityId`, `Pagination`, `Clock` / `EventBus` / `IdGenerator` / `UnitOfWork` Protocols | `SqlAlchemyUnitOfWork`, `InMemoryUnitOfWork`, outbox machinery |
-| Importable by | everyone, including `domain/` | only `infrastructure/`, `entrypoints/`, `bootstrap/`, tests |
+| Importable by | everyone, including `domain/` | only `adapters/`, `entrypoints/`, `bootstrap/`, tests |
 | Forbidden | any business meaning, any framework import | - |
 
 **Governance.** `arch-commons` follows semver, with the same compatibility policy as
@@ -24,8 +24,8 @@ that a second project would want, does not get copied - it is proposed upstream 
 `arch-commons`. Until it is accepted it lives in that project, clearly marked.
 
 Rules: ARCH-015 (`commons.types` imports nothing from
-contexts/application/infrastructure/shared_kernel), ARCH-016 (`commons.types` has no
-business logic), ARCH-034 (`commons.infrastructure` not imported by
+contexts/application/adapters/shared_kernel), ARCH-016 (`commons.types` has no
+business logic), ARCH-034 (`commons.adapters` not imported by
 domain/application), ARCH-035 (`commons.types` imports no framework).
 
 ## 8.2 shared_kernel/

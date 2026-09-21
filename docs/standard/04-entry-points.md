@@ -15,7 +15,7 @@ External stimulus -> Entrypoint -> Application use case -> Domain
   serialization). (ARCH-004 family)
 - An entrypoint obtains a fully wired service from
   `<context>/entrypoints/providers.py` (which pulls from the `bootstrap/` container).
-  It MUST NOT construct infrastructure adapters itself. (ARCH-009)
+  It MUST NOT construct outbound adapters itself. (ARCH-009)
 - An entrypoint MUST NOT call persistence, adapters, or the database directly
   (`repo.save(...)`, `session.execute(...)`, `http_client.get(...)`). The only thing it
   calls is the application service. (ARCH-009)
@@ -27,7 +27,7 @@ External stimulus -> Entrypoint -> Application use case -> Domain
 
 ## 4.3 Exceptions to the rule
 
-- Health and readiness endpoints MAY read infrastructure state directly; they are not
+- Health and readiness endpoints MAY read backing-service state directly; they are not
   business use cases.
 - A pure pass-through admin or debug endpoint MAY be exempt if it is explicitly marked
   and excluded from the public surface. This is discouraged and requires justification.

@@ -22,7 +22,7 @@ The following framing decisions are fixed for v1:
   `domain/model/ports.py` (domain vocabulary), and colocated in the use-case module
   (non-domain outbound). There is no `application/ports.py` by default.
 - **Persistence.** The normative contract (the `UnitOfWork` Protocol, repository ports,
-  translation living in `infrastructure/`) is store-agnostic. SQLAlchemy is the shipped
+  translation living in `adapters/`) is store-agnostic. SQLAlchemy is the shipped
   reference implementation, with an `InMemoryUnitOfWork` for tests. Other stores
   (DynamoDB, sqlite, and others) provide their own `UnitOfWork` and repositories against
   the same contract.
@@ -41,7 +41,7 @@ The following framing decisions are fixed for v1:
   `domain/model/projections.py`. Query, dashboard, and presentation read models live
   outside the domain, in `<context>/read/`, introduced when complexity justifies them.
 - **Mapping (domain to DTO).** Manual mapping for domain-facing boundaries. Libraries
-  are allowed for mechanical mapping at infrastructure and transport boundaries.
+  are allowed for mechanical mapping at adapter and transport boundaries.
 - **Cross-context communication.** Synchronous by default, contract-mediated, wired in
   `bootstrap/`, with zero imports between contexts. Asynchronous integration events
   when the use case explicitly tolerates eventual consistency.
@@ -74,7 +74,7 @@ The following framing decisions are fixed for v1:
 - **Rule tiers.** Each rule is tagged `tier: core` or `tier: full`. The core rules
   bind from day one; `arch-standard check --core` runs only those.
 - **Logging.** `domain/` and `application/` do not log. They raise domain exceptions
-  and emit domain events; entrypoints and infrastructure adapters log.
+  and emit domain events; entrypoints and outbound adapters log.
 
 ## How to read this document (RFC 2119)
 

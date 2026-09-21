@@ -89,5 +89,5 @@ Adding behavior?
 
 - **Use when:** there are multiple real strategies for a decision chosen at runtime.
 - **Do not use when:** there is a single rule, or "policy" actually means
-  authorization or rate-limiting (that is application or infrastructure).
+  authorization or rate-limiting (that is an application or adapter concern).
 - **Shape:** interface plus implementations in `domain/`.

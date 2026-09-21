@@ -71,7 +71,7 @@ or when rules combine dynamically. Do not use it for one-off rules
 
 **Policy.** Use when there are multiple real strategies for a decision chosen at
 runtime. Do not use it for a single rule, or when "policy" actually means
-authorization or rate-limiting (that is application or infrastructure). The interface
+authorization or rate-limiting (that is an application or adapter concern). The interface
 and its implementations live in `domain/`.
 
 ## 5.4 Exceptions
