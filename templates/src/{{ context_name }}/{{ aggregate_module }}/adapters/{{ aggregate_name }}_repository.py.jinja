@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from commons.infrastructure.uuid7_id_generator import Uuid7IdGenerator
+from commons.adapters.uuid7_id_generator import Uuid7IdGenerator
 
 from {{ context_name }}.{{ aggregate_module }}.domain.model.exceptions import (
     {{ aggregate_name | capitalize }}NotFound,
