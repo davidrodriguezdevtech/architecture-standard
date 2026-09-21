@@ -154,7 +154,7 @@ rules:
     description: >
       An aggregate class has no persistence base class, ORM decorator, or ORM
       import and no save()/delete() method; translation between the aggregate
-      and its stored form lives entirely in infrastructure/.
+      and its stored form lives entirely in adapters/.
     rationale: >
       An Active Record aggregate entangles invariants with the database and
       cannot be unit-tested without it.
@@ -162,7 +162,7 @@ rules:
       # sales/orders/domain/model/order.py
       @dataclass
       class Order: ...
-      # sales/orders/infrastructure/mapping.py
+      # sales/orders/adapters/mapping.py
       map_imperatively(Order, order_table)
     incorrect: |
       # sales/orders/domain/model/order.py

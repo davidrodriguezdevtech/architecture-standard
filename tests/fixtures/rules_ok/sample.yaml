@@ -1,13 +1,13 @@
 rules:
   - id: ARCH-001
-    name: Domain independent of infrastructure
+    name: Domain independent of adapters
     level: MUST
     automation: full
     category: dependencies
-    description: The domain layer does not import the infrastructure layer.
+    description: The domain layer does not import the adapters layer.
     rationale: Keeps the core testable and swappable.
     correct: "from sales.domain.model.ports import OrderRepository"
-    incorrect: "from sales.infrastructure.postgres import PgOrderRepo"
+    incorrect: "from sales.adapters.postgres import PgOrderRepo"
     validation:
       tool: import-linter
   - id: ARCH-021

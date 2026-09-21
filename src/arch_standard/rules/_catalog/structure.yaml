@@ -7,7 +7,7 @@ rules:
     category: structure
     description: >
       An aggregate module does not import another aggregate module's application/ or
-      infrastructure/ package. References between aggregates are by ID, and those ID
+      adapters/ package. References between aggregates are by ID, and those ID
       types live in the context's shared/ids.py.
     rationale: >
       Aggregate modules are consistency boundaries. Reaching into a sibling's service or
@@ -23,7 +23,7 @@ rules:
       from sales.users.application.user_service import UserService
     validation:
       tool: import-linter
-      detail: forbidden contract between sibling modules' application and infrastructure
+      detail: forbidden contract between sibling modules' application and adapters
     related: [ARCH-020, ARCH-021]
   - id: ARCH-047
     name: Context shared area is strictly limited

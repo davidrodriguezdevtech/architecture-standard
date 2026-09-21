@@ -51,7 +51,7 @@ rules:
     description: >
       Modules under domain/ and application/ import no logging library and make no
       logging calls. They raise domain exceptions and emit domain events; entrypoints and
-      infrastructure adapters log.
+      outbound adapters log.
     rationale: >
       Logging is an observability concern of the adapters. Keeping it out of the core
       keeps the core free of ambient I/O and makes behavior fully assertable from the

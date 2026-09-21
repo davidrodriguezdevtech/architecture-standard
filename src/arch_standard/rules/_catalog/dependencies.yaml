@@ -1,13 +1,13 @@
 rules:
   - id: ARCH-001
-    name: Domain does not depend on infrastructure
+    name: Domain does not depend on adapters
     level: MUST
     automation: full
     tier: core
     category: dependencies
     description: >
       No module under a context's domain/ package may import from that
-      context's infrastructure/ package or from commons/infrastructure/.
+      context's adapters/ package or from commons/adapters/.
     rationale: >
       Inverting this dependency (DIP) lets the core be tested without a
       database and lets the store be swapped without touching business rules.
@@ -17,7 +17,7 @@ rules:
           def get(self, order_id: OrderId) -> Order: ...
     incorrect: |
       # sales/orders/domain/model/order.py
-      from sales.orders.infrastructure.postgres_order_repository import PostgresOrderRepository
+      from sales.orders.adapters.postgres_order_repository import PostgresOrderRepository
     validation:
       tool: import-linter
       detail: layered contract; domain is the innermost layer
@@ -91,14 +91,14 @@ rules:
       tool: ruff
       detail: flake8-tidy-imports banned-api (datetime.now, uuid4, open, socket) in domain/
   - id: ARCH-005
-    name: Application does not depend on infrastructure
+    name: Application does not depend on adapters
     level: MUST
     automation: full
     tier: core
     category: dependencies
     description: >
       No module under a context's application/ package imports from that
-      context's infrastructure/ package or from commons/infrastructure/.
+      context's adapters/ package or from commons/adapters/.
     rationale: >
       Orchestration names ports only; the concrete adapter is injected from
       providers.py and is never imported by the use case.
@@ -107,7 +107,7 @@ rules:
       def __init__(self, orders: OrderRepository, uow: UnitOfWork) -> None: ...
     incorrect: |
       # sales/orders/application/order_service.py
-      from sales.orders.infrastructure.order_repository import SqlAlchemyOrderRepository
+      from sales.orders.adapters.order_repository import SqlAlchemyOrderRepository
     validation:
       tool: import-linter
       detail: layered contract
@@ -139,7 +139,7 @@ rules:
     category: dependencies
     description: >
       No module under a context's application/ package instantiates an
-      infrastructure adapter class such as SqlAlchemyOrderRepository(...) or
+      adapter class such as SqlAlchemyOrderRepository(...) or
       HttpCreditGateway(...).
     rationale: >
       Constructing an adapter couples the use case to one technology choice and
@@ -153,40 +153,40 @@ rules:
       self._orders = SqlAlchemyOrderRepository(SqlAlchemyUnitOfWork())
     validation:
       tool: grimp
-      detail: import-graph assert; catches adapters imported from infrastructure/, not an adapter class defined and instantiated within application/ itself
+      detail: import-graph assert; catches adapters imported from adapters/, not an adapter class defined and instantiated within application/ itself
     related: [ARCH-005]
   - id: ARCH-008
-    name: Infrastructure implements ports; the core imports abstractions only
+    name: Adapters implement ports; the core imports abstractions only
     level: MUST
     automation: partial
     tier: core
     category: dependencies
     description: >
-      Every concrete adapter in a context's infrastructure/ package implements a
+      Every concrete adapter in a context's adapters/ package implements a
       Protocol declared in domain/model/ports.py or a colocated application
       Protocol; domain/ and application/ import only those abstractions.
     rationale: >
-      The core names the contract it needs and infrastructure plugs in behind
+      The core names the contract it needs and adapters plug in behind
       it, so the store can be replaced without editing business rules.
     correct: |
-      # sales/orders/infrastructure/order_repository.py
+      # sales/orders/adapters/order_repository.py
       class SqlAlchemyOrderRepository:  # implements OrderRepository (domain port)
           def get(self, order_id: OrderId) -> Order: ...
     incorrect: |
       # sales/orders/domain/services.py
-      from sales.orders.infrastructure.order_repository import SqlAlchemyOrderRepository
+      from sales.orders.adapters.order_repository import SqlAlchemyOrderRepository
     validation:
       tool: import-linter
       detail: layered contract (import half); Protocol conformance of adapters is reviewed at PR time
     related: [ARCH-001, ARCH-042]
   - id: ARCH-009
-    name: Entrypoints obtain wired services from providers; never construct or call infrastructure directly
+    name: Entrypoints obtain wired services from providers; never construct or call adapters directly
     level: MUST
     automation: partial
     category: dependencies
     description: >
       No module under a context's entrypoints/ package constructs an
-      infrastructure adapter or calls persistence, sessions, or HTTP clients
+      adapter or calls persistence, sessions, or HTTP clients
       directly; it obtains a fully wired service from providers.py and calls
       only that service.
     rationale: >
@@ -256,7 +256,7 @@ rules:
     category: dependencies
     description: >
       A bounded context imports nothing from another bounded context (its
-      domain/, application/, or infrastructure/ packages).
+      domain/, application/, or adapters/ packages).
     rationale: >
       Keeps contexts substitutable and independently deployable; a change
       inside one context cannot break another; the contract between teams stays
@@ -286,8 +286,8 @@ rules:
       # sales declares a consumer-driven port; bootstrap wires a billing adapter
       # billing does not import sales
     incorrect: |
-      # sales/orders/infrastructure/credit_gateway.py imports billing.invoices.application...
-      # billing/invoices/infrastructure/order_gateway.py imports sales.orders.application...
+      # sales/orders/adapters/credit_gateway.py imports billing.invoices.application...
+      # billing/invoices/adapters/order_gateway.py imports sales.orders.application...
     validation:
       tool: grimp
       detail: import-graph cycle detection across top-level context packages
@@ -312,13 +312,13 @@ rules:
       tool: import-linter
       detail: forbidden contract; shared_kernel -/-> contexts
   - id: ARCH-015
-    name: commons/types imports nothing from contexts, application, infrastructure, or shared_kernel
+    name: commons/types imports nothing from contexts, application, adapters, or shared_kernel
     level: MUST
     automation: full
     category: dependencies
     description: >
       No module under commons/types/ imports from any context package, from any
-      application/ or infrastructure/ package, or from shared_kernel/.
+      application/ or adapters/ package, or from shared_kernel/.
     rationale: >
       commons/types is the dependency-free base importable by everyone
       including domain/; any upward import would create a cycle.
@@ -376,25 +376,25 @@ rules:
       tool: import-linter
       detail: forbidden contract; * -/-> bootstrap (allow main.py)
   - id: ARCH-034
-    name: commons/infrastructure is not imported by domain or application
+    name: commons/adapters is not imported by domain or application
     level: MUST
     automation: full
     category: dependencies
     description: >
       No module under any context's domain/ or application/ package imports
-      from commons/infrastructure/.
+      from commons/adapters/.
     rationale: >
-      commons/infrastructure holds framework-bound implementations; only
-      infrastructure/, entrypoints/, bootstrap/, and tests may touch them.
+      commons/adapters holds framework-bound implementations; only
+      adapters/, entrypoints/, bootstrap/, and tests may touch them.
     correct: |
-      # sales/orders/infrastructure/unit_of_work.py
-      from commons.infrastructure.unit_of_work import SqlAlchemyUnitOfWork
+      # sales/orders/adapters/unit_of_work.py
+      from commons.adapters.unit_of_work import SqlAlchemyUnitOfWork
     incorrect: |
       # sales/orders/application/order_service.py
-      from commons.infrastructure.unit_of_work import SqlAlchemyUnitOfWork
+      from commons.adapters.unit_of_work import SqlAlchemyUnitOfWork
     validation:
       tool: import-linter
-      detail: forbidden contract; domain|application -/-> commons.infrastructure
+      detail: forbidden contract; domain|application -/-> commons.adapters
   - id: ARCH-035
     name: commons/types does not import any framework
     level: MUST

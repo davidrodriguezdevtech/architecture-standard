@@ -6,7 +6,7 @@ rules:
     category: progressive_structure
     description: >
       A flat module (domain/model.py, application/<capability>.py,
-      infrastructure/<adapter>.py) is split into a package only once it crosses
+      adapters/<adapter>.py) is split into a package only once it crosses
       a Section 15 threshold, for example domain/model.py past about 400 lines
       or 2 aggregates.
     rationale: >

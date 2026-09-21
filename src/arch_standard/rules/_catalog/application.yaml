@@ -213,7 +213,7 @@ rules:
       class CreditCheckPort(Protocol):
           def has_credit(self, customer_id: CustomerId, amount: Money) -> bool: ...
     incorrect: |
-      # sales/orders/infrastructure/credit_gateway.py
+      # sales/orders/adapters/credit_gateway.py
       from billing.invoices.application.invoice_service import InvoiceService  # calls 8 of 20 methods
     validation:
       tool: review

@@ -11,14 +11,14 @@ from arch_standard.rules.model import Automation, Level, Rule, Tier, ValidationS
 def _valid_kwargs() -> dict[str, Any]:
     return dict(
         id="ARCH-001",
-        name="Domain independent of infrastructure",
+        name="Domain independent of adapters",
         level=Level.MUST,
         automation=Automation.FULL,
         category="dependencies",
-        description="The domain layer does not import the infrastructure layer.",
+        description="The domain layer does not import the adapters layer.",
         rationale="Keeps the core testable and swappable.",
         correct="from sales.domain.model.ports import OrderRepository",
-        incorrect="from sales.infrastructure.postgres import PgOrderRepo",
+        incorrect="from sales.adapters.postgres import PgOrderRepo",
         validation=ValidationSpec(tool="import-linter"),
     )
 

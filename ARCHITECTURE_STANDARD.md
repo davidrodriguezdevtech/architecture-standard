@@ -811,12 +811,12 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 | ID | Rule | Level | Automation |
 |---|---|---|---|
-| ARCH-001 | Domain does not depend on infrastructure | MUST | full |
+| ARCH-001 | Domain does not depend on adapters | MUST | full |
 | ARCH-002 | Domain does not depend on application | MUST | full |
 | ARCH-003 | Domain does not depend on frameworks | MUST | full |
-| ARCH-005 | Application does not depend on infrastructure | MUST | full |
+| ARCH-005 | Application does not depend on adapters | MUST | full |
 | ARCH-006 | Application does not depend on entrypoints | MUST | full |
-| ARCH-008 | Infrastructure implements ports; the core imports abstractions only | MUST | partial |
+| ARCH-008 | Adapters implement ports; the core imports abstractions only | MUST | partial |
 | ARCH-012 | A context imports nothing from another context | MUST | full |
 | ARCH-023 | Domain events are immutable and past-tense | MUST | full |
 | ARCH-031 | Value Objects are immutable and validate on construction | MUST | partial |
@@ -828,24 +828,24 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 | ID | Rule | Level | Automation |
 |---|---|---|---|
-| ARCH-001 | Domain does not depend on infrastructure | MUST | full |
+| ARCH-001 | Domain does not depend on adapters | MUST | full |
 | ARCH-002 | Domain does not depend on application | MUST | full |
 | ARCH-003 | Domain does not depend on frameworks | MUST | full |
 | ARCH-004 | Domain performs no I/O | MUST | partial |
-| ARCH-005 | Application does not depend on infrastructure | MUST | full |
+| ARCH-005 | Application does not depend on adapters | MUST | full |
 | ARCH-006 | Application does not depend on entrypoints | MUST | full |
 | ARCH-007 | Application does not construct concrete adapters | MUST | partial |
-| ARCH-008 | Infrastructure implements ports; the core imports abstractions only | MUST | partial |
-| ARCH-009 | Entrypoints obtain wired services from providers; never construct or call infrastructure directly | MUST | partial |
+| ARCH-008 | Adapters implement ports; the core imports abstractions only | MUST | partial |
+| ARCH-009 | Entrypoints obtain wired services from providers; never construct or call adapters directly | MUST | partial |
 | ARCH-010 | Entrypoints contain no business logic | SHOULD | partial |
 | ARCH-011 | Entrypoints call application services, not other entrypoints | MUST | full |
 | ARCH-012 | A context imports nothing from another context | MUST | full |
 | ARCH-013 | No dependency cycles between contexts | SHOULD | full |
 | ARCH-014 | shared_kernel imports nothing from any context | MUST | full |
-| ARCH-015 | commons/types imports nothing from contexts, application, infrastructure, or shared_kernel | MUST | full |
+| ARCH-015 | commons/types imports nothing from contexts, application, adapters, or shared_kernel | MUST | full |
 | ARCH-016 | commons/types contains no business logic | MUST | manual |
 | ARCH-017 | Nothing imports bootstrap | MUST | full |
-| ARCH-034 | commons/infrastructure is not imported by domain or application | MUST | full |
+| ARCH-034 | commons/adapters is not imported by domain or application | MUST | full |
 | ARCH-035 | commons/types does not import any framework | MUST | full |
 | ARCH-037 | Entrypoint wiring is defined in per-context providers.py, backed by bootstrap | MUST | partial |
 
@@ -914,10 +914,10 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 ### Rule reference
 
-#### ARCH-001 — Domain does not depend on infrastructure
+#### ARCH-001 — Domain does not depend on adapters
 - **Level:** MUST · **Automation:** full · **Tier:** core · **Category:** dependencies
 - **Validation:** `import-linter` — layered contract; domain is the innermost layer
-- **Description:** No module under a context's domain/ package may import from that context's infrastructure/ package or from commons/infrastructure/.
+- **Description:** No module under a context's domain/ package may import from that context's adapters/ package or from commons/adapters/.
 - **Rationale:** Inverting this dependency (DIP) lets the core be tested without a database and lets the store be swapped without touching business rules.
 - **Correct:**
   ```
@@ -928,7 +928,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Incorrect:**
   ```
   # sales/orders/domain/model/order.py
-  from sales.orders.infrastructure.postgres_order_repository import PostgresOrderRepository
+  from sales.orders.adapters.postgres_order_repository import PostgresOrderRepository
   ```
 - **Related:** ARCH-008
 
@@ -985,10 +985,10 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   placed_at = datetime.now()
   ```
 
-#### ARCH-005 — Application does not depend on infrastructure
+#### ARCH-005 — Application does not depend on adapters
 - **Level:** MUST · **Automation:** full · **Tier:** core · **Category:** dependencies
 - **Validation:** `import-linter` — layered contract
-- **Description:** No module under a context's application/ package imports from that context's infrastructure/ package or from commons/infrastructure/.
+- **Description:** No module under a context's application/ package imports from that context's adapters/ package or from commons/adapters/.
 - **Rationale:** Orchestration names ports only; the concrete adapter is injected from providers.py and is never imported by the use case.
 - **Correct:**
   ```
@@ -998,7 +998,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Incorrect:**
   ```
   # sales/orders/application/order_service.py
-  from sales.orders.infrastructure.order_repository import SqlAlchemyOrderRepository
+  from sales.orders.adapters.order_repository import SqlAlchemyOrderRepository
   ```
 
 #### ARCH-006 — Application does not depend on entrypoints
@@ -1019,8 +1019,8 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-007 — Application does not construct concrete adapters
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** dependencies
-- **Validation:** `grimp` — import-graph assert; catches adapters imported from infrastructure/, not an adapter class defined and instantiated within application/ itself
-- **Description:** No module under a context's application/ package instantiates an infrastructure adapter class such as SqlAlchemyOrderRepository(...) or HttpCreditGateway(...).
+- **Validation:** `grimp` — import-graph assert; catches adapters imported from adapters/, not an adapter class defined and instantiated within application/ itself
+- **Description:** No module under a context's application/ package instantiates an adapter class such as SqlAlchemyOrderRepository(...) or HttpCreditGateway(...).
 - **Rationale:** Constructing an adapter couples the use case to one technology choice and defeats dependency injection.
 - **Correct:**
   ```
@@ -1035,28 +1035,28 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Related:** ARCH-005
 
-#### ARCH-008 — Infrastructure implements ports; the core imports abstractions only
+#### ARCH-008 — Adapters implement ports; the core imports abstractions only
 - **Level:** MUST · **Automation:** partial · **Tier:** core · **Category:** dependencies
 - **Validation:** `import-linter` — layered contract (import half); Protocol conformance of adapters is reviewed at PR time
-- **Description:** Every concrete adapter in a context's infrastructure/ package implements a Protocol declared in domain/model/ports.py or a colocated application Protocol; domain/ and application/ import only those abstractions.
-- **Rationale:** The core names the contract it needs and infrastructure plugs in behind it, so the store can be replaced without editing business rules.
+- **Description:** Every concrete adapter in a context's adapters/ package implements a Protocol declared in domain/model/ports.py or a colocated application Protocol; domain/ and application/ import only those abstractions.
+- **Rationale:** The core names the contract it needs and adapters plug in behind it, so the store can be replaced without editing business rules.
 - **Correct:**
   ```
-  # sales/orders/infrastructure/order_repository.py
+  # sales/orders/adapters/order_repository.py
   class SqlAlchemyOrderRepository:  # implements OrderRepository (domain port)
       def get(self, order_id: OrderId) -> Order: ...
   ```
 - **Incorrect:**
   ```
   # sales/orders/domain/services.py
-  from sales.orders.infrastructure.order_repository import SqlAlchemyOrderRepository
+  from sales.orders.adapters.order_repository import SqlAlchemyOrderRepository
   ```
 - **Related:** ARCH-001, ARCH-042
 
-#### ARCH-009 — Entrypoints obtain wired services from providers; never construct or call infrastructure directly
+#### ARCH-009 — Entrypoints obtain wired services from providers; never construct or call adapters directly
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** dependencies
 - **Validation:** `import-linter` — forbidden contract (import half); entrypoints calling persistence/session/http-client directly is a runtime fact the import graph cannot see
-- **Description:** No module under a context's entrypoints/ package constructs an infrastructure adapter or calls persistence, sessions, or HTTP clients directly; it obtains a fully wired service from providers.py and calls only that service.
+- **Description:** No module under a context's entrypoints/ package constructs an adapter or calls persistence, sessions, or HTTP clients directly; it obtains a fully wired service from providers.py and calls only that service.
 - **Rationale:** An entrypoint that news up a repository or calls session.execute is untestable without transport and leaks wiring across the boundary.
 - **Correct:**
   ```
@@ -1110,7 +1110,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 #### ARCH-012 — A context imports nothing from another context
 - **Level:** MUST · **Automation:** full · **Tier:** core · **Category:** dependencies
 - **Validation:** `import-linter` — independence contract
-- **Description:** A bounded context imports nothing from another bounded context (its domain/, application/, or infrastructure/ packages).
+- **Description:** A bounded context imports nothing from another bounded context (its domain/, application/, or adapters/ packages).
 - **Rationale:** Keeps contexts substitutable and independently deployable; a change inside one context cannot break another; the contract between teams stays explicit.
 - **Correct:**
   ```
@@ -1136,8 +1136,8 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # sales/orders/infrastructure/credit_gateway.py imports billing.invoices.application...
-  # billing/invoices/infrastructure/order_gateway.py imports sales.orders.application...
+  # sales/orders/adapters/credit_gateway.py imports billing.invoices.application...
+  # billing/invoices/adapters/order_gateway.py imports sales.orders.application...
   ```
 - **Related:** ARCH-012
 
@@ -1157,10 +1157,10 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   from sales.orders.domain.model.order import Order
   ```
 
-#### ARCH-015 — commons/types imports nothing from contexts, application, infrastructure, or shared_kernel
+#### ARCH-015 — commons/types imports nothing from contexts, application, adapters, or shared_kernel
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** dependencies
 - **Validation:** `import-linter` — forbidden contract; commons.types -/-> everything above it
-- **Description:** No module under commons/types/ imports from any context package, from any application/ or infrastructure/ package, or from shared_kernel/.
+- **Description:** No module under commons/types/ imports from any context package, from any application/ or adapters/ package, or from shared_kernel/.
 - **Rationale:** commons/types is the dependency-free base importable by everyone including domain/; any upward import would create a cycle.
 - **Correct:**
   ```
@@ -1402,14 +1402,14 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 #### ARCH-028 — No Active Record
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** model_integrity
 - **Validation:** `ruff` — banned-api; no ORM base or import in domain/, plus ast check for save/delete on model classes
-- **Description:** An aggregate class has no persistence base class, ORM decorator, or ORM import and no save()/delete() method; translation between the aggregate and its stored form lives entirely in infrastructure/.
+- **Description:** An aggregate class has no persistence base class, ORM decorator, or ORM import and no save()/delete() method; translation between the aggregate and its stored form lives entirely in adapters/.
 - **Rationale:** An Active Record aggregate entangles invariants with the database and cannot be unit-tested without it.
 - **Correct:**
   ```
   # sales/orders/domain/model/order.py
   @dataclass
   class Order: ...
-  # sales/orders/infrastructure/mapping.py
+  # sales/orders/adapters/mapping.py
   map_imperatively(Order, order_table)
   ```
 - **Incorrect:**
@@ -1520,20 +1520,20 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Related:** ARCH-021
 
-#### ARCH-034 — commons/infrastructure is not imported by domain or application
+#### ARCH-034 — commons/adapters is not imported by domain or application
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** dependencies
-- **Validation:** `import-linter` — forbidden contract; domain|application -/-> commons.infrastructure
-- **Description:** No module under any context's domain/ or application/ package imports from commons/infrastructure/.
-- **Rationale:** commons/infrastructure holds framework-bound implementations; only infrastructure/, entrypoints/, bootstrap/, and tests may touch them.
+- **Validation:** `import-linter` — forbidden contract; domain|application -/-> commons.adapters
+- **Description:** No module under any context's domain/ or application/ package imports from commons/adapters/.
+- **Rationale:** commons/adapters holds framework-bound implementations; only adapters/, entrypoints/, bootstrap/, and tests may touch them.
 - **Correct:**
   ```
-  # sales/orders/infrastructure/unit_of_work.py
-  from commons.infrastructure.unit_of_work import SqlAlchemyUnitOfWork
+  # sales/orders/adapters/unit_of_work.py
+  from commons.adapters.unit_of_work import SqlAlchemyUnitOfWork
   ```
 - **Incorrect:**
   ```
   # sales/orders/application/order_service.py
-  from commons.infrastructure.unit_of_work import SqlAlchemyUnitOfWork
+  from commons.adapters.unit_of_work import SqlAlchemyUnitOfWork
   ```
 
 #### ARCH-035 — commons/types does not import any framework
@@ -1646,7 +1646,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 #### ARCH-041 — A module is promoted to a package only past the Section 15 thresholds
 - **Level:** MAY · **Automation:** partial · **Tier:** full · **Category:** progressive_structure
 - **Validation:** `ast-checker` — promotion thresholds check (line count, aggregate count, port count)
-- **Description:** A flat module (domain/model.py, application/<capability>.py, infrastructure/<adapter>.py) is split into a package only once it crosses a Section 15 threshold, for example domain/model.py past about 400 lines or 2 aggregates.
+- **Description:** A flat module (domain/model.py, application/<capability>.py, adapters/<adapter>.py) is split into a package only once it crosses a Section 15 threshold, for example domain/model.py past about 400 lines or 2 aggregates.
 - **Rationale:** Structure should grow when it hurts, not before; promoting a module early adds indirection with no payoff.
 - **Correct:**
   ```
@@ -1720,15 +1720,15 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # sales/orders/infrastructure/credit_gateway.py
+  # sales/orders/adapters/credit_gateway.py
   from billing.invoices.application.invoice_service import InvoiceService  # calls 8 of 20 methods
   ```
 - **Related:** ARCH-012, ARCH-025
 
 #### ARCH-046 — Aggregate module isolation
 - **Level:** MUST · **Automation:** full · **Tier:** core · **Category:** structure
-- **Validation:** `import-linter` — forbidden contract between sibling modules' application and infrastructure
-- **Description:** An aggregate module does not import another aggregate module's application/ or infrastructure/ package. References between aggregates are by ID, and those ID types live in the context's shared/ids.py.
+- **Validation:** `import-linter` — forbidden contract between sibling modules' application and adapters
+- **Description:** An aggregate module does not import another aggregate module's application/ or adapters/ package. References between aggregates are by ID, and those ID types live in the context's shared/ids.py.
 - **Rationale:** Aggregate modules are consistency boundaries. Reaching into a sibling's service or repository re-couples them and makes the one-transaction-one-aggregate rule unenforceable.
 - **Correct:**
   ```
@@ -1857,7 +1857,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 #### ARCH-053 — The core does not log
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** cross_cutting
 - **Validation:** `ruff` — banned logging imports/calls under domain/ and application/
-- **Description:** Modules under domain/ and application/ import no logging library and make no logging calls. They raise domain exceptions and emit domain events; entrypoints and infrastructure adapters log.
+- **Description:** Modules under domain/ and application/ import no logging library and make no logging calls. They raise domain exceptions and emit domain events; entrypoints and outbound adapters log.
 - **Rationale:** Logging is an observability concern of the adapters. Keeping it out of the core keeps the core free of ambient I/O and makes behavior fully assertable from the state and events a use case produces.
 - **Correct:**
   ```

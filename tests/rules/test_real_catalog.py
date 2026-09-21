@@ -8,10 +8,14 @@ from arch_standard.rules.model import Automation, Level
 
 RULES_DIR = packaged_rules_dir()
 
-# A context name directly followed by domain/application/infrastructure (no
+# A context name directly followed by domain/application/adapters (no
 # aggregate module segment in between) is the pre-aggregate-module flat
 # shape the standard no longer uses (spec §17 row P).
-FLAT_CONTEXT_PATH = re.compile(r"\b(?:sales|billing)[./](?:domain|application|infrastructure)\b")
+FLAT_CONTEXT_PATH = re.compile(r"\b(?:sales|billing)[./](?:domain|application|adapters)\b")
+
+# The layer's pre-0.2.0 name. Catches path-like uses only ("infrastructure/",
+# ".infrastructure", "/infrastructure"); generic prose is reviewed by hand.
+OLD_LAYER_NAME = re.compile(r"\binfrastructure/|\.infrastructure\b|/infrastructure\b")
 
 # ARCH-048 bans a context-level application/ package; its `incorrect` field
 # must show exactly the flat shape it forbids, so it is exempt.
@@ -158,6 +162,27 @@ def test_given_the_catalog__when_reading_examples__then_no_stale_flat_context_pa
                 f"({match.group(0) if match else '?'}); insert the aggregate module "
                 f"segment, e.g. sales/orders/domain/..."
             )
+
+
+def test_given_the_catalog__when_reading_any_text__then_no_infrastructure_layer_path() -> None:
+    cat = Catalog.load(RULES_DIR)
+    for rule in cat:
+        text = "\n".join(
+            [
+                rule.name,
+                rule.description,
+                rule.rationale,
+                rule.correct,
+                rule.incorrect,
+                rule.validation.detail or "",
+            ]
+        )
+        match = OLD_LAYER_NAME.search(text)
+        assert match is None, (
+            f"{rule.id} still names the layer 'infrastructure' "
+            f"({match.group(0) if match else '?'}); "
+            "the layer is called 'adapters' since 0.2.0"
+        )
 
 
 def test_given_repo_root__when_changelog_exists__then_starts_with_changelog_header() -> None:
