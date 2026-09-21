@@ -28,8 +28,14 @@ the standard yet, so no legacy alias is built.
 
 - The validator recognizes only `adapters/`. A project still using `infrastructure/`
   fails the normal structure checks; the migration note is the remedy.
-- Catalog version `0.1.1` -> `0.2.0` in `pyproject.toml` and the catalog. Classified
-  minor (paths renamed, no `level` change). `release-check` must accept it.
+- `arch-standard` (and so the catalog: its version is the project metadata version)
+  `0.1.1` -> `0.2.0` in `pyproject.toml`. Classified minor (paths renamed, no `level`
+  change; `release-check` requires only a patch for content-only diffs, so a minor bump
+  satisfies it). `templates/copier.yml`'s `arch_standard_version` default and `uv.lock`
+  follow.
+- `arch-commons` `0.1.0` -> `0.2.0`. `commons.infrastructure` -> `commons.adapters` is a
+  breaking import-path change to an independently versioned package. The template's
+  `arch_commons_version` default follows.
 - `CHANGELOG.md` gets a `0.2.0` section marked breaking, with a migration note:
   `git mv <ctx>/<module>/infrastructure <ctx>/<module>/adapters`, update imports of
   `commons.infrastructure` to `commons.adapters`, re-run the validator.
