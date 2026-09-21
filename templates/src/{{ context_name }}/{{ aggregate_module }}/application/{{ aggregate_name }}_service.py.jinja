@@ -6,14 +6,14 @@ from commons.types.clock import Clock
 from commons.types.event_bus import EventBus
 from commons.types.unit_of_work import UnitOfWork
 
-from {{ context_name }}.{{ aggregate_module }}.domain.model.{{ aggregate_name }} import (
+{% set aggregate_import %}from {{ context_name }}.{{ aggregate_module }}.domain.model.{{ aggregate_name }} import (
     {{ aggregate_name | capitalize }},
     {{ aggregate_name | capitalize }}Id,
 )
-from {{ context_name }}.{{ aggregate_module }}.domain.model.ports import (
+{% endset %}{% set ports_import %}from {{ context_name }}.{{ aggregate_module }}.domain.model.ports import (
     {{ aggregate_name | capitalize }}Repository,
 )
-
+{% endset %}{# isort orders these two by module path, so their order depends on the aggregate's name #}{% if aggregate_name < "ports" %}{{ aggregate_import }}{{ ports_import }}{% else %}{{ ports_import }}{{ aggregate_import }}{% endif %}
 
 @dataclass(frozen=True)
 class Create{{ aggregate_name | capitalize }}:

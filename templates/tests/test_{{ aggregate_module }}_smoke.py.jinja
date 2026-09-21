@@ -5,12 +5,12 @@ from commons.adapters.in_memory_unit_of_work import InMemoryUnitOfWork
 from commons.adapters.system_clock import SystemClock
 
 from bootstrap import build_container
+from {{ context_name }}.{{ aggregate_module }}.adapters.{{ aggregate_name }}_repository import (
+    InMemory{{ aggregate_name | capitalize }}Repository,
+)
 from {{ context_name }}.{{ aggregate_module }}.application.{{ aggregate_name }}_service import (
     Create{{ aggregate_name | capitalize }},
     {{ aggregate_name | capitalize }}Service,
-)
-from {{ context_name }}.{{ aggregate_module }}.adapters.{{ aggregate_name }}_repository import (
-    InMemory{{ aggregate_name | capitalize }}Repository,
 )
 
 
