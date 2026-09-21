@@ -8,14 +8,14 @@ from sqlalchemy.orm import Session
 
 def _session() -> Session:
     engine = sa.create_engine("sqlite:///:memory:")
-    from commons.infrastructure.outbox import outbox_table
+    from commons.adapters.outbox import outbox_table
 
     outbox_table.metadata.create_all(engine)
     return Session(engine)
 
 
 def test_given_recorded_message__when_drained__then_published_and_marked() -> None:
-    from commons.infrastructure.outbox import drain, record
+    from commons.adapters.outbox import drain, record
 
     session = _session()
     record(
@@ -39,7 +39,7 @@ def test_given_recorded_message__when_drained__then_published_and_marked() -> No
 
 
 def test_given_already_drained_message__when_drained_again__then_not_republished() -> None:
-    from commons.infrastructure.outbox import drain, record
+    from commons.adapters.outbox import drain, record
 
     session = _session()
     record(

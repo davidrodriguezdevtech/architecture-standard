@@ -4,10 +4,10 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from commons.infrastructure.in_memory_event_bus import InMemoryEventBus
-from commons.infrastructure.in_memory_unit_of_work import InMemoryUnitOfWork
-from commons.infrastructure.system_clock import SystemClock
-from commons.infrastructure.uuid7_id_generator import Uuid7IdGenerator
+from commons.adapters.in_memory_event_bus import InMemoryEventBus
+from commons.adapters.in_memory_unit_of_work import InMemoryUnitOfWork
+from commons.adapters.system_clock import SystemClock
+from commons.adapters.uuid7_id_generator import Uuid7IdGenerator
 
 
 @dataclass

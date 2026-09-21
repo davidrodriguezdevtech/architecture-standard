@@ -34,7 +34,7 @@ def widget_session_factory() -> sessionmaker:  # type: ignore[type-arg]
 def test_given_added_widget__when_committed__then_collect_new_events_drains_it(
     widget_session_factory: sessionmaker,  # type: ignore[type-arg]
 ) -> None:
-    from commons.infrastructure.sqlalchemy_unit_of_work import SqlAlchemyUnitOfWork
+    from commons.adapters.sqlalchemy_unit_of_work import SqlAlchemyUnitOfWork
 
     uow = SqlAlchemyUnitOfWork(widget_session_factory)
     with uow:
@@ -49,7 +49,7 @@ def test_given_added_widget__when_committed__then_collect_new_events_drains_it(
 def test_given_uncommitted_change__when_exit__then_rollback_and_session_closed(
     widget_session_factory: sessionmaker,  # type: ignore[type-arg]
 ) -> None:
-    from commons.infrastructure.sqlalchemy_unit_of_work import SqlAlchemyUnitOfWork
+    from commons.adapters.sqlalchemy_unit_of_work import SqlAlchemyUnitOfWork
 
     uow = SqlAlchemyUnitOfWork(widget_session_factory)
     with uow:
