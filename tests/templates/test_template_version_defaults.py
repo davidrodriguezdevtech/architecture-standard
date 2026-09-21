@@ -22,8 +22,8 @@ def _copier_default(field: str) -> str:
 
 
 def test_given_the_template__when_reading_standard_default__then_it_matches_root_version() -> None:
-    # arch-standard and arch-commons are independently versioned (0.1.1 vs 0.1.0 as
-    # of this writing) -- compare each template default only to its own package's
+    # arch-standard and arch-commons are independently versioned (they may
+    # legitimately diverge) -- compare each template default only to its own package's
     # pyproject.toml, never to the other default, or a legitimate divergence between
     # the two packages would be misread as drift.
     assert _copier_default("arch_standard_version") == _package_version(

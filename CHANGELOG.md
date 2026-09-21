@@ -6,6 +6,36 @@ what kind of change requires which version bump; `arch-standard release-check`
 enforces it in CI on every push and pull request, `arch-standard changelog`
 renders these entries.
 
+## 0.2.0
+
+**Breaking: the `infrastructure` layer is renamed `adapters`.** The per-module layer
+`<context>/<module>/infrastructure/` is now `<context>/<module>/adapters/`, and the shared
+package `commons.infrastructure` (`arch-commons`) is now `commons.adapters`. `entrypoints/`
+is unchanged: it remains the context's inbound adapters, and `adapters/` holds the outbound
+ones. No rule ID and no `level` changed; every rule that named the layer had its wording and
+examples updated. The validator recognizes only the new name (no alias). `arch-commons` is
+released as 0.2.0 alongside, since its import path changed.
+
+### Changed
+
+- Every rule whose text or examples named the layer: wording/examples updated (the exact
+  count is in the `release-check` line below).
+- The copier template generates `adapters/` and imports `commons.adapters`.
+
+Classified **minor** per spec Section 16.3; `uv run arch-standard release-check --version 0.2.0`
+confirms: `OK  0.1.0 -> 0.2.0 (minor bump, 17 rule change(s))`.
+
+#### Migration notes
+
+For each existing project:
+
+1. `git mv src/<context>/<module>/infrastructure src/<context>/<module>/adapters` for every
+   aggregate module.
+2. Replace imports: `<context>.<module>.infrastructure` -> `<context>.<module>.adapters`, and
+   `commons.infrastructure` -> `commons.adapters` (requires `arch-commons` >= 0.2.0).
+3. Re-run `arch-standard check .`. A project still using `infrastructure/` is reported by the
+   normal structure checks.
+
 ## 0.1.1
 
 Catalog-honesty corrections surfaced by wiring `release-check` into CI (v1 release
