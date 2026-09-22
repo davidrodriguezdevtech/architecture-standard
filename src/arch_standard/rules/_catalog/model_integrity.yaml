@@ -268,22 +268,45 @@ rules:
     category: model_integrity
     description: >
       Repositories persist and retrieve aggregate roots. They are not general-purpose
-      query interfaces: projection-oriented, reporting, search, dashboard, and
-      cross-aggregate reads belong to the context's read/ layer.
+      query interfaces. A query over one aggregate module's own data -- search, filter,
+      sort, a paginated listing -- belongs to that module's own Finder (Section 2.5): a
+      `Finder` ABC and its DTOs in `application/<aggregate>_finder.py`, implemented in
+      `adapters/<aggregate>_finder.py` -- the same ABC/implementation split as the
+      repository, and for the same reason (ARCH-009: an entrypoint never imports a
+      module's `adapters/` directly). Not the repository, and not the context's read/
+      layer either -- that is for a query spanning 2+ aggregate modules, or a
+      projection/report/dashboard.
     rationale: >
       A repository that grows report queries stops being a collection of roots, drags
       query pressure into the write model, and starts returning DTOs instead of
-      aggregates.
+      aggregates. Naming the single-aggregate Finder explicitly (rather than pointing
+      everything at read/) matters just as much: read/ exists because some queries span
+      aggregate modules, and promoting a single-aggregate listing there anyway buys
+      nothing while duplicating that aggregate's row shape in a file nobody else needed.
     correct: |
       class OrderRepository(ABC):
           @abstractmethod
           def get(self, order_id: OrderId) -> Order: ...
           @abstractmethod
           def add(self, order: Order) -> None: ...
+
+      # sales/orders/application/order_finder.py -- the port, entrypoint-importable
+      class OrderFinder(ABC):
+          @abstractmethod
+          def list_orders(self, query: ListOrders) -> Page[OrderListItem]: ...
+
+      # sales/orders/adapters/order_finder.py -- the implementation, wired by
+      # bootstrap/ like the repository, never imported by an entrypoint directly
+      class InMemoryOrderFinder(OrderFinder):
+          def list_orders(self, query: ListOrders) -> Page[OrderListItem]: ...
     incorrect: |
       class OrderRepository(ABC):
           @abstractmethod
           def find_premium_customers_with_overdue_invoices(self) -> list[ReportRow]: ...
+
+      # sales/orders/entrypoints/web/order.py -- reaches into adapters/ directly,
+      # the exact thing splitting the Finder into a port avoids (ARCH-009)
+      from sales.orders.adapters.order_finder import InMemoryOrderFinder
     validation:
       tool: ast-checker
       detail: repository methods returning non-aggregate collections

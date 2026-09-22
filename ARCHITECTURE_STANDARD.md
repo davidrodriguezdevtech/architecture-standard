@@ -165,16 +165,27 @@ project/
 │   │   │   │   │                          #   repository's job, not a domain service's)
 │   │   │   │   └── specifications.py      # optional
 │   │   │   ├── application/
-│   │   │   │   └── <aggregate>.py         # one method per use case
+│   │   │   │   ├── <aggregate>.py         # one method per use case
+│   │   │   │   └── <aggregate>_finder.py  # THIS aggregate's own listing/search/filter/
+│   │   │   │                              #   sort/pagination query, when it needs one
+│   │   │   │                              #   (Section 2.5): a Finder ABC + its query/
+│   │   │   │                              #   result DTOs, entrypoint-importable like
+│   │   │   │                              #   any other application module - not
+│   │   │   │                              #   read/, which is for queries spanning 2+
+│   │   │   │                              #   aggregate modules
 │   │   │   └── adapters/
 │   │   │       ├── <aggregate>_repository.py
+│   │   │       ├── <aggregate>_finder.py  # the Finder ABC's implementation, wired by
+│   │   │       │                          #   bootstrap/ like the repository - never
+│   │   │       │                          #   imported by entrypoints directly (ARCH-009)
 │   │   │       ├── mapping.py             # aggregate to stored-form translation
 │   │   │       └── <adapter>.py           # one module per outbound adapter
 │   │   ├── <aggregate_module_2>/    # same shape, one per aggregate
-│   │   └── read/                     # Read/Query layer - projections, reporting, search,
-│   │                                 #   dashboards, cross-aggregate reads. Returns DTOs.
-│   │                                 #   Imports no aggregate module's domain/ or
-│   │                                 #   application/. May query the store directly.
+│   │   └── read/                     # Read/Query layer - projections, reporting,
+│   │                                 #   dashboards, and any read spanning 2+ aggregate
+│   │                                 #   modules. Returns DTOs. Imports no aggregate
+│   │                                 #   module's domain/ or application/. May query
+│   │                                 #   the store directly.
 │   ├── commons/                      # THIS PROJECT's own portion of the `commons`
 │   │   │                             #   namespace package - everything above one
 │   │   │                             #   aggregate. No __init__.py (ARCH-055).
@@ -246,7 +257,8 @@ and those ID types live in `commons/ids.py`. (ARCH-046)
 | A fact other parts of this context react to | a domain event in `<module>/domain/model/events.py` |
 | An ID type referenced by another aggregate | `commons/ids.py` |
 | A value object, enum or reference catalogue used above one aggregate | `src/commons/<concept>.py` |
-| A projection, report, search, dashboard, or any cross-aggregate read | `<context>/read/` |
+| A listing/search/filter/sort/pagination query over ONE aggregate module's own data | a Finder ABC + DTOs in `<module>/application/<aggregate>_finder.py`, implemented in `<module>/adapters/<aggregate>_finder.py` - not `<context>/read/` |
+| A projection, report, dashboard, or any read spanning 2+ aggregate modules | `<context>/read/` |
 | A dependency-free technical primitive | the `arch-commons` package, `commons.types` (propose upstream) |
 | A shared framework-bound technical implementation | the `arch-commons` package, `commons.adapters` (propose upstream) |
 | A domain concept shared by 2+ contexts, with business policy | `src/commons/<concept>.py` |
@@ -273,20 +285,62 @@ deliberate promotion into `commons/`, never a quiet reach sideways.
 ## 2.5 The Read/Query layer
 
 Repositories are responsible for persistence and retrieval of aggregate roots. They
-must not be used as general-purpose query interfaces. Complex, projection-oriented,
-reporting, search, dashboard, or cross-aggregate reads belong to the Read/Query layer.
+must not be used as general-purpose query interfaces.
 
-`<context>/read/` is that layer. It exists at context level, not inside an aggregate
-module, because the reads that need it are precisely the ones that span aggregates - a
-single-aggregate lookup is served by that aggregate's repository.
+Three cases, three homes - the second one is easy to get wrong, so it gets its own
+row:
 
-- `read/` MAY query the store directly, bypassing aggregates and the Unit of Work.
-  That is the point: a read model is not bound by write-side invariants.
+| The query needs... | It goes in... |
+|---|---|
+| One aggregate, by id | that aggregate module's own repository (`get`) |
+| One aggregate, by anything else - search, filter, sort, a paginated listing | a Finder in that aggregate module (below) |
+| 2+ aggregate modules, or a projection/report/dashboard that reshapes data no single aggregate owns | `<context>/read/` |
+
+**A listing is not automatically a Read/Query-layer concern just because it returns
+more than one row or is not a plain get-by-id.** `<context>/read/` exists at context
+level, not inside an aggregate module, for one reason: the reads that need it are the
+ones that span aggregate modules. A query that reads only one aggregate module's own
+data - however many rows it returns, however it is filtered, sorted or paginated - has
+nothing to span. Promoting it to context level buys nothing and costs a real thing: a
+second copy of that aggregate's row shape living in a file nobody outside the module
+needed to share.
+
+**A Finder is a port, exactly like a repository - not a class an entrypoint reaches
+into `adapters/` for.** ARCH-009 forbids entrypoints from importing a module's
+`adapters/` directly for the same reason it forbids constructing an adapter inline:
+an entrypoint gets its collaborators wired by the composition root, never imported
+from the layer that touches the store. A repository resolves this by splitting in
+two - the `Repository` ABC in `domain/model/ports.py` (importable), its
+`InMemoryXRepository` implementation in `adapters/` (never imported by an
+entrypoint, only constructed by `bootstrap/`). A Finder splits the same way, in the
+layer the three-homes rule (ARCH-042) already gives it: it deals in DTOs, not
+aggregates, so it is not domain vocabulary - it is "a non-domain outbound contract
+used by one use case," which the three-homes rule already sends to the use-case
+module. So:
+
+- The `Finder` ABC, and its query/result DTOs (`ListX`, `XListItem`), live in
+  `<module>/application/<aggregate>_finder.py` - an application module like any
+  other, freely importable by entrypoints.
+- `InMemoryXFinder(Finder)` - the implementation - lives in `<module>/adapters/`,
+  next to the repository whose rows it reads. `bootstrap/` constructs it and hands
+  the `Finder`-typed instance to the entrypoint's `configure()`, exactly like the
+  service.
+- The Finder MAY query the store directly, bypassing the aggregate and the Unit of
+  Work: a read model is not bound by write-side invariants. Its implementation stays
+  out of `domain/` for the same reason a repository's does.
+- Entrypoints call the Finder directly for a query; they do not route it through the
+  application service, which would add nothing (the service exists to enforce
+  invariants on writes, and a query does not write).
+
+`<context>/read/` is the same shape scaled up one level, for the cases that
+genuinely span aggregate modules:
+
+- `read/` MAY query the store directly, for the same reason a Finder may.
 - `read/` MUST NOT import any aggregate module's `domain/` or `application/`.
   (ARCH-052)
 - `read/` returns DTOs, never aggregates.
-- Entrypoints call `read/` directly for queries; they do not route a query through an
-  application service that adds nothing.
+- Entrypoints call `read/` directly for queries, for the same reason they call a
+  Finder directly.
 
 This keeps the CQRS split explicit and mechanically checkable, and it keeps the write
 side (aggregate modules) free of query pressure. (ARCH-051, ARCH-052)
@@ -1083,20 +1137,36 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-003 — Domain does not depend on frameworks
 - **Level:** MUST · **Automation:** full · **Tier:** core · **Category:** dependencies
-- **Validation:** `import-linter` — forbidden contract; domain -/-> (pydantic, sqlalchemy, fastapi, ...)
-- **Description:** No module under a context's domain/ package imports a web framework, an ORM, a DI container, or pydantic.
-- **Rationale:** A framework-free domain stays unit-testable without a runtime and keeps vendor choices out of the business core.
+- **Validation:** `ast-checker` — forbidden imports in domain/ (and commons/); `from pydantic import <name>` is permitted only for names on the scalar-validator allowlist, `import pydantic` (bare) is never permitted
+- **Description:** No module under a context's domain/ package (or a project's commons/, held to the same discipline) imports a web framework, an ORM, a DI container, or pydantic -- with one narrow, explicit exception: a framework's own format-only scalar validators, imported by name. Today that allowlist is exactly `pydantic.EmailStr`, `pydantic.TypeAdapter` and `pydantic.ValidationError`, used only to validate a single field's string format in `__post_init__`, never to define a model, a schema, or anything with I/O. `import pydantic` (the bare form) stays banned even though names on the allowlist exist, because the bare form reaches `pydantic.BaseModel` through the module object; the same import line naming both an allowed and a banned symbol still fails.
+- **Rationale:** A framework-free domain stays unit-testable without a runtime and keeps vendor choices out of the business core -- reimplementing a well-known format (email, URL, phone) with a hand-rolled regex is not what that principle protects, and it trades one duplicated, under-tested validator per aggregate for one call into a library that already gets it right. The line stays exactly where the principle needs it: the domain may borrow a framework's scalar TYPE validator, never its MODELING machinery (no `BaseModel`, no `Field`, no framework runtime or I/O reaching the domain through the back door).
 - **Correct:**
   ```
-  # sales/orders/domain/model/aggregate.py
-  from dataclasses import dataclass
-  from commons.types.ids import EntityId
+  # sales/orders/domain/model/value_objects.py
+  from pydantic import EmailStr, TypeAdapter, ValidationError
+  
+  _EMAIL = TypeAdapter(EmailStr)
+  
+  @dataclass(frozen=True)
+  class ContactInfo:
+      email: EmailStr
+  
+      def __post_init__(self) -> None:
+          if self.email:
+              try:
+                  _EMAIL.validate_python(self.email)
+              except ValidationError as exc:
+                  raise InvalidOrder(f"Email is not valid: {self.email}") from exc
   ```
 - **Incorrect:**
   ```
   # sales/orders/domain/model/aggregate.py
-  from pydantic import BaseModel
+  from pydantic import BaseModel        # modeling machinery, not a scalar validator
   from sqlalchemy.orm import Mapped
+  
+  # sales/orders/domain/model/value_objects.py
+  import pydantic                        # bare import -- reaches BaseModel too,
+                                          # banned even though EmailStr exists
   ```
 
 #### ARCH-004 — Domain performs no I/O
@@ -1967,8 +2037,8 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 #### ARCH-051 — Repositories are not query interfaces
 - **Level:** MUST · **Automation:** partial · **Tier:** core · **Category:** model_integrity
 - **Validation:** `ast-checker` — repository methods returning non-aggregate collections
-- **Description:** Repositories persist and retrieve aggregate roots. They are not general-purpose query interfaces: projection-oriented, reporting, search, dashboard, and cross-aggregate reads belong to the context's read/ layer.
-- **Rationale:** A repository that grows report queries stops being a collection of roots, drags query pressure into the write model, and starts returning DTOs instead of aggregates.
+- **Description:** Repositories persist and retrieve aggregate roots. They are not general-purpose query interfaces. A query over one aggregate module's own data -- search, filter, sort, a paginated listing -- belongs to that module's own Finder (Section 2.5): a `Finder` ABC and its DTOs in `application/<aggregate>_finder.py`, implemented in `adapters/<aggregate>_finder.py` -- the same ABC/implementation split as the repository, and for the same reason (ARCH-009: an entrypoint never imports a module's `adapters/` directly). Not the repository, and not the context's read/ layer either -- that is for a query spanning 2+ aggregate modules, or a projection/report/dashboard.
+- **Rationale:** A repository that grows report queries stops being a collection of roots, drags query pressure into the write model, and starts returning DTOs instead of aggregates. Naming the single-aggregate Finder explicitly (rather than pointing everything at read/) matters just as much: read/ exists because some queries span aggregate modules, and promoting a single-aggregate listing there anyway buys nothing while duplicating that aggregate's row shape in a file nobody else needed.
 - **Correct:**
   ```
   class OrderRepository(ABC):
@@ -1976,12 +2046,26 @@ Binding from day one. `arch-standard check --core` runs exactly these.
       def get(self, order_id: OrderId) -> Order: ...
       @abstractmethod
       def add(self, order: Order) -> None: ...
+  
+  # sales/orders/application/order_finder.py -- the port, entrypoint-importable
+  class OrderFinder(ABC):
+      @abstractmethod
+      def list_orders(self, query: ListOrders) -> Page[OrderListItem]: ...
+  
+  # sales/orders/adapters/order_finder.py -- the implementation, wired by
+  # bootstrap/ like the repository, never imported by an entrypoint directly
+  class InMemoryOrderFinder(OrderFinder):
+      def list_orders(self, query: ListOrders) -> Page[OrderListItem]: ...
   ```
 - **Incorrect:**
   ```
   class OrderRepository(ABC):
       @abstractmethod
       def find_premium_customers_with_overdue_invoices(self) -> list[ReportRow]: ...
+  
+  # sales/orders/entrypoints/web/order.py -- reaches into adapters/ directly,
+  # the exact thing splitting the Finder into a port avoids (ARCH-009)
+  from sales.orders.adapters.order_finder import InMemoryOrderFinder
   ```
 - **Related:** ARCH-022, ARCH-052
 
