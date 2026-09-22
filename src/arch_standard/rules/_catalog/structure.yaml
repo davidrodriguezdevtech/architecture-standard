@@ -222,7 +222,7 @@ rules:
         exactly one file, its name must match the aggregate's own name
   - id: ARCH-055
     name: Every Python package directory has an __init__.py
-    level: SHOULD
+    level: MUST
     automation: full
     category: structure
     description: >
@@ -262,7 +262,8 @@ rules:
       tool: ast-checker
       detail: >-
         filesystem check - every directory under src/ holding a .py file has
-        __init__.py, except src/commons/ itself, which must not have one
+        __init__.py, except src/commons/ and, if it exists, src/commons/adapters/,
+        neither of which may have one
   - id: ARCH-056
     name: An entrypoint file serves at most one aggregate module
     level: SHOULD

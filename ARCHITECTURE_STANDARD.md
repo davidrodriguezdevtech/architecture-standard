@@ -1143,7 +1143,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 | ARCH-050 | Declared context dependency graph | MUST | full |
 | ARCH-052 | Read layer does not import the write side | MUST | full |
 | ARCH-054 | Domain services for an aggregate live in a services/ directory | SHOULD | partial |
-| ARCH-055 | Every Python package directory has an __init__.py | SHOULD | full |
+| ARCH-055 | Every Python package directory has an __init__.py | MUST | full |
 | ARCH-056 | An entrypoint file serves at most one aggregate module | SHOULD | partial |
 | ARCH-059 | bootstrap/ wires adapters, it does not define them | SHOULD | full |
 
@@ -2182,8 +2182,8 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 
 #### ARCH-055 — Every Python package directory has an __init__.py
-- **Level:** SHOULD · **Automation:** full · **Tier:** full · **Category:** structure
-- **Validation:** `ast-checker` — filesystem check - every directory under src/ holding a .py file has __init__.py, except src/commons/ itself, which must not have one
+- **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** structure
+- **Validation:** `ast-checker` — filesystem check - every directory under src/ holding a .py file has __init__.py, except src/commons/ and, if it exists, src/commons/adapters/, neither of which may have one
 - **Description:** Every directory under src/ that contains a .py file (directly or in a subdirectory) has an __init__.py, including empty ones. Implicit namespace packages (PEP 420) are not used. The exceptions are src/commons/ itself and, if it exists, src/commons/adapters/ — neither MUST have one: each is a PEP 420 namespace portion that merges with the matching portion the installed arch-commons distribution ships (commons/ with commons.types/commons.adapters as a whole; commons/adapters/ with arch-commons' own commons/adapters/ specifically, ARCH-047). Every other directory nested under src/commons/, including subdirectories of commons/adapters/ itself, follows the normal rule and does have an __init__.py.
 - **Rationale:** An explicit __init__.py marks a directory as a package on purpose, rather than by the accident of holding a .py file; it also avoids the edge cases implicit namespace packages create for some tooling and IDEs. A missing one is easy to overlook when scaffolding a module by hand. commons/ and commons/adapters/ are the deliberate exceptions: arch-commons ships commons.types and commons.adapters while the project supplies its own commons.<module> portions and, when it has one, its own framework-bound adapters alongside arch-commons' commons.adapters -- and a regular package on either side of either merge point would shadow the other outright rather than merge with it.
 - **Correct:**

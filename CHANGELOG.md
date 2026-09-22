@@ -6,6 +6,56 @@ what kind of change requires which version bump; `arch-standard release-check`
 enforces it in CI on every push and pull request, `arch-standard changelog`
 renders these entries.
 
+## 1.0.0
+
+**The first real release.** Every version before this one was informal: `0.2.0` was
+a retroactive snapshot of a catalog that was never actually frozen or tagged, and
+`0.3.0`/`0.4.0` were built and consumed by several concurrent sessions directly off
+branch tips (see `CONTRIBUTING.md`), sometimes under a number that had already been
+claimed for different content. Nothing about this project's maturity or scope
+changed today — this version exists to say, honestly, that from here on a version
+number means one specific, frozen thing, and the rule catalog's own promotion
+discipline is being followed for real for the first time.
+
+**Promoted: ARCH-055 (every Python package directory has an `__init__.py`) — SHOULD
+becomes MUST.** A missing `__init__.py` now fails `arch-standard check` outright
+instead of warning. The gap this closes is concrete: `SHOULD` findings don't fail
+anything, so a directory scaffolded without one was easy to create and easy to never
+notice — nothing forced a second look.
+
+This is why the version is `1.0.0` and not `0.5.0`. The compatibility policy (spec
+Section 16.3) only sanctions a `SHOULD -> MUST` promotion as a minor bump when the
+rule was genuinely `SHOULD` in the immediately preceding *released* snapshot.
+ARCH-055 didn't exist at all in the only snapshot this project has ever actually
+frozen (`0.2.0`, and even that was retroactive) — so by the tool's own
+`release-check`, this is classified as a rule arriving already binding, which
+requires a major bump, not a promotion. Rather than fudge the version to dodge that
+signal, or promote it anyway and call it `0.5.0`, this releases `1.0.0` for real:
+the catalog as it exists today, including ARCH-055 as MUST, is the actual first
+frozen baseline. Every rule promoted to MUST from here on will have been SHOULD in
+*this* snapshot first, so the minor-bump promotion path finally means what it says.
+
+### Changed
+- ARCH-055: `SHOULD` -> `MUST`. No wording change beyond the level itself; the
+  description already covered the `commons/`/`commons/adapters/` namespace exceptions
+  correctly. `validation.detail` corrected to mention the `commons/adapters/`
+  exception explicitly (it only named `commons/` before) -- a stale-text fix, not a
+  behaviour change.
+
+No other rule's id, level, or enforced behaviour changed in this release.
+
+#### Migration notes
+
+For each existing project pinned below `1.0.0`:
+
+1. Run `uv run arch-standard check .` before upgrading the pin. If ARCH-055 already
+   shows PASS (no findings), the upgrade is a no-op for you.
+2. If it shows WARN with findings, add the missing `__init__.py` files it lists
+   before upgrading -- after the pin moves, the same findings become FAIL and block
+   the verification gate.
+3. Bump the pin in `pyproject.toml` and `.arch-standard` to `1.0.0`, rebuild/reinstall
+   from a wheel built off `master` (see `CONTRIBUTING.md` -- never off a branch tip).
+
 ## 0.4.0
 
 **Renumbered from 0.3.0.** Everything below this line was developed and consumed,

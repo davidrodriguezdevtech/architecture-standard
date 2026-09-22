@@ -301,7 +301,7 @@ def test_given_a_package_dir_with_no_init_py__when_checked__then_arch_055_fails(
     model.mkdir(parents=True)
     (model / "order.py").write_text("class Order: pass\n", encoding="utf-8")
     report = _reports(root)["ARCH-055"]
-    assert report.outcome is Outcome.WARN
+    assert report.outcome is Outcome.FAIL
     assert len(report.findings) > 0
 
 
@@ -470,5 +470,5 @@ def test_given_an_init_file_in_commons_adapters__when_checked__then_arch_055_fai
     (adapters / "__init__.py").write_text("", encoding="utf-8")
     (root / "src/sales/entrypoints").mkdir(parents=True)
     r = _reports(root)["ARCH-055"]
-    assert r.outcome is Outcome.WARN
+    assert r.outcome is Outcome.FAIL
     assert any("adapters" in f.message and "__init__" in f.message for f in r.findings)
