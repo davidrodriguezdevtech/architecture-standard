@@ -20,7 +20,7 @@ rules:
           customer_id: UserId
     incorrect: |
       # sales/orders/application/order.py
-      from sales.users.application.user_service import UserService
+      from sales.users.application.user import UserService
     validation:
       tool: import-linter
       detail: forbidden contract between sibling modules' application and adapters
@@ -199,3 +199,33 @@ rules:
     validation:
       tool: ast-checker
       detail: filesystem check - every directory under src/ holding a .py file has __init__.py
+  - id: ARCH-056
+    name: An entrypoint file serves at most one aggregate module
+    level: SHOULD
+    automation: partial
+    category: structure
+    description: >
+      entrypoints/ groups by transport kind (web/, events/, crons/), and within each
+      kind, one file per aggregate module (or per concern, for events/crons where a
+      single file's job doesn't map cleanly to one aggregate name). A file that
+      imports from two different aggregate modules' packages under the same context
+      is doing more than one aggregate's job.
+    rationale: >
+      Web routes typically split naturally, one file per resource. Event consumers
+      and cron jobs are better named for what they do than forced into an
+      aggregate-name pattern, but the ownership rule still holds: a handler that
+      reaches into two aggregates hides a cross-aggregate flow inside transport
+      code instead of an explicit part of the design (Section 3.6), and is
+      untestable without two aggregates' worth of setup.
+    correct: |
+      # sales/entrypoints/web/order.py
+      from sales.orders.application.order import OrderService
+    incorrect: |
+      # sales/entrypoints/web/order.py
+      from sales.orders.application.order import OrderService
+      from sales.customers.application.customer import CustomerService
+    validation:
+      tool: ast-checker
+      detail: >-
+        an entrypoints/ file importing from 2+ aggregate modules' packages in the
+        same context is flagged; only applies to contexts with 2+ modules

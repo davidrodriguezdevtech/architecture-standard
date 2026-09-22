@@ -620,3 +620,38 @@ def test_given_an_entrypoint_importing_a_sibling__when_checked__then_arch_011_fa
     # discriminate a genuine contract break from ImportContractsCheck._fail_all.
     assert reports["ARCH-011"].findings[0].message == "import-linter contract broken"
     assert reports["ARCH-001"].outcome is Outcome.PASS
+
+
+def test_given_a_nested_entrypoint_importing_a_sibling__when_checked__then_arch_011_fails(
+    tmp_path: Path,
+) -> None:
+    # entrypoints/ grouped by transport kind (web/, events/, crons/): the
+    # sibling-detection must recurse, not just glob the entrypoints/ root.
+    src = tmp_path / "src"
+    orders = src / "sales" / "orders"
+    (orders / "domain" / "model").mkdir(parents=True)
+    (src / "sales" / "__init__.py").write_text("", encoding="utf-8")
+    (orders / "__init__.py").write_text("", encoding="utf-8")
+    (orders / "domain" / "__init__.py").write_text("", encoding="utf-8")
+    (orders / "domain" / "model" / "__init__.py").write_text("", encoding="utf-8")
+
+    entrypoints = src / "sales" / "entrypoints"
+    web = entrypoints / "web"
+    web.mkdir(parents=True)
+    (entrypoints / "__init__.py").write_text("", encoding="utf-8")
+    (web / "__init__.py").write_text("", encoding="utf-8")
+    (web / "order.py").write_text("value = 1\n", encoding="utf-8")
+    events = entrypoints / "events"
+    events.mkdir(parents=True)
+    (events / "__init__.py").write_text("", encoding="utf-8")
+    # Deliberate ARCH-011 violation, across kind folders this time: an events/
+    # file importing a sibling web/ file.
+    (events / "order_placed.py").write_text(
+        "from sales.entrypoints.web.order import value\n", encoding="utf-8"
+    )
+
+    layout = ProjectLayout.detect(tmp_path)
+    catalog = Catalog.load(packaged_rules_dir())
+    reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, catalog)}
+    assert reports["ARCH-011"].outcome is Outcome.FAIL
+    assert reports["ARCH-011"].findings[0].message == "import-linter contract broken"

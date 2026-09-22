@@ -11,11 +11,14 @@ project/
 ├── .arch-standard                   # standard-version stamp (versioning policy: see the release notes)
 ├── src/
 │   ├── <context>/                   # LEVEL 1 - one bounded context (e.g. sales)
-│   │   ├── entrypoints/             # inbound adapters, context-wide
-│   │   │   ├── http.py              #   HTTP/GraphQL
-│   │   │   ├── events.py            #   message/event consumers
-│   │   │   ├── cli.py               #   CLI
-│   │   │   ├── cron.py              #   scheduled jobs
+│   │   ├── entrypoints/             # inbound adapters, context-wide, grouped by kind
+│   │   │   ├── web/                 #   HTTP/GraphQL - one file per aggregate module
+│   │   │   │   └── <aggregate>.py
+│   │   │   ├── events/              #   message/event consumers - one file per concern,
+│   │   │   │   └── <concern>.py     #     named for what it does (Section 4.2)
+│   │   │   ├── crons/               #   scheduled jobs - same naming as events/
+│   │   │   │   └── <concern>.py
+│   │   │   ├── cli.py               #   CLI (flat; split into cli/ the same way if needed)
 │   │   │   └── providers.py         #   thin: pulls wired services from the container
 │   │   ├── shared/                  # ONLY what crosses this context's aggregates
 │   │   │   ├── ids.py               #   ID types of this context's aggregates

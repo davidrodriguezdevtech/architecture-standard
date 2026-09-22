@@ -7,7 +7,7 @@ from billing.invoices.domain.model.ports import InvoiceRepository
 def invoice_service(invoices: InvoiceRepository) -> InvoiceService:
     """Wire InvoiceService from the repository singleton the bootstrap container built.
 
-    entrypoints/cli.py and entrypoints/http.py get their wired InvoiceService
+    entrypoints/cli.py and entrypoints/web/invoice.py get their wired InvoiceService
     from this module only, never by constructing it themselves.
     """
     return InvoiceService(invoices)

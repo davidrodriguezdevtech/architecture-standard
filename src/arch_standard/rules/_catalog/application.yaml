@@ -49,7 +49,7 @@ rules:
       # bootstrap/ wires an adapter backed by billing's application service
     incorrect: |
       # sales/orders/application/order.py
-      from billing.invoices.application.invoice_service import InvoiceService
+      from billing.invoices.application.invoice import InvoiceService
     validation:
       tool: import-linter
       detail: independence contract (import half); declared contract/ACL presence on the other side is reviewed at PR time
@@ -214,7 +214,7 @@ rules:
           def has_credit(self, customer_id: CustomerId, amount: Money) -> bool: ...
     incorrect: |
       # sales/orders/adapters/credit_gateway.py
-      from billing.invoices.application.invoice_service import InvoiceService  # calls 8 of 20 methods
+      from billing.invoices.application.invoice import InvoiceService  # calls 8 of 20 methods
     validation:
       tool: review
       detail: PR checklist; "carries only the fields and operations it uses" is intent, not an AST fact (import half is ARCH-012/025)

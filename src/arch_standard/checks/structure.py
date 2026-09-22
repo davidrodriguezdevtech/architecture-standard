@@ -277,6 +277,57 @@ def _check_domain_services_location(project: ProjectLayout) -> list[Finding]:
     return findings
 
 
+def _imported_module(node: ast.stmt) -> list[str]:
+    """Every dotted module path an import statement references."""
+    if isinstance(node, ast.ImportFrom) and node.module:
+        return [node.module]
+    if isinstance(node, ast.Import):
+        return [alias.name for alias in node.names]
+    return []
+
+
+def _check_entrypoint_single_aggregate(project: ProjectLayout) -> list[Finding]:
+    """Each entrypoint file serves at most one aggregate module (ARCH-056).
+
+    Only meaningful when a context has 2+ aggregate modules to conflate; a
+    single-module context has nothing to check. Detected by which
+    ``<context>.<module>.*`` packages a file imports from -- a file touching
+    two different modules' packages is doing more than one aggregate's job.
+    """
+    findings: list[Finding] = []
+    for context in project.contexts:
+        modules = project.modules(context)
+        if len(modules) < 2:
+            continue
+        entry_root = project.entrypoints_dir(context)
+        if not entry_root.is_dir():
+            continue
+        prefix = f"{context}."
+        for path in sorted(entry_root.rglob("*.py")):
+            if path.stem in ("__init__", "providers") or "__pycache__" in path.parts:
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            touched: set[str] = set()
+            for node in ast.walk(tree):
+                for dotted in _imported_module(node):
+                    if not dotted.startswith(prefix):
+                        continue
+                    head = dotted[len(prefix) :].split(".")[0]
+                    if head in modules:
+                        touched.add(head)
+            if len(touched) > 1:
+                findings.append(
+                    Finding(
+                        "ARCH-056",
+                        str(path.relative_to(project.root)),
+                        None,
+                        f"imports from {len(touched)} aggregate modules "
+                        f"({', '.join(sorted(touched))}); split into one file per module",
+                    )
+                )
+    return findings
+
+
 # ARCH-037: "each context exposes its wired services through
 # entrypoints/providers.py ... entrypoints import services only from
 # providers.py" has two halves. This check proves only the structural half --
@@ -311,6 +362,7 @@ class StructureCheck:
         "ARCH-051",
         "ARCH-054",
         "ARCH-055",
+        "ARCH-056",
     )
 
     def run(self, project: ProjectLayout, catalog: Catalog) -> list[CheckReport]:
@@ -325,6 +377,7 @@ class StructureCheck:
             "ARCH-051": _check_repositories_are_not_queries(project),
             "ARCH-054": _check_domain_services_location(project),
             "ARCH-055": _check_init_files_present(project),
+            "ARCH-056": _check_entrypoint_single_aggregate(project),
         }
         reports = [
             CheckReport(

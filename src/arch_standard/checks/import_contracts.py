@@ -338,10 +338,18 @@ def build_contracts(project: ProjectLayout) -> str:
         # other (or a subpackage of it), so a sibling is never reported as
         # forbidden from itself -- the same property ARCH-046 already relies
         # on (see ``_module_contracts``'s docstring).
+        #
+        # Recursive (rglob, not glob): entrypoints/ groups by transport kind
+        # (web/, events/, crons/, one file per aggregate or per concern), so a
+        # sibling can be nested, e.g. entrypoints/web/quote.py. Each file's
+        # dotted path relative to entrypoints/ becomes its own "sibling" --
+        # this still catches a web/ file importing an events/ file, or two
+        # files in the same kind folder importing each other.
+        entry_root = project.entrypoints_dir(context)
         siblings = sorted(
-            p.stem
-            for p in project.entrypoints_dir(context).glob("*.py")
-            if p.stem not in ("__init__", "providers")
+            ".".join(p.relative_to(entry_root).with_suffix("").parts)
+            for p in entry_root.rglob("*.py")
+            if p.stem not in ("__init__", "providers") and "__pycache__" not in p.parts
         )
         if len(siblings) > 1:
             lines += [
