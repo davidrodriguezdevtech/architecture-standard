@@ -17,11 +17,15 @@ The following framing decisions are fixed for v1:
   one deployable.
 - **Naming language.** English for all identifiers, folders, rule IDs, and for this
   standard.
-- **Ports.** `typing.Protocol` (structural typing; adapters do not inherit). Three
-  homes: `commons/types/` (generic technical protocols), the aggregate module's
+- **Ports.** `abc.ABC` with `@abstractmethod` (nominal typing; adapters inherit
+  explicitly, so a missing method fails at instantiation, not at first call). Three
+  homes: `commons/types/` (generic technical ports), the aggregate module's
   `domain/model/ports.py` (domain vocabulary), and colocated in the use-case module
-  (non-domain outbound). There is no `application/ports.py` by default.
-- **Persistence.** The normative contract (the `UnitOfWork` Protocol, repository ports,
+  (non-domain outbound). There is no `application/ports.py` by default. The one
+  exception is `commons.types.events.DomainEvent`, still a `Protocol`: concrete domain
+  events are independent per-module dataclasses that must never inherit from a
+  commons type (see its docstring).
+- **Persistence.** The normative contract (the `UnitOfWork` ABC, repository ports,
   translation living in `adapters/`) is store-agnostic. SQLAlchemy is the shipped
   reference implementation, with an `InMemoryUnitOfWork` for tests. Other stores
   (DynamoDB, sqlite, and others) provide their own `UnitOfWork` and repositories against
@@ -231,7 +235,7 @@ and those ID types live in `<context>/shared/ids.py`. (ARCH-046)
 | A use case (state change on one aggregate) | a method on `<module>/application/<aggregate>.py` |
 | A persistence/broker/third-party integration | one module in `<module>/adapters/` |
 | A contract the domain needs | `<module>/domain/model/ports.py` |
-| A non-domain outbound contract used by one use case | a `Protocol` colocated in that `application/` module |
+| A non-domain outbound contract used by one use case | an `abc.ABC` colocated in that `application/` module |
 | A fact other parts of this context react to | a domain event in `<module>/domain/model/events.py` |
 | An ID type referenced by another aggregate of this context | `<context>/shared/ids.py` |
 | A value object used by 2+ aggregates of this context | `<context>/shared/value_objects.py` |
@@ -578,7 +582,8 @@ class CreateOrder:
     customer_id: str
     lines: tuple[OrderLineInput, ...]
 
-class OrderNotifier(Protocol):           # colocated non-domain outbound contract
+class OrderNotifier(ABC):                # colocated non-domain outbound contract
+    @abstractmethod
     def order_placed(self, order_id: OrderId) -> None: ...
 
 class OrderService:
@@ -626,7 +631,7 @@ Inbound versus outbound:
 - **The application inbound port** is the use-case / service class itself, exposed to
   entrypoints. Its public methods are the port. There is no separate interface.
 - **Application outbound ports** that are not domain vocabulary (`EmailSender`,
-  `PaymentGateway`, cross-context gateways): the explicit `Protocol` is optional
+  `PaymentGateway`, cross-context gateways): the explicit `abc.ABC` is optional
   (SHOULD) - write it when the seam benefits from being explicit (testing,
   type-checking, multiple implementations, agent-readability), and skip it
   (duck-typed injection) for a trivial single-implementation dependency. Injection is
@@ -637,12 +642,12 @@ Three homes, one rule each:
 
 | Home | What lives here | The test |
 |---|---|---|
-| `commons/types/` | generic technical Protocols: `Clock`, `UnitOfWork`, `EventBus`, `IdGenerator` | dependency-free, no business meaning, reusable in any project |
+| `commons/types/` | generic technical ports (`abc.ABC`): `Clock`, `UnitOfWork`, `EventBus`, `IdGenerator` | dependency-free, no business meaning, reusable in any project |
 | `domain/model/ports.py` | domain-vocabulary contracts: repositories, domain-service providers (`PricingPolicyProvider`) | you would mention it describing the business; a domain object or the repository abstraction needs it |
-| a `Protocol` colocated in the use-case module | non-domain outbound contracts the orchestration needs: `EmailSender`, `PaymentGateway`, cross-context gateways (`CreditCheckPort`) | only `application/` uses it; it is integration plumbing, not domain language |
+| an `abc.ABC` colocated in the use-case module | non-domain outbound contracts the orchestration needs: `EmailSender`, `PaymentGateway`, cross-context gateways (`CreditCheckPort`) | only `application/` uses it; it is integration plumbing, not domain language |
 
-- No `application/ports.py` file by default - colocated `Protocol`s are the mechanism.
-  (ARCH-042, SHOULD)
+- No `application/ports.py` file by default - colocated `abc.ABC` classes are the
+  mechanism. (ARCH-042, SHOULD)
 - Promote to `application/ports.py` only when a context has 3+ application ports
   shared across multiple use-case modules (Progressive Structure, Section 15).
 - Rationale: this keeps `domain/model/ports.py` a faithful list of domain concepts and
@@ -690,16 +695,22 @@ serialized envelopes only.
 
 ### Normative contract (store-agnostic)
 
-`commons/types/unit_of_work.py` holds the `UnitOfWork` Protocol. It owns the
+`commons/types/unit_of_work.py` holds the `UnitOfWork` ABC. It owns the
 transaction and domain-event collection. It says nothing about a specific database.
 
 ```python
-class UnitOfWork(Protocol):
+class UnitOfWork(ABC):
+    @abstractmethod
     def __enter__(self) -> "UnitOfWork": ...
+    @abstractmethod
     def __exit__(self, *exc: object) -> None: ...      # rollback if commit() was not called
+    @abstractmethod
     def commit(self) -> None: ...
+    @abstractmethod
     def rollback(self) -> None: ...
+    @abstractmethod
     def track(self, aggregate: object) -> None: ...    # repositories call this on load/store
+    @abstractmethod
     def collect_new_events(self) -> Iterable[DomainEvent]: ...
 ```
 
@@ -732,7 +743,7 @@ Shipped in `commons/adapters/` and the template.
 
 ```python
 # sales/orders/adapters/order_repository.py     - thin, intention-revealing
-class SqlAlchemyOrderRepository:                  # implements OrderRepository (domain port)
+class SqlAlchemyOrderRepository(OrderRepository):  # explicit inheritance, not duck-typed
     def __init__(self, uow: SqlAlchemyUnitOfWork) -> None:
         self._uow = uow
 
@@ -760,7 +771,7 @@ def order_service() -> OrderService:
 
 ### Other stores
 
-The same `UnitOfWork` Protocol, the same repository ports, and the same `track()` /
+The same `UnitOfWork` ABC, the same repository ports, and the same `track()` /
 `collect_new_events()` contract apply - only the implementation changes:
 
 - **DynamoDB:** `DynamoUnitOfWork` buffers writes and flushes on `commit()` as a
@@ -801,8 +812,8 @@ usable as the base of many repositories rather than a one-off scaffold.
 
 | | `commons.types` | `commons.adapters` |
 |---|---|---|
-| Content | dependency-free technical primitives and Protocols | framework-bound shared implementations |
-| Examples | `DomainError`/`ApplicationError` bases, `EntityId`, `Pagination`, `Clock` / `EventBus` / `IdGenerator` / `UnitOfWork` Protocols | `SqlAlchemyUnitOfWork`, `InMemoryUnitOfWork`, outbox machinery |
+| Content | dependency-free technical primitives and ports (`abc.ABC`, `@abstractmethod`) | framework-bound shared implementations |
+| Examples | `DomainError`/`ApplicationError` bases, `EntityId`, `Pagination`, `Clock` / `EventBus` / `IdGenerator` / `UnitOfWork` ABCs (`DomainEvent` stays a `Protocol` - see its docstring) | `SqlAlchemyUnitOfWork`, `InMemoryUnitOfWork`, outbox machinery, each explicitly inheriting its `commons.types` ABC |
 | Importable by | everyone, including `domain/` | only `adapters/`, `entrypoints/`, `bootstrap/`, tests |
 | Forbidden | any business meaning, any framework import | - |
 
@@ -973,7 +984,8 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Correct:**
   ```
   # sales/orders/domain/model/ports.py
-  class OrderRepository(Protocol):
+  class OrderRepository(ABC):
+      @abstractmethod
       def get(self, order_id: OrderId) -> Order: ...
   ```
 - **Incorrect:**
@@ -1088,18 +1100,18 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-008 — Adapters implement ports; the core imports abstractions only
 - **Level:** MUST · **Automation:** partial · **Tier:** core · **Category:** dependencies
-- **Validation:** `import-linter` — layered contract (import half); Protocol conformance of adapters is reviewed at PR time
-- **Description:** Every concrete adapter in a context's adapters/ package implements a Protocol declared in domain/model/ports.py or a colocated application Protocol; domain/ and application/ import only those abstractions.
+- **Validation:** `import-linter` — layered contract (import half); an adapter that doesn't inherit the port fails mypy and, if instantiated, raises TypeError for any unimplemented @abstractmethod -- both checked, not just reviewed
+- **Description:** Every concrete adapter in a context's adapters/ package implements an abc.ABC declared in domain/model/ports.py or a colocated application abc.ABC; domain/ and application/ import only those abstractions.
 - **Rationale:** The core names the contract it needs and adapters plug in behind it, so the store can be replaced without editing business rules.
 - **Correct:**
   ```
   # sales/orders/adapters/order_repository.py
-  class SqlAlchemyOrderRepository:  # implements OrderRepository (domain port)
+  class SqlAlchemyOrderRepository(OrderRepository):  # explicit, not duck-typed
       def get(self, order_id: OrderId) -> Order: ...
   ```
 - **Incorrect:**
   ```
-  # sales/orders/domain/services/service.py
+  # sales/orders/domain/services/order.py
   from sales.orders.adapters.order_repository import SqlAlchemyOrderRepository
   ```
 - **Related:** ARCH-001, ARCH-042
@@ -1216,7 +1228,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Correct:**
   ```
   # commons/types/clock.py
-  from typing import Protocol
+  from abc import ABC, abstractmethod
   ```
 - **Incorrect:**
   ```
@@ -1228,7 +1240,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 #### ARCH-016 — commons/types contains no business logic
 - **Level:** MUST · **Automation:** manual · **Tier:** full · **Category:** dependencies
 - **Validation:** `review` — PR checklist; would you mention this when describing the business?
-- **Description:** Modules under commons/types/ hold only dependency-free technical primitives and Protocols, with no rule a business person would recognise.
+- **Description:** Modules under commons/types/ hold only dependency-free technical primitives and ports, with no rule a business person would recognise.
 - **Rationale:** A business policy hidden in commons/types is invisible to the owning context and silently shared with every other one.
 - **Correct:**
   ```
@@ -1347,13 +1359,16 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** A repository that returns rows or answers business questions leaks persistence and grows into an unbounded business service.
 - **Correct:**
   ```
-  class OrderRepository(Protocol):
+  class OrderRepository(ABC):
+      @abstractmethod
       def get(self, order_id: OrderId) -> Order: ...
+      @abstractmethod
       def add(self, order: Order) -> None: ...
   ```
 - **Incorrect:**
   ```
-  class OrderRepository(Protocol):
+  class OrderRepository(ABC):
+      @abstractmethod
       def find_orders_with_overdue_invoices(self) -> list[OrderRow]: ...
   ```
 - **Related:** ARCH-029
@@ -1404,7 +1419,8 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Correct:**
   ```
   # sales/orders/domain/model/ports.py
-  class CreditCheckPort(Protocol):
+  class CreditCheckPort(ABC):
+      @abstractmethod
       def has_credit(self, customer_id: CustomerId, amount: Money) -> bool: ...
   # bootstrap/ wires an adapter backed by billing's application service
   ```
@@ -1417,12 +1433,13 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-026 — External-provider dependencies sit behind a port
 - **Level:** SHOULD · **Automation:** partial · **Tier:** full · **Category:** application
-- **Validation:** `review` — PR checklist; is every external provider injected behind a Protocol?
-- **Description:** Any dependency on an external provider (email, payment, SMS, third-party API) is used through a Protocol injected into the use case, not by importing the vendor SDK into application/.
+- **Validation:** `review` — PR checklist; is every external provider injected behind a port?
+- **Description:** Any dependency on an external provider (email, payment, SMS, third-party API) is used through an abc.ABC injected into the use case, not by importing the vendor SDK into application/.
 - **Rationale:** A port at the integration seam keeps the use case testable with a fake and lets the provider be swapped without touching orchestration.
 - **Correct:**
   ```
-  class PaymentGateway(Protocol):
+  class PaymentGateway(ABC):
+      @abstractmethod
       def charge(self, customer_id: CustomerId, amount: Money) -> ChargeId: ...
   ```
 - **Incorrect:**
@@ -1595,7 +1612,8 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Correct:**
   ```
   # commons/types/event_bus.py
-  from typing import Iterable, Protocol
+  from abc import ABC, abstractmethod
+  from collections.abc import Iterable
   ```
 - **Incorrect:**
   ```
@@ -1712,13 +1730,13 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 #### ARCH-042 — Port placement follows the three-homes rule
 - **Level:** SHOULD · **Automation:** manual · **Tier:** full · **Category:** application
 - **Validation:** `review` — PR checklist; "shared across use-case modules" and the 3+ threshold need cross-module usage analysis, not an AST fact
-- **Description:** A Protocol is placed by the three-homes rule (generic technical Protocols in commons/types/, domain-vocabulary contracts in domain/model/ports.py, non-domain outbound contracts colocated in the use-case module), and there is no application/ports.py until a context has 3+ application ports shared across use-case modules.
+- **Description:** A port (abc.ABC) is placed by the three-homes rule (generic technical ports in commons/types/, domain-vocabulary contracts in domain/model/ports.py, non-domain outbound contracts colocated in the use-case module), and there is no application/ports.py until a context has 3+ application ports shared across use-case modules.
 - **Rationale:** Keeping domain/model/ports.py a faithful list of domain concepts keeps integration-contract churn out of the stable domain file.
 - **Correct:**
   ```
   # commons/types/clock.py                    -> Clock
   # sales/orders/domain/model/ports.py        -> OrderRepository
-  # sales/orders/application/order.py -> class OrderNotifier(Protocol): ...
+  # sales/orders/application/order.py -> class OrderNotifier(ABC): ...
   ```
 - **Incorrect:**
   ```
@@ -1766,7 +1784,8 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Correct:**
   ```
   # sales/orders/domain/model/ports.py
-  class CreditCheckPort(Protocol):
+  class CreditCheckPort(ABC):
+      @abstractmethod
       def has_credit(self, customer_id: CustomerId, amount: Money) -> bool: ...
   ```
 - **Incorrect:**
@@ -1876,13 +1895,16 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** A repository that grows report queries stops being a collection of roots, drags query pressure into the write model, and starts returning DTOs instead of aggregates.
 - **Correct:**
   ```
-  class OrderRepository(Protocol):
+  class OrderRepository(ABC):
+      @abstractmethod
       def get(self, order_id: OrderId) -> Order: ...
+      @abstractmethod
       def add(self, order: Order) -> None: ...
   ```
 - **Incorrect:**
   ```
-  class OrderRepository(Protocol):
+  class OrderRepository(ABC):
+      @abstractmethod
       def find_premium_customers_with_overdue_invoices(self) -> list[ReportRow]: ...
   ```
 - **Related:** ARCH-022, ARCH-052

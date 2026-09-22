@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from sales.shared.ids import UserId
 from sales.users.domain.model.aggregate import User
+from sales.users.domain.model.ports import UserRepository
 
 
-class InMemoryUserRepository:
+class InMemoryUserRepository(UserRepository):
     def __init__(self) -> None:
         self._store: dict[str, User] = {}
 

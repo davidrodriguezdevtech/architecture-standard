@@ -221,9 +221,7 @@ def _check_init_files_present(project: ProjectLayout) -> list[Finding]:
     for path in sorted(p for p in src.rglob("*") if p.is_dir()):
         if path.name == "__pycache__" or path.name.startswith("."):
             continue
-        has_py = any(
-            p.suffix == ".py" for p in path.rglob("*.py") if "__pycache__" not in p.parts
-        )
+        has_py = any(p.suffix == ".py" for p in path.rglob("*.py") if "__pycache__" not in p.parts)
         if not has_py:
             continue
         if not (path / "__init__.py").exists():
@@ -277,7 +275,7 @@ def _check_domain_services_location(project: ProjectLayout) -> list[Finding]:
     return findings
 
 
-def _imported_module(node: ast.stmt) -> list[str]:
+def _imported_module(node: ast.AST) -> list[str]:
     """Every dotted module path an import statement references."""
     if isinstance(node, ast.ImportFrom) and node.module:
         return [node.module]

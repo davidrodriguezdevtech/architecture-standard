@@ -28,11 +28,14 @@ _MODULE_LAYERS: tuple[str, ...] = ("adapters", "application", "domain")
 #     is imported, so no import contract fires; that half is unverified by
 #     any machine check and is reviewed at PR time.
 #   - ARCH-008 (adapters implement ports; the core imports abstractions
-#     only) is only half covered: this contract proves domain/application
-#     import nothing from adapters/, but it does NOT verify that the
-#     concrete adapters actually implement the Protocol declared in
-#     the module's ``ports.py`` -- that half is unverified by any machine
-#     check and is reviewed at PR time.
+#     only) is only half covered by *this* contract: it proves
+#     domain/application import nothing from adapters/, but does not itself
+#     verify that a concrete adapter actually inherits the abc.ABC declared
+#     in the module's ``ports.py``. That half is not unverified, though --
+#     since ports are ``abc.ABC`` with ``@abstractmethod``, an adapter that
+#     doesn't inherit fails mypy, and one that inherits but skips a method
+#     raises TypeError at instantiation. Neither is an import-linter fact,
+#     which is why it isn't proven here.
 # There is no separate check for either rule; both ride the same import facts
 # ARCH-001/002/005 already enforce.
 _MODULE_LAYER_RULES: tuple[str, ...] = (

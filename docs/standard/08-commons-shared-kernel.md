@@ -9,8 +9,8 @@ usable as the base of many repositories rather than a one-off scaffold.
 
 | | `commons.types` | `commons.adapters` |
 |---|---|---|
-| Content | dependency-free technical primitives and Protocols | framework-bound shared implementations |
-| Examples | `DomainError`/`ApplicationError` bases, `EntityId`, `Pagination`, `Clock` / `EventBus` / `IdGenerator` / `UnitOfWork` Protocols | `SqlAlchemyUnitOfWork`, `InMemoryUnitOfWork`, outbox machinery |
+| Content | dependency-free technical primitives and ports (`abc.ABC`, `@abstractmethod`) | framework-bound shared implementations |
+| Examples | `DomainError`/`ApplicationError` bases, `EntityId`, `Pagination`, `Clock` / `EventBus` / `IdGenerator` / `UnitOfWork` ABCs (`DomainEvent` stays a `Protocol` - see its docstring) | `SqlAlchemyUnitOfWork`, `InMemoryUnitOfWork`, outbox machinery, each explicitly inheriting its `commons.types` ABC |
 | Importable by | everyone, including `domain/` | only `adapters/`, `entrypoints/`, `bootstrap/`, tests |
 | Forbidden | any business meaning, any framework import | - |
 

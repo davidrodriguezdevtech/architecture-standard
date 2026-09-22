@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from sales.orders.domain.model.aggregate import Order
+from sales.orders.domain.model.ports import OrderRepository
 from sales.shared.ids import OrderId
 
 
-class InMemoryOrderRepository:
+class InMemoryOrderRepository(OrderRepository):
     def __init__(self) -> None:
         self._store: dict[str, Order] = {}
 

@@ -35,7 +35,7 @@ def test_given_defaults__when_copied__then_application_and_adapters_files_compil
     assert "-> OrderId:" in service_py
 
     repository_py = repository_path.read_text(encoding="utf-8")
-    assert "class InMemoryOrderRepository:" in repository_py
+    assert "class InMemoryOrderRepository(OrderRepository):" in repository_py
     assert "Uuid7IdGenerator" in repository_py
 
 

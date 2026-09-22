@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from typing import Protocol
+from abc import ABC, abstractmethod
 
 from sales.shared.ids import UserId
 from sales.users.domain.model.aggregate import User
 
 
-class UserRepository(Protocol):
+class UserRepository(ABC):
+    @abstractmethod
     def get(self, user_id: UserId) -> User: ...
+    @abstractmethod
     def add(self, user: User) -> None: ...

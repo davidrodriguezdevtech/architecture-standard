@@ -17,16 +17,22 @@
 
 ### Normative contract (store-agnostic)
 
-`commons/types/unit_of_work.py` holds the `UnitOfWork` Protocol. It owns the
+`commons/types/unit_of_work.py` holds the `UnitOfWork` ABC. It owns the
 transaction and domain-event collection. It says nothing about a specific database.
 
 ```python
-class UnitOfWork(Protocol):
+class UnitOfWork(ABC):
+    @abstractmethod
     def __enter__(self) -> "UnitOfWork": ...
+    @abstractmethod
     def __exit__(self, *exc: object) -> None: ...      # rollback if commit() was not called
+    @abstractmethod
     def commit(self) -> None: ...
+    @abstractmethod
     def rollback(self) -> None: ...
+    @abstractmethod
     def track(self, aggregate: object) -> None: ...    # repositories call this on load/store
+    @abstractmethod
     def collect_new_events(self) -> Iterable[DomainEvent]: ...
 ```
 
@@ -59,7 +65,7 @@ Shipped in `commons/adapters/` and the template.
 
 ```python
 # sales/orders/adapters/order_repository.py     - thin, intention-revealing
-class SqlAlchemyOrderRepository:                  # implements OrderRepository (domain port)
+class SqlAlchemyOrderRepository(OrderRepository):  # explicit inheritance, not duck-typed
     def __init__(self, uow: SqlAlchemyUnitOfWork) -> None:
         self._uow = uow
 
@@ -87,7 +93,7 @@ def order_service() -> OrderService:
 
 ### Other stores
 
-The same `UnitOfWork` Protocol, the same repository ports, and the same `track()` /
+The same `UnitOfWork` ABC, the same repository ports, and the same `track()` /
 `collect_new_events()` contract apply - only the implementation changes:
 
 - **DynamoDB:** `DynamoUnitOfWork` buffers writes and flushes on `commit()` as a

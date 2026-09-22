@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Protocol
 
 
-class Clock(Protocol):
+class Clock(ABC):
+    @abstractmethod
     def now(self) -> datetime: ...

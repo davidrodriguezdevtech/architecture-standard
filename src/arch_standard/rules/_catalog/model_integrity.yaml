@@ -113,11 +113,14 @@ rules:
       A repository that returns rows or answers business questions leaks
       persistence and grows into an unbounded business service.
     correct: |
-      class OrderRepository(Protocol):
+      class OrderRepository(ABC):
+          @abstractmethod
           def get(self, order_id: OrderId) -> Order: ...
+          @abstractmethod
           def add(self, order: Order) -> None: ...
     incorrect: |
-      class OrderRepository(Protocol):
+      class OrderRepository(ABC):
+          @abstractmethod
           def find_orders_with_overdue_invoices(self) -> list[OrderRow]: ...
     validation:
       tool: review
@@ -272,11 +275,14 @@ rules:
       query pressure into the write model, and starts returning DTOs instead of
       aggregates.
     correct: |
-      class OrderRepository(Protocol):
+      class OrderRepository(ABC):
+          @abstractmethod
           def get(self, order_id: OrderId) -> Order: ...
+          @abstractmethod
           def add(self, order: Order) -> None: ...
     incorrect: |
-      class OrderRepository(Protocol):
+      class OrderRepository(ABC):
+          @abstractmethod
           def find_premium_customers_with_overdue_invoices(self) -> list[ReportRow]: ...
     validation:
       tool: ast-checker

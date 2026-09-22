@@ -9,9 +9,12 @@ from {{ context_name }}.{{ aggregate_module }}.domain.model.aggregate import (
 from {{ context_name }}.{{ aggregate_module }}.domain.model.exceptions import (
     {{ aggregate_name | capitalize }}NotFound,
 )
+from {{ context_name }}.{{ aggregate_module }}.domain.model.ports import (
+    {{ aggregate_name | capitalize }}Repository,
+)
 
 
-class InMemory{{ aggregate_name | capitalize }}Repository:
+class InMemory{{ aggregate_name | capitalize }}Repository({{ aggregate_name | capitalize }}Repository):
     """Dict-backed repository for projects with no real store configured yet
     (ARCH-039: a real adapter must honor this same contract)."""
 

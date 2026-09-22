@@ -140,8 +140,9 @@ def test_given_a_reporting_method_on_a_repository_port__when_checked__then_arch_
     model.mkdir(parents=True)
     (model / "order.py").write_text("class Order: pass\n", encoding="utf-8")
     (model / "ports.py").write_text(
-        "from typing import Protocol\n"
-        "class OrderRepository(Protocol):\n"
+        "from abc import ABC, abstractmethod\n"
+        "class OrderRepository(ABC):\n"
+        "    @abstractmethod\n"
         "    def find_overdue_report(self) -> list[dict]: ...\n",
         encoding="utf-8",
     )
@@ -158,9 +159,10 @@ def test_given_a_repository_method_returning_its_own_aggregate__when_checked__th
     model.mkdir(parents=True)
     (model / "order.py").write_text("class Order: pass\n", encoding="utf-8")
     (model / "ports.py").write_text(
-        "from typing import Protocol\n"
+        "from abc import ABC, abstractmethod\n"
         "from sales.orders.domain.model.order import Order\n"
-        "class OrderRepository(Protocol):\n"
+        "class OrderRepository(ABC):\n"
+        "    @abstractmethod\n"
         "    def list_for_customer(self, cid: str) -> list[Order]: ...\n",
         encoding="utf-8",
     )
@@ -178,8 +180,9 @@ def test_given_an_async_reporting_method_on_a_repository_port__when_checked__the
     model.mkdir(parents=True)
     (model / "order.py").write_text("class Order: pass\n", encoding="utf-8")
     (model / "ports.py").write_text(
-        "from typing import Protocol\n"
-        "class OrderRepository(Protocol):\n"
+        "from abc import ABC, abstractmethod\n"
+        "class OrderRepository(ABC):\n"
+        "    @abstractmethod\n"
         "    async def find_by_customer(self, cid: str) -> list[dict]: ...\n",
         encoding="utf-8",
     )
@@ -213,8 +216,9 @@ def test_given_a_repository_method_returning_a_report_row_type__when_checked__th
     model.mkdir(parents=True)
     (model / "order.py").write_text("class Order: pass\n", encoding="utf-8")
     (model / "ports.py").write_text(
-        "from typing import Protocol\n"
-        "class OrderRepository(Protocol):\n"
+        "from abc import ABC, abstractmethod\n"
+        "class OrderRepository(ABC):\n"
+        "    @abstractmethod\n"
         "    def list_for_customer(self, cid: str) -> list[SomeReportRow]: ...\n",
         encoding="utf-8",
     )
@@ -374,9 +378,7 @@ def _two_module_context(root: Path) -> None:
     for module, agg in (("orders", "order"), ("customers", "customer")):
         model = root / f"src/sales/{module}/domain/model"
         model.mkdir(parents=True)
-        (model / "aggregate.py").write_text(
-            f"class {agg.capitalize()}: pass\n", encoding="utf-8"
-        )
+        (model / "aggregate.py").write_text(f"class {agg.capitalize()}: pass\n", encoding="utf-8")
 
 
 def test_given_an_entrypoint_file_touching_two_modules__when_checked__then_arch_056_fails(

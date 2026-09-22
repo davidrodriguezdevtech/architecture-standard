@@ -4,8 +4,10 @@ import os
 import time
 import uuid
 
+from commons.types.id_generator import IdGenerator
 
-class Uuid7IdGenerator:
+
+class Uuid7IdGenerator(IdGenerator):
     """UUIDv7 identifiers (spec Section 0: identifiers are application-generated,
     UUIDv7). Python's stdlib ``uuid`` module has no ``uuid7()`` before 3.14, so
     this implements RFC 9562's layout directly: a 48-bit millisecond timestamp,

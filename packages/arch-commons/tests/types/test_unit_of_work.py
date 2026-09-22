@@ -3,11 +3,11 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 
-def test_given_a_unit_of_work__when_used_as_context_manager__then_matches_protocol() -> None:
+def test_given_a_unit_of_work__when_used_as_context_manager__then_works() -> None:
     from commons.types.events import DomainEvent
     from commons.types.unit_of_work import UnitOfWork
 
-    class Recording:
+    class Recording(UnitOfWork):
         def __init__(self) -> None:
             self.committed = False
             self.tracked: list[object] = []

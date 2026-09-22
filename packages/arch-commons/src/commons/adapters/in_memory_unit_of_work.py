@@ -3,9 +3,10 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from commons.types.events import DomainEvent
+from commons.types.unit_of_work import UnitOfWork
 
 
-class InMemoryUnitOfWork:
+class InMemoryUnitOfWork(UnitOfWork):
     """Dict-backed UnitOfWork for tests and template projects with no real
     store yet. Repositories call ``track()`` explicitly on every load and
     store -- there is no session to infer it from."""

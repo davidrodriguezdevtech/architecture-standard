@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from commons.types.event_bus import EventBus
 from commons.types.events import DomainEvent
 
 
-class InMemoryEventBus:
+class InMemoryEventBus(EventBus):
     """No real broker wired yet -- records what was published, for tests and
     for template projects before a broker exists."""
 

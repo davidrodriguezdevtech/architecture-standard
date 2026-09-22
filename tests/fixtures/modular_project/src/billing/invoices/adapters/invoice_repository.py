@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from billing.invoices.domain.model.aggregate import Invoice
+from billing.invoices.domain.model.ports import InvoiceRepository
 from billing.shared.ids import InvoiceId
 
 
-class InMemoryInvoiceRepository:
+class InMemoryInvoiceRepository(InvoiceRepository):
     def __init__(self) -> None:
         self._store: dict[str, Invoice] = {}
 

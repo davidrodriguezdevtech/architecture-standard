@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from typing import Protocol
+from abc import ABC, abstractmethod
 
 
-class IdGenerator(Protocol):
+class IdGenerator(ABC):
+    @abstractmethod
     def new_id(self) -> str: ...

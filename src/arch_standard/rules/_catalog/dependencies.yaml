@@ -13,7 +13,8 @@ rules:
       database and lets the store be swapped without touching business rules.
     correct: |
       # sales/orders/domain/model/ports.py
-      class OrderRepository(Protocol):
+      class OrderRepository(ABC):
+          @abstractmethod
           def get(self, order_id: OrderId) -> Order: ...
     incorrect: |
       # sales/orders/domain/model/aggregate.py
@@ -164,22 +165,25 @@ rules:
     tier: core
     category: dependencies
     description: >
-      Every concrete adapter in a context's adapters/ package implements a
-      Protocol declared in domain/model/ports.py or a colocated application
-      Protocol; domain/ and application/ import only those abstractions.
+      Every concrete adapter in a context's adapters/ package implements an
+      abc.ABC declared in domain/model/ports.py or a colocated application
+      abc.ABC; domain/ and application/ import only those abstractions.
     rationale: >
       The core names the contract it needs and adapters plug in behind
       it, so the store can be replaced without editing business rules.
     correct: |
       # sales/orders/adapters/order_repository.py
-      class SqlAlchemyOrderRepository:  # implements OrderRepository (domain port)
+      class SqlAlchemyOrderRepository(OrderRepository):  # explicit, not duck-typed
           def get(self, order_id: OrderId) -> Order: ...
     incorrect: |
-      # sales/orders/domain/services/service.py
+      # sales/orders/domain/services/order.py
       from sales.orders.adapters.order_repository import SqlAlchemyOrderRepository
     validation:
       tool: import-linter
-      detail: layered contract (import half); Protocol conformance of adapters is reviewed at PR time
+      detail: >-
+        layered contract (import half); an adapter that doesn't inherit the port
+        fails mypy and, if instantiated, raises TypeError for any unimplemented
+        @abstractmethod -- both checked, not just reviewed
     related: [ARCH-001, ARCH-042]
   - id: ARCH-009
     name: Entrypoints obtain wired services from providers; never construct or call outbound adapters directly
@@ -328,7 +332,7 @@ rules:
       including domain/; any upward import would create a cycle.
     correct: |
       # commons/types/clock.py
-      from typing import Protocol
+      from abc import ABC, abstractmethod
     incorrect: |
       # commons/types/ids.py
       from sales.orders.domain.model.aggregate import OrderId
@@ -343,7 +347,7 @@ rules:
     category: dependencies
     description: >
       Modules under commons/types/ hold only dependency-free technical
-      primitives and Protocols, with no rule a business person would recognise.
+      primitives and ports, with no rule a business person would recognise.
     rationale: >
       A business policy hidden in commons/types is invisible to the owning
       context and silently shared with every other one.
@@ -412,7 +416,8 @@ rules:
       the domain that depends on it stays pure.
     correct: |
       # commons/types/event_bus.py
-      from typing import Iterable, Protocol
+      from abc import ABC, abstractmethod
+      from collections.abc import Iterable
     incorrect: |
       # commons/types/unit_of_work.py
       from sqlalchemy.orm import Session
