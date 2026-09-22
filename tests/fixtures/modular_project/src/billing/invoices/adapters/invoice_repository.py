@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from billing.invoices.domain.model.invoice import Invoice
+from billing.invoices.domain.model.aggregate import Invoice
 from billing.shared.ids import InvoiceId
 
 

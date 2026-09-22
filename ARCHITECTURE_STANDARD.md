@@ -922,6 +922,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 | ARCH-049 | One aggregate root per aggregate module | MUST | partial |
 | ARCH-050 | Declared context dependency graph | MUST | full |
 | ARCH-052 | Read layer does not import the write side | MUST | full |
+| ARCH-054 | Domain services for an aggregate live in a services/ directory | SHOULD | partial |
 
 ### Rule reference
 
@@ -951,7 +952,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Correct:**
   ```
   # sales/orders/application/order_service.py
-  from sales.orders.domain.model.order import Order
+  from sales.orders.domain.model.aggregate import Order
   ```
 - **Incorrect:**
   ```
@@ -1131,7 +1132,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  from billing.invoices.domain.model.invoice import Invoice   # in sales/orders/
+  from billing.invoices.domain.model.aggregate import Invoice   # in sales/orders/
   ```
 - **Related:** ARCH-013, ARCH-025, ARCH-045
 
@@ -1165,7 +1166,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Incorrect:**
   ```
   # shared_kernel/pricing.py
-  from sales.orders.domain.model.order import Order
+  from sales.orders.domain.model.aggregate import Order
   ```
 
 #### ARCH-015 — commons/types imports nothing from contexts, application, adapters, or shared_kernel
@@ -1181,7 +1182,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Incorrect:**
   ```
   # commons/types/ids.py
-  from sales.orders.domain.model.order import OrderId
+  from sales.orders.domain.model.aggregate import OrderId
   ```
 - **Related:** ARCH-035
 
@@ -1798,7 +1799,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-049 — One aggregate root per aggregate module
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** structure
-- **Validation:** `ast-checker` — exactly one non-reserved module in domain/model
+- **Validation:** `ast-checker` — exactly one non-reserved module in domain/model, named aggregate.py
 - **Description:** An aggregate module's domain/model/ declares exactly one aggregate root, in aggregate.py.
 - **Rationale:** The 1:1 mapping is what makes "where does this go?" answerable without judgement, and a fixed filename means there is no decision to make about what to call it either - the tree looks the same in every module.
 - **Correct:**
@@ -1862,7 +1863,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Incorrect:**
   ```
   # sales/read/customer_overview.py
-  from sales.users.domain.model.user import User
+  from sales.users.domain.model.aggregate import User
   ```
 
 #### ARCH-053 — The core does not log
@@ -1880,6 +1881,22 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   # application
   import logging
   logging.getLogger(__name__).info("order created")
+  ```
+
+#### ARCH-054 — Domain services for an aggregate live in a services/ directory
+- **Level:** SHOULD · **Automation:** partial · **Tier:** full · **Category:** structure
+- **Validation:** `ast-checker` — domain/services.py must not exist as a file in an aggregate module
+- **Description:** An aggregate module's domain services live in domain/services/, one file per service (service.py when there is only one) - not a single domain/services.py file. This does not apply to <context>/shared/services.py (ARCH-047), the separate context-level home for services spanning aggregates.
+- **Rationale:** A single services.py invites every future domain service for this aggregate to pile into one file. A directory gives each service its own file from the start, the same way domain/model/ already gives each concept its own file, with no restructuring needed when a second service arrives.
+- **Correct:**
+  ```
+  # sales/orders/domain/services/pricing.py
+  class PricingCalculator: ...
+  ```
+- **Incorrect:**
+  ```
+  # sales/orders/domain/services.py
+  class PricingCalculator: ...
   ```
 
 ---
