@@ -134,11 +134,14 @@ project/
 ├── .arch-standard                   # standard-version stamp (versioning policy: see the release notes)
 ├── src/
 │   ├── <context>/                   # LEVEL 1 - one bounded context (e.g. sales)
-│   │   ├── entrypoints/             # inbound adapters, context-wide
-│   │   │   ├── http.py              #   HTTP/GraphQL
-│   │   │   ├── events.py            #   message/event consumers
-│   │   │   ├── cli.py               #   CLI
-│   │   │   ├── cron.py              #   scheduled jobs
+│   │   ├── entrypoints/             # inbound adapters, context-wide, grouped by kind
+│   │   │   ├── web/                 #   HTTP/GraphQL - one file per aggregate module
+│   │   │   │   └── <aggregate>.py
+│   │   │   ├── events/              #   message/event consumers - one file per concern,
+│   │   │   │   └── <concern>.py     #     named for what it does (Section 4.2)
+│   │   │   ├── crons/               #   scheduled jobs - same naming as events/
+│   │   │   │   └── <concern>.py
+│   │   │   ├── cli.py               #   CLI (flat; split into cli/ the same way if needed)
 │   │   │   └── providers.py         #   thin: pulls wired services from the container
 │   │   ├── shared/                  # ONLY what crosses this context's aggregates
 │   │   │   ├── ids.py               #   ID types of this context's aggregates
@@ -389,7 +392,39 @@ depends_on = []
 External stimulus -> Entrypoint -> Application use case -> Domain
 ```
 
-## 4.2 Rules
+## 4.2 Structure: grouped by transport kind, one file per aggregate
+
+`<context>/entrypoints/` groups by transport kind, not by a single flat file per
+kind:
+
+```text
+<context>/entrypoints/
+├── web/            # HTTP/GraphQL routes and other request/response APIs
+│   ├── order.py    #   one file per aggregate module
+│   └── customer.py
+├── events/         # message/event consumers (Kafka/RabbitMQ/SQS/...)
+│   └── order_placed.py    #   named for what it does; not forced into an
+│                           #   aggregate-name pattern the way web/ is
+├── crons/          # scheduled jobs
+│   └── expire_stale_orders.py
+├── cli.py          # CLI stays a flat file; add a cli/ folder the same way
+│                    #   if it ever needs to split
+└── providers.py     # one file, wires every aggregate module's service for
+                      #   this context (unchanged - ARCH-037)
+```
+
+`web/` gets one file per aggregate module because a REST-style resource maps
+cleanly onto one aggregate. `events/` and `crons/` do not: an event consumer or a
+scheduled job is better named for the specific thing it does
+(`order_placed.py`, `expire_stale_orders.py`) than forced into
+`<aggregate_name>.py`. What both share is the real rule underneath the naming:
+**a file serves at most one aggregate module** - split it, don't let one handler
+reach into two aggregates' application services (ARCH-056). `entrypoints/`
+groups by transport kind first because everything under one kind shares
+concerns (a router, a consumer group, a scheduler) that a per-aggregate split
+alone does not.
+
+## 4.3 Rules
 
 - Entrypoints are inbound adapters: HTTP, GraphQL, Kafka/RabbitMQ/SQS consumers, CLI,
   cron.
@@ -404,11 +439,12 @@ External stimulus -> Entrypoint -> Application use case -> Domain
   calls is the application service. (ARCH-009)
 - An entrypoint MUST NOT contain business logic. (ARCH-010, SHOULD)
 - An entrypoint MUST NOT call another entrypoint. (ARCH-011)
+- An entrypoint file serves at most one aggregate module. (ARCH-056, SHOULD)
 - An entrypoint MAY import `domain/model/exceptions.py` (and the `commons` base errors)
   solely to map domain exceptions to transport responses.
 - Pydantic request/response models live only in entrypoints.
 
-## 4.3 Exceptions to the rule
+## 4.4 Exceptions to the rule
 
 - Health and readiness endpoints MAY read backing-service state directly; they are not
   business use cases.
@@ -925,6 +961,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 | ARCH-052 | Read layer does not import the write side | MUST | full |
 | ARCH-054 | Domain services for an aggregate live in a services/ directory | SHOULD | partial |
 | ARCH-055 | Every Python package directory has an __init__.py | SHOULD | full |
+| ARCH-056 | An entrypoint file serves at most one aggregate module | SHOULD | partial |
 
 ### Rule reference
 
@@ -959,7 +996,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Incorrect:**
   ```
   # sales/orders/domain/model/aggregate.py
-  from sales.orders.application.order_service import OrderService
+  from sales.orders.application.order import OrderService
   ```
 
 #### ARCH-003 — Domain does not depend on frameworks
@@ -1022,13 +1059,13 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** Entrypoints are inbound adapters that call the application; the dependency arrow never points back out to transport code.
 - **Correct:**
   ```
-  # sales/entrypoints/http.py
-  from sales.orders.application.order_service import OrderService
+  # sales/entrypoints/web/order.py
+  from sales.orders.application.order import OrderService
   ```
 - **Incorrect:**
   ```
   # sales/orders/application/order.py
-  from sales.entrypoints.http import parse_body
+  from sales.entrypoints.web.order import parse_body
   ```
 
 #### ARCH-007 — Application does not construct concrete adapters
@@ -1074,13 +1111,13 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** An entrypoint that news up a repository or calls session.execute is untestable without transport and leaks wiring across the boundary.
 - **Correct:**
   ```
-  # sales/entrypoints/http.py
+  # sales/entrypoints/web/order.py
   service = providers.order_service()
   service.create_order(command)
   ```
 - **Incorrect:**
   ```
-  # sales/entrypoints/http.py
+  # sales/entrypoints/web/order.py
   repo = SqlAlchemyOrderRepository(SqlAlchemyUnitOfWork())
   repo.save(order)
   ```
@@ -1093,20 +1130,20 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** Business rules in a controller are hidden from domain tests and cannot be reused by another entrypoint.
 - **Correct:**
   ```
-  # sales/entrypoints/http.py
+  # sales/entrypoints/web/order.py
   cmd = CreateOrder(customer_id=body.customer_id, lines=body.lines)
   return _to_response(service.create_order(cmd))
   ```
 - **Incorrect:**
   ```
-  # sales/entrypoints/http.py
+  # sales/entrypoints/web/order.py
   if order.total > customer.credit_limit:
       raise HTTPException(402)
   ```
 
 #### ARCH-011 — Entrypoints call application services, not other entrypoints
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** dependencies
-- **Validation:** `import-linter` — forbidden contract; entrypoints/*.py -/-> entrypoints/*.py except providers
+- **Validation:** `import-linter` — forbidden contract; entrypoints/**/*.py -/-> entrypoints/**/*.py except providers (recursive - covers web/, events/, crons/)
 - **Description:** No module under a context's entrypoints/ package imports or calls another entrypoint module (providers.py aside).
 - **Rationale:** Chaining entrypoints hides a use case behind transport translation and duplicates orchestration.
 - **Correct:**
@@ -1118,7 +1155,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Incorrect:**
   ```
   # sales/entrypoints/cli.py
-  from sales.entrypoints.http import create_order_handler
+  from sales.entrypoints.web.order import create_order_handler
   ```
 
 #### ARCH-012 — A context imports nothing from another context
@@ -1374,7 +1411,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Incorrect:**
   ```
   # sales/orders/application/order.py
-  from billing.invoices.application.invoice_service import InvoiceService
+  from billing.invoices.application.invoice import InvoiceService
   ```
 - **Related:** ARCH-012, ARCH-045
 
@@ -1602,7 +1639,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # sales/entrypoints/http.py
+  # sales/entrypoints/web/order.py
   order_service = OrderService(uow=SqlAlchemyUnitOfWork(), orders=..., bus=...)
   ```
 - **Related:** ARCH-009
@@ -1735,7 +1772,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Incorrect:**
   ```
   # sales/orders/adapters/credit_gateway.py
-  from billing.invoices.application.invoice_service import InvoiceService  # calls 8 of 20 methods
+  from billing.invoices.application.invoice import InvoiceService  # calls 8 of 20 methods
   ```
 - **Related:** ARCH-012, ARCH-025
 
@@ -1754,7 +1791,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Incorrect:**
   ```
   # sales/orders/application/order.py
-  from sales.users.application.user_service import UserService
+  from sales.users.application.user import UserService
   ```
 - **Related:** ARCH-020, ARCH-021
 
@@ -1915,6 +1952,23 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Incorrect:**
   ```
   sales/orders/domain/model/aggregate.py  # no __init__.py alongside it
+  ```
+
+#### ARCH-056 — An entrypoint file serves at most one aggregate module
+- **Level:** SHOULD · **Automation:** partial · **Tier:** full · **Category:** structure
+- **Validation:** `ast-checker` — an entrypoints/ file importing from 2+ aggregate modules' packages in the same context is flagged; only applies to contexts with 2+ modules
+- **Description:** entrypoints/ groups by transport kind (web/, events/, crons/), and within each kind, one file per aggregate module (or per concern, for events/crons where a single file's job doesn't map cleanly to one aggregate name). A file that imports from two different aggregate modules' packages under the same context is doing more than one aggregate's job.
+- **Rationale:** Web routes typically split naturally, one file per resource. Event consumers and cron jobs are better named for what they do than forced into an aggregate-name pattern, but the ownership rule still holds: a handler that reaches into two aggregates hides a cross-aggregate flow inside transport code instead of an explicit part of the design (Section 3.6), and is untestable without two aggregates' worth of setup.
+- **Correct:**
+  ```
+  # sales/entrypoints/web/order.py
+  from sales.orders.application.order import OrderService
+  ```
+- **Incorrect:**
+  ```
+  # sales/entrypoints/web/order.py
+  from sales.orders.application.order import OrderService
+  from sales.customers.application.customer import CustomerService
   ```
 
 ---

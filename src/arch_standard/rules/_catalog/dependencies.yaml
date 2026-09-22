@@ -39,7 +39,7 @@ rules:
       from sales.orders.domain.model.aggregate import Order
     incorrect: |
       # sales/orders/domain/model/aggregate.py
-      from sales.orders.application.order_service import OrderService
+      from sales.orders.application.order import OrderService
     validation:
       tool: import-linter
       detail: layered contract
@@ -124,11 +124,11 @@ rules:
       Entrypoints are inbound adapters that call the application; the
       dependency arrow never points back out to transport code.
     correct: |
-      # sales/entrypoints/http.py
-      from sales.orders.application.order_service import OrderService
+      # sales/entrypoints/web/order.py
+      from sales.orders.application.order import OrderService
     incorrect: |
       # sales/orders/application/order.py
-      from sales.entrypoints.http import parse_body
+      from sales.entrypoints.web.order import parse_body
     validation:
       tool: import-linter
       detail: layered contract
@@ -195,11 +195,11 @@ rules:
       An entrypoint that news up a repository or calls session.execute is
       untestable without transport and leaks wiring across the boundary.
     correct: |
-      # sales/entrypoints/http.py
+      # sales/entrypoints/web/order.py
       service = providers.order_service()
       service.create_order(command)
     incorrect: |
-      # sales/entrypoints/http.py
+      # sales/entrypoints/web/order.py
       repo = SqlAlchemyOrderRepository(SqlAlchemyUnitOfWork())
       repo.save(order)
     validation:
@@ -219,11 +219,11 @@ rules:
       Business rules in a controller are hidden from domain tests and cannot be
       reused by another entrypoint.
     correct: |
-      # sales/entrypoints/http.py
+      # sales/entrypoints/web/order.py
       cmd = CreateOrder(customer_id=body.customer_id, lines=body.lines)
       return _to_response(service.create_order(cmd))
     incorrect: |
-      # sales/entrypoints/http.py
+      # sales/entrypoints/web/order.py
       if order.total > customer.credit_limit:
           raise HTTPException(402)
     validation:
@@ -246,10 +246,12 @@ rules:
       providers.order_service().create_order(cmd)
     incorrect: |
       # sales/entrypoints/cli.py
-      from sales.entrypoints.http import create_order_handler
+      from sales.entrypoints.web.order import create_order_handler
     validation:
       tool: import-linter
-      detail: forbidden contract; entrypoints/*.py -/-> entrypoints/*.py except providers
+      detail: >-
+        forbidden contract; entrypoints/**/*.py -/-> entrypoints/**/*.py except providers
+        (recursive - covers web/, events/, crons/)
   - id: ARCH-012
     name: A context imports nothing from another context
     level: MUST
@@ -436,7 +438,7 @@ rules:
           uow = unit_of_work()
           return OrderService(uow=uow, orders=SqlAlchemyOrderRepository(uow), bus=event_bus())
     incorrect: |
-      # sales/entrypoints/http.py
+      # sales/entrypoints/web/order.py
       order_service = OrderService(uow=SqlAlchemyUnitOfWork(), orders=..., bus=...)
     validation:
       tool: ast-checker

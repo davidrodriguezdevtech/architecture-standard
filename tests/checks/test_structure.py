@@ -18,7 +18,15 @@ def _reports(root: Path) -> dict[str, CheckReport]:
 
 def test_given_the_modular_fixture__when_checked__then_structure_rules_pass() -> None:
     reports = _reports(FIX / "modular_project")
-    for rid in ("ARCH-037", "ARCH-047", "ARCH-048", "ARCH-051", "ARCH-054", "ARCH-055"):
+    for rid in (
+        "ARCH-037",
+        "ARCH-047",
+        "ARCH-048",
+        "ARCH-051",
+        "ARCH-054",
+        "ARCH-055",
+        "ARCH-056",
+    ):
         assert reports[rid].outcome is Outcome.PASS, rid
 
 
@@ -360,3 +368,83 @@ def test_given_a_non_python_directory__when_checked__then_arch_055_ignores_it(
     (root / "src/sales/orders/static" / "notes.txt").write_text("x", encoding="utf-8")
     report = _reports(root)["ARCH-055"]
     assert not any("static" in f.path for f in report.findings)
+
+
+def _two_module_context(root: Path) -> None:
+    for module, agg in (("orders", "order"), ("customers", "customer")):
+        model = root / f"src/sales/{module}/domain/model"
+        model.mkdir(parents=True)
+        (model / "aggregate.py").write_text(
+            f"class {agg.capitalize()}: pass\n", encoding="utf-8"
+        )
+
+
+def test_given_an_entrypoint_file_touching_two_modules__when_checked__then_arch_056_fails(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "p"
+    _two_module_context(root)
+    web = root / "src/sales/entrypoints/web"
+    web.mkdir(parents=True)
+    (web / "order.py").write_text(
+        "from sales.orders.application.order import OrderService\n"
+        "from sales.customers.application.customer import CustomerService\n",
+        encoding="utf-8",
+    )
+    report = _reports(root)["ARCH-056"]
+    assert report.outcome is Outcome.WARN
+    assert "orders" in report.findings[0].message and "customers" in report.findings[0].message
+
+
+def test_given_an_entrypoint_file_touching_one_module__when_checked__then_arch_056_passes(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "p"
+    _two_module_context(root)
+    web = root / "src/sales/entrypoints/web"
+    web.mkdir(parents=True)
+    (web / "order.py").write_text(
+        "from sales.orders.application.order import OrderService\n", encoding="utf-8"
+    )
+    (web / "customer.py").write_text(
+        "from sales.customers.application.customer import CustomerService\n",
+        encoding="utf-8",
+    )
+    assert _reports(root)["ARCH-056"].outcome is Outcome.PASS
+
+
+def test_given_a_single_module_context__when_checked__then_arch_056_skips_the_check(
+    tmp_path: Path,
+) -> None:
+    # Only one aggregate module in the context -- nothing to conflate, so a file
+    # importing from it alone can never trip the rule; no findings at all.
+    root = tmp_path / "p"
+    model = root / "src/sales/orders/domain/model"
+    model.mkdir(parents=True)
+    (model / "aggregate.py").write_text("class Order: pass\n", encoding="utf-8")
+    web = root / "src/sales/entrypoints/web"
+    web.mkdir(parents=True)
+    (web / "order.py").write_text(
+        "from sales.orders.application.order import OrderService\n", encoding="utf-8"
+    )
+    assert _reports(root)["ARCH-056"].outcome is Outcome.PASS
+
+
+def test_given_events_and_crons_with_functional_names__when_checked__then_arch_056_passes(
+    tmp_path: Path,
+) -> None:
+    # events/ and crons/ files are named for what they do, not for an aggregate --
+    # ARCH-056 only cares which module's packages a file imports from, not its name.
+    root = tmp_path / "p"
+    _two_module_context(root)
+    events = root / "src/sales/entrypoints/events"
+    events.mkdir(parents=True)
+    (events / "quote_reminders.py").write_text(
+        "from sales.orders.application.order import OrderService\n", encoding="utf-8"
+    )
+    crons = root / "src/sales/entrypoints/crons"
+    crons.mkdir(parents=True)
+    (crons / "expire_stale_orders.py").write_text(
+        "from sales.orders.application.order import OrderService\n", encoding="utf-8"
+    )
+    assert _reports(root)["ARCH-056"].outcome is Outcome.PASS
