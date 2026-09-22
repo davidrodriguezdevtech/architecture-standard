@@ -84,11 +84,12 @@ lists rather than retrieves one aggregate root by identity) does not belong here
 ARCH-051, that query lives in `sales/read/`, not on the repository (Section 2.5).
 
 ```python
-# sales/entrypoints/providers.py
-def order_service() -> OrderService:
-    uow = unit_of_work()                          # from bootstrap/ (mappings already configured)
+# bootstrap/__init__.py
+def build_container() -> Container:
+    uow = SqlAlchemyUnitOfWork()                  # mappings already configured
     orders = SqlAlchemyOrderRepository(uow)
-    return OrderService(uow=uow, orders=orders, bus=event_bus(), notifier=notifier())
+    service = OrderService(uow=uow, orders=orders, bus=EventBus(), notifier=Notifier())
+    return Container(order_service=service)
 ```
 
 ### Other stores

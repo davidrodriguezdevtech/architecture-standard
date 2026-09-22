@@ -101,8 +101,8 @@ rules:
       No module under a context's application/ package imports from that
       context's adapters/ package or from commons/adapters/.
     rationale: >
-      Orchestration names ports only; the concrete adapter is injected from
-      providers.py and is never imported by the use case.
+      Orchestration names ports only; the concrete adapter is injected by the
+      composition root and is never imported by the use case.
     correct: |
       # sales/orders/application/order.py
       def __init__(self, orders: OrderRepository, uow: UnitOfWork) -> None: ...
@@ -146,7 +146,7 @@ rules:
       Constructing an adapter couples the use case to one technology choice and
       defeats dependency injection.
     correct: |
-      # sales/entrypoints/providers.py
+      # bootstrap/__init__.py
       orders = SqlAlchemyOrderRepository(uow)
       return OrderService(uow=uow, orders=orders)
     incorrect: |
@@ -186,22 +186,38 @@ rules:
         @abstractmethod -- both checked, not just reviewed
     related: [ARCH-001, ARCH-042]
   - id: ARCH-009
-    name: Entrypoints obtain wired services from providers; never construct or call outbound adapters directly
+    name: Entrypoints obtain wired services from the composition root; never construct or call outbound adapters directly
     level: MUST
     automation: partial
     category: dependencies
     description: >
       No module under a context's entrypoints/ package constructs an
-      outbound adapter or calls persistence, sessions, or HTTP clients
-      directly; it obtains a fully wired service from providers.py and calls
-      only that service.
+      outbound adapter, imports bootstrap/, or calls persistence, sessions,
+      or HTTP clients directly. It exposes its own small getter for the one
+      service it needs, set once at startup by the composition root
+      (main.py, the only module allowed to import bootstrap/ -- ARCH-017),
+      and calls only that service.
     rationale: >
       An entrypoint that news up a repository or calls session.execute is
       untestable without transport and leaks wiring across the boundary.
     correct: |
       # sales/entrypoints/web/order.py
-      service = providers.order_service()
-      service.create_order(command)
+      _service: OrderService | None = None
+
+      def configure(service: OrderService) -> None:
+          global _service
+          _service = service
+
+      def get_order_service() -> OrderService:
+          assert _service is not None, "configure() was not called at startup"
+          return _service
+
+      def create_order(body: CreateOrderBody, service: OrderService = Depends(get_order_service)):
+          service.create_order(command)
+
+      # sales/main.py -- the only module that imports bootstrap (ARCH-017)
+      container = build_container()
+      order.configure(container.order_service)
     incorrect: |
       # sales/entrypoints/web/order.py
       repo = SqlAlchemyOrderRepository(SqlAlchemyUnitOfWork())
@@ -209,7 +225,6 @@ rules:
     validation:
       tool: import-linter
       detail: forbidden contract (import half); entrypoints calling persistence/session/http-client directly is a runtime fact the import graph cannot see
-    related: [ARCH-037]
   - id: ARCH-010
     name: Entrypoints contain no business logic
     level: SHOULD
@@ -239,22 +254,23 @@ rules:
     automation: full
     category: dependencies
     description: >
-      No module under a context's entrypoints/ package imports or calls another
-      entrypoint module (providers.py aside).
+      No module under a context's entrypoints/ package imports or calls
+      another entrypoint module.
     rationale: >
       Chaining entrypoints hides a use case behind transport translation and
       duplicates orchestration.
     correct: |
       # sales/entrypoints/cli.py
-      from sales.entrypoints import providers
-      providers.order_service().create_order(cmd)
+      from sales.orders.application.order import OrderService
+      # cli.py gets its own OrderService via its own configure()/getter,
+      # set by main.py at startup -- never by importing web/order.py
     incorrect: |
       # sales/entrypoints/cli.py
       from sales.entrypoints.web.order import create_order_handler
     validation:
       tool: import-linter
       detail: >-
-        forbidden contract; entrypoints/**/*.py -/-> entrypoints/**/*.py except providers
+        forbidden contract; entrypoints/**/*.py -/-> entrypoints/**/*.py
         (recursive - covers web/, events/, crons/)
   - id: ARCH-012
     name: A context imports nothing from another context
@@ -440,27 +456,41 @@ rules:
       tool: import-linter
       detail: forbidden contract; commons.types -/-> (sqlalchemy, fastapi, pydantic, ...)
     related: [ARCH-015]
-  - id: ARCH-037
-    name: Entrypoint wiring is defined in per-context providers.py, backed by bootstrap
-    level: MUST
-    automation: partial
+  - id: ARCH-057
+    name: HTTP entrypoints centralize response shaping in the composition root
+    level: SHOULD
+    automation: manual
     category: dependencies
     description: >
-      Each context exposes its wired services through entrypoints/providers.py,
-      which pulls singletons and factories from the bootstrap/ container;
-      entrypoints import services only from providers.py.
+      A web entrypoint context applies cross-cutting response shaping --
+      a uniform success/error envelope, standard error formatting -- through
+      one mechanism registered once by the composition root (e.g. ASGI
+      middleware set up in main.py), not by each handler building it by
+      hand. The envelope's exact shape is a project decision, not something
+      this rule mandates; what MUST be centralized is the mechanism.
     rationale: >
-      One per-context wiring seam keeps construction out of handlers and gives
-      the composition root a single place to assemble each service.
+      Repeating envelope or error-formatting logic in every handler drifts
+      inconsistent over time and puts a transport-format decision inside
+      business-translation code; one composition-root-registered wrapper
+      keeps the shape uniform and handlers focused on stimulus -> command ->
+      service call (ARCH-010).
     correct: |
-      # sales/entrypoints/providers.py
-      def order_service() -> OrderService:
-          uow = unit_of_work()
-          return OrderService(uow=uow, orders=SqlAlchemyOrderRepository(uow), bus=event_bus())
+      # bootstrap/envelope.py
+      class EnvelopeMiddleware(BaseHTTPMiddleware):
+          async def dispatch(self, request, call_next):
+              response = await call_next(request)
+              ...  # reshape into {"payload": ..., "errors": ...}
+
+      # main.py -- registered once
+      app.add_middleware(EnvelopeMiddleware)
+
+      # sales/entrypoints/web/order.py -- handler returns its plain model
+      def create_order(...) -> OrderResponse: ...
     incorrect: |
       # sales/entrypoints/web/order.py
-      order_service = OrderService(uow=SqlAlchemyUnitOfWork(), orders=..., bus=...)
+      def create_order(...) -> dict:
+          return {"payload": OrderResponse(...).model_dump(), "errors": None}
     validation:
-      tool: ast-checker
-      detail: providers.py present per context; entrypoints import wired services only from it
-    related: [ARCH-009]
+      tool: review
+      detail: PR checklist; does any handler build the envelope/error shape itself instead of returning its plain model?
+    related: [ARCH-009, ARCH-010]

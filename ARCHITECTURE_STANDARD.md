@@ -145,8 +145,7 @@ project/
 │   │   │   │   └── <concern>.py     #     named for what it does (Section 4.2)
 │   │   │   ├── crons/               #   scheduled jobs - same naming as events/
 │   │   │   │   └── <concern>.py
-│   │   │   ├── cli.py               #   CLI (flat; split into cli/ the same way if needed)
-│   │   │   └── providers.py         #   thin: pulls wired services from the container
+│   │   │   └── cli.py               #   CLI (flat; split into cli/ the same way if needed)
 │   │   ├── <aggregate_module>/      # LEVEL 2 - 1:1 with an aggregate (e.g. users)
 │   │   │   ├── domain/
 │   │   │   │   ├── model/
@@ -426,11 +425,17 @@ kind:
 │                           #   aggregate-name pattern the way web/ is
 ├── crons/          # scheduled jobs
 │   └── expire_stale_orders.py
-├── cli.py          # CLI stays a flat file; add a cli/ folder the same way
-│                    #   if it ever needs to split
-└── providers.py     # one file, wires every aggregate module's service for
-                      #   this context (unchanged - ARCH-037)
+└── cli.py          # CLI stays a flat file; add a cli/ folder the same way
+                     #   if it ever needs to split
 ```
+
+There is no `providers.py`. Each entrypoint file defines its own tiny
+getter for the one service it needs (a `configure()`/`get_x_service()` pair,
+or the transport's own DI hook), set once at startup by the composition root
+(`main.py`) -- the only module allowed to import `bootstrap/` (ARCH-017).
+This keeps each aggregate module's wiring self-contained: extracting
+`quote/` into its own service later needs no untangling of a
+context-wide wiring file shared with other aggregate modules.
 
 `web/` gets one file per aggregate module because a REST-style resource maps
 cleanly onto one aggregate. `events/` and `crons/` do not: an event consumer or a
@@ -450,9 +455,9 @@ alone does not.
 - An entrypoint translates a stimulus into a command/query, calls one application
   service method, and maps the result or exception back to the transport (status codes,
   serialization). (ARCH-004 family)
-- An entrypoint obtains a fully wired service from
-  `<context>/entrypoints/providers.py` (which pulls from the `bootstrap/` container).
-  It MUST NOT construct outbound adapters itself. (ARCH-009)
+- An entrypoint obtains a fully wired service through its own getter, configured once
+  at startup by `main.py` (the composition root). It MUST NOT construct outbound
+  adapters itself, and MUST NOT import `bootstrap/` itself. (ARCH-009, ARCH-017)
 - An entrypoint MUST NOT call persistence, adapters, or the database directly
   (`repo.save(...)`, `session.execute(...)`, `http_client.get(...)`). The only thing it
   calls is the application service. (ARCH-009)
@@ -469,6 +474,25 @@ alone does not.
   business use cases.
 - A pure pass-through admin or debug endpoint MAY be exempt if it is explicitly marked
   and excluded from the public surface. This is discouraged and requires justification.
+
+## 4.5 HTTP response shaping is centralized, not per-handler
+
+When a web entrypoint context wants a uniform response shape -- a success/error
+envelope, standard error formatting, a consistent status-code mapping -- that shaping
+is applied by **one mechanism the composition root registers once** (e.g. ASGI
+middleware added in `main.py`), never rebuilt inside each handler. (ARCH-057, SHOULD)
+
+```text
+bootstrap/envelope.py    # e.g. an ASGI middleware wrapping every JSON response
+main.py                  # app.add_middleware(EnvelopeMiddleware) -- registered once
+<context>/entrypoints/web/order.py   # handlers return their plain response model;
+                                      #   they never build the envelope themselves
+```
+
+The envelope's exact shape (field names, whether errors are a list or a single
+message, which status codes map where) is a project decision this rule does not
+mandate. What it does mandate is *where* that decision lives: one place, applied
+uniformly, not duplicated -- and inevitably drifting -- across every handler.
 
 ---
 
@@ -650,8 +674,8 @@ Inbound versus outbound:
   (SHOULD) - write it when the seam benefits from being explicit (testing,
   type-checking, multiple implementations, agent-readability), and skip it
   (duck-typed injection) for a trivial single-implementation dependency. Injection is
-  never optional: the concrete adapter is built in `providers.py` and injected;
-  `application/` never imports it.
+  never optional: the concrete adapter is built by the composition root
+  (`bootstrap/`, `main.py`) and injected; `application/` never imports it.
 
 Three homes, one rule each:
 
@@ -777,11 +801,12 @@ lists rather than retrieves one aggregate root by identity) does not belong here
 ARCH-051, that query lives in `sales/read/`, not on the repository (Section 2.5).
 
 ```python
-# sales/entrypoints/providers.py
-def order_service() -> OrderService:
-    uow = unit_of_work()                          # from bootstrap/ (mappings already configured)
+# bootstrap/__init__.py
+def build_container() -> Container:
+    uow = SqlAlchemyUnitOfWork()                  # mappings already configured
     orders = SqlAlchemyOrderRepository(uow)
-    return OrderService(uow=uow, orders=orders, bus=event_bus(), notifier=notifier())
+    service = OrderService(uow=uow, orders=orders, bus=EventBus(), notifier=Notifier())
+    return Container(order_service=service)
 ```
 
 ### Other stores
@@ -940,7 +965,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 | ARCH-006 | Application does not depend on entrypoints | MUST | full |
 | ARCH-007 | Application does not construct concrete adapters | MUST | partial |
 | ARCH-008 | Adapters implement ports; the core imports abstractions only | MUST | partial |
-| ARCH-009 | Entrypoints obtain wired services from providers; never construct or call outbound adapters directly | MUST | partial |
+| ARCH-009 | Entrypoints obtain wired services from the composition root; never construct or call outbound adapters directly | MUST | partial |
 | ARCH-010 | Entrypoints contain no business logic | SHOULD | partial |
 | ARCH-011 | Entrypoints call application services, not other entrypoints | MUST | full |
 | ARCH-012 | A context imports nothing from another context | MUST | full |
@@ -951,7 +976,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 | ARCH-017 | Nothing imports bootstrap | MUST | full |
 | ARCH-034 | commons/adapters is not imported by domain or application | MUST | full |
 | ARCH-035 | commons/types does not import any framework | MUST | full |
-| ARCH-037 | Entrypoint wiring is defined in per-context providers.py, backed by bootstrap | MUST | partial |
+| ARCH-057 | HTTP entrypoints centralize response shaping in the composition root | SHOULD | manual |
 
 ### model_integrity
 
@@ -1097,7 +1122,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Level:** MUST · **Automation:** full · **Tier:** core · **Category:** dependencies
 - **Validation:** `import-linter` — layered contract
 - **Description:** No module under a context's application/ package imports from that context's adapters/ package or from commons/adapters/.
-- **Rationale:** Orchestration names ports only; the concrete adapter is injected from providers.py and is never imported by the use case.
+- **Rationale:** Orchestration names ports only; the concrete adapter is injected by the composition root and is never imported by the use case.
 - **Correct:**
   ```
   # sales/orders/application/order.py
@@ -1132,7 +1157,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** Constructing an adapter couples the use case to one technology choice and defeats dependency injection.
 - **Correct:**
   ```
-  # sales/entrypoints/providers.py
+  # bootstrap/__init__.py
   orders = SqlAlchemyOrderRepository(uow)
   return OrderService(uow=uow, orders=orders)
   ```
@@ -1161,16 +1186,30 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Related:** ARCH-001, ARCH-042
 
-#### ARCH-009 — Entrypoints obtain wired services from providers; never construct or call outbound adapters directly
+#### ARCH-009 — Entrypoints obtain wired services from the composition root; never construct or call outbound adapters directly
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** dependencies
 - **Validation:** `import-linter` — forbidden contract (import half); entrypoints calling persistence/session/http-client directly is a runtime fact the import graph cannot see
-- **Description:** No module under a context's entrypoints/ package constructs an outbound adapter or calls persistence, sessions, or HTTP clients directly; it obtains a fully wired service from providers.py and calls only that service.
+- **Description:** No module under a context's entrypoints/ package constructs an outbound adapter, imports bootstrap/, or calls persistence, sessions, or HTTP clients directly. It exposes its own small getter for the one service it needs, set once at startup by the composition root (main.py, the only module allowed to import bootstrap/ -- ARCH-017), and calls only that service.
 - **Rationale:** An entrypoint that news up a repository or calls session.execute is untestable without transport and leaks wiring across the boundary.
 - **Correct:**
   ```
   # sales/entrypoints/web/order.py
-  service = providers.order_service()
-  service.create_order(command)
+  _service: OrderService | None = None
+  
+  def configure(service: OrderService) -> None:
+      global _service
+      _service = service
+  
+  def get_order_service() -> OrderService:
+      assert _service is not None, "configure() was not called at startup"
+      return _service
+  
+  def create_order(body: CreateOrderBody, service: OrderService = Depends(get_order_service)):
+      service.create_order(command)
+  
+  # sales/main.py -- the only module that imports bootstrap (ARCH-017)
+  container = build_container()
+  order.configure(container.order_service)
   ```
 - **Incorrect:**
   ```
@@ -1178,7 +1217,6 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   repo = SqlAlchemyOrderRepository(SqlAlchemyUnitOfWork())
   repo.save(order)
   ```
-- **Related:** ARCH-037
 
 #### ARCH-010 — Entrypoints contain no business logic
 - **Level:** SHOULD · **Automation:** partial · **Tier:** full · **Category:** dependencies
@@ -1200,14 +1238,15 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-011 — Entrypoints call application services, not other entrypoints
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** dependencies
-- **Validation:** `import-linter` — forbidden contract; entrypoints/**/*.py -/-> entrypoints/**/*.py except providers (recursive - covers web/, events/, crons/)
-- **Description:** No module under a context's entrypoints/ package imports or calls another entrypoint module (providers.py aside).
+- **Validation:** `import-linter` — forbidden contract; entrypoints/**/*.py -/-> entrypoints/**/*.py (recursive - covers web/, events/, crons/)
+- **Description:** No module under a context's entrypoints/ package imports or calls another entrypoint module.
 - **Rationale:** Chaining entrypoints hides a use case behind transport translation and duplicates orchestration.
 - **Correct:**
   ```
   # sales/entrypoints/cli.py
-  from sales.entrypoints import providers
-  providers.order_service().create_order(cmd)
+  from sales.orders.application.order import OrderService
+  # cli.py gets its own OrderService via its own configure()/getter,
+  # set by main.py at startup -- never by importing web/order.py
   ```
 - **Incorrect:**
   ```
@@ -1689,25 +1728,6 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Related:** ARCH-043
 
-#### ARCH-037 — Entrypoint wiring is defined in per-context providers.py, backed by bootstrap
-- **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** dependencies
-- **Validation:** `ast-checker` — providers.py present per context; entrypoints import wired services only from it
-- **Description:** Each context exposes its wired services through entrypoints/providers.py, which pulls singletons and factories from the bootstrap/ container; entrypoints import services only from providers.py.
-- **Rationale:** One per-context wiring seam keeps construction out of handlers and gives the composition root a single place to assemble each service.
-- **Correct:**
-  ```
-  # sales/entrypoints/providers.py
-  def order_service() -> OrderService:
-      uow = unit_of_work()
-      return OrderService(uow=uow, orders=SqlAlchemyOrderRepository(uow), bus=event_bus())
-  ```
-- **Incorrect:**
-  ```
-  # sales/entrypoints/web/order.py
-  order_service = OrderService(uow=SqlAlchemyUnitOfWork(), orders=..., bus=...)
-  ```
-- **Related:** ARCH-009
-
 #### ARCH-038 — Domain objects are never mocked
 - **Level:** SHOULD · **Automation:** partial · **Tier:** full · **Category:** testing
 - **Validation:** `review` — PR checklist plus grep for Mock(spec=<domain type>) in tests
@@ -2053,6 +2073,33 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   from sales.orders.application.order import OrderService
   from sales.customers.application.customer import CustomerService
   ```
+
+#### ARCH-057 — HTTP entrypoints centralize response shaping in the composition root
+- **Level:** SHOULD · **Automation:** manual · **Tier:** full · **Category:** dependencies
+- **Validation:** `review` — PR checklist; does any handler build the envelope/error shape itself instead of returning its plain model?
+- **Description:** A web entrypoint context applies cross-cutting response shaping -- a uniform success/error envelope, standard error formatting -- through one mechanism registered once by the composition root (e.g. ASGI middleware set up in main.py), not by each handler building it by hand. The envelope's exact shape is a project decision, not something this rule mandates; what MUST be centralized is the mechanism.
+- **Rationale:** Repeating envelope or error-formatting logic in every handler drifts inconsistent over time and puts a transport-format decision inside business-translation code; one composition-root-registered wrapper keeps the shape uniform and handlers focused on stimulus -> command -> service call (ARCH-010).
+- **Correct:**
+  ```
+  # bootstrap/envelope.py
+  class EnvelopeMiddleware(BaseHTTPMiddleware):
+      async def dispatch(self, request, call_next):
+          response = await call_next(request)
+          ...  # reshape into {"payload": ..., "errors": ...}
+  
+  # main.py -- registered once
+  app.add_middleware(EnvelopeMiddleware)
+  
+  # sales/entrypoints/web/order.py -- handler returns its plain model
+  def create_order(...) -> OrderResponse: ...
+  ```
+- **Incorrect:**
+  ```
+  # sales/entrypoints/web/order.py
+  def create_order(...) -> dict:
+      return {"payload": OrderResponse(...).model_dump(), "errors": None}
+  ```
+- **Related:** ARCH-009, ARCH-010
 
 ---
 

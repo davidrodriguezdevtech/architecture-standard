@@ -18,8 +18,7 @@ project/
 │   │   │   │   └── <concern>.py     #     named for what it does (Section 4.2)
 │   │   │   ├── crons/               #   scheduled jobs - same naming as events/
 │   │   │   │   └── <concern>.py
-│   │   │   ├── cli.py               #   CLI (flat; split into cli/ the same way if needed)
-│   │   │   └── providers.py         #   thin: pulls wired services from the container
+│   │   │   └── cli.py               #   CLI (flat; split into cli/ the same way if needed)
 │   │   ├── <aggregate_module>/      # LEVEL 2 - 1:1 with an aggregate (e.g. users)
 │   │   │   ├── domain/
 │   │   │   │   ├── model/

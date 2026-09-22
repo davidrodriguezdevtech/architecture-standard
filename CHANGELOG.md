@@ -35,7 +35,7 @@ top-level `__init__.py`.
   because a regular package on either side shadows the other rather than merging.
   Directories nested under it still follow the normal rule.
 
-No rule `id` was removed and no `level` changed.
+No `level` changed in this half of the release.
 
 #### Migration notes
 
@@ -53,6 +53,64 @@ For each existing project:
 6. Re-run `uv run arch-standard render-importlinter .` -- ARCH-014's contract now names
    `commons`, and ARCH-015's forbidden list now includes the project's own commons modules.
 7. Re-run `uv run arch-standard check .`.
+
+**`providers.py` is removed from the standard entirely** -- there is no per-context or
+per-module wiring file anymore. ARCH-037 is retired. ARCH-009 and ARCH-011 are reworded
+for the replacement pattern, and a new rule, ARCH-057, requires that a web entrypoint
+context centralize response shaping (envelopes, error formatting) in one composition-root
+mechanism instead of duplicating it per handler. No rule `level` changed in this half
+either -- ARCH-057 lands as SHOULD, not MUST, per the "a new MUST never lands directly"
+rule (spec Section 16.3).
+
+### Added
+- ARCH-057 (SHOULD) -- HTTP entrypoints centralize response shaping in the composition root
+
+### Changed (entrypoints)
+- ARCH-005: wording/examples updated -- Application does not depend on adapters
+- ARCH-007: wording/examples updated -- Application does not construct concrete adapters
+- ARCH-009: wording/examples updated -- Entrypoints obtain wired services from the composition root; never construct or call outbound adapters directly
+- ARCH-011: wording/examples updated -- Entrypoints call application services, not other entrypoints
+
+### Removed
+- ARCH-037 -- Entrypoint wiring is defined in per-context providers.py, backed by bootstrap
+
+#### Migration notes (entrypoints)
+
+**New pattern.** Each entrypoint file defines its own small getter for the one service it
+needs (a `configure()` / `get_x_service()` pair, or the transport's own DI hook), set once
+at startup by the composition root (`main.py` -- still the only module allowed to import
+`bootstrap/`, ARCH-017). This keeps an aggregate module's wiring self-contained: extracting
+it into its own service later needs no untangling of a wiring file shared with other
+aggregate modules.
+
+**Why now:** a per-context `providers.py` under `entrypoints/` was also swept into ARCH-009's
+"entrypoints do not touch adapters" import-linter contract, which made the standard's own
+ARCH-037 example (`providers.py` constructing `SqlAlchemyOrderRepository` directly)
+contradict ARCH-009 as written. Moving wiring out of `entrypoints/` and into each
+entrypoint file directly (reading from what `main.py` configured) removes the contradiction
+and matches how these projects extract into microservices: an aggregate module travels with
+its own wiring, not entangled with siblings' construction in one shared file.
+
+**New response-shaping rule (ARCH-057):** a web entrypoint context that wants a uniform
+response shape applies it through one composition-root-registered mechanism (e.g. ASGI
+middleware wired in `main.py`), never by having each handler build it. The envelope's exact
+shape is a project decision this rule does not mandate; only the "one mechanism, one place"
+requirement is.
+
+For each existing project:
+
+1. Delete every `<context>/entrypoints/providers.py`.
+2. For each entrypoint file that called into it (e.g. `providers.order_service()`),
+   replace that with a locally defined `configure(service)` / `get_order_service()` pair
+   in that same file.
+3. In `main.py`, after `build_container()`, call each entrypoint module's `configure(...)`
+   once at startup with the matching service off the container, instead of routing through
+   a shared providers module.
+4. Re-run `uv run arch-standard render-importlinter .` -- the ARCH-011 contract dropped its
+   `providers` exemption, since every file under `entrypoints/` is now a genuine sibling.
+5. Re-run `uv run arch-standard check .` to confirm ARCH-009/011 still pass.
+6. If the project has web entrypoints, add a composition-root response-shaping mechanism
+   (ARCH-057, SHOULD) if it doesn't already have one.
 
 ## 0.2.0
 

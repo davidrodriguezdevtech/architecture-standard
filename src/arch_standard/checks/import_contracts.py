@@ -358,8 +358,10 @@ def build_contracts(project: ProjectLayout) -> str:
                 "",
             ]
         # ARCH-011: an entrypoint module may not import a sibling entrypoint.
-        # providers.py is the sanctioned wiring seam and is exempt. Source and
-        # forbidden lists deliberately overlap (each sibling appears in both):
+        # There is no providers.py exemption -- each entrypoint file owns its
+        # own wiring getter (ARCH-009), so every file under entrypoints/ is a
+        # genuine sibling. Source and forbidden lists deliberately overlap
+        # (each sibling appears in both):
         # import-linter skips a source/forbidden pair where one module is the
         # other (or a subpackage of it), so a sibling is never reported as
         # forbidden from itself -- the same property ARCH-046 already relies
@@ -375,7 +377,7 @@ def build_contracts(project: ProjectLayout) -> str:
         siblings = sorted(
             ".".join(p.relative_to(entry_root).with_suffix("").parts)
             for p in entry_root.rglob("*.py")
-            if p.stem not in ("__init__", "providers") and "__pycache__" not in p.parts
+            if p.stem != "__init__" and "__pycache__" not in p.parts
         )
         if len(siblings) > 1:
             lines += [

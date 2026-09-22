@@ -19,7 +19,6 @@ def _reports(root: Path) -> dict[str, CheckReport]:
 def test_given_the_modular_fixture__when_checked__then_structure_rules_pass() -> None:
     reports = _reports(FIX / "modular_project")
     for rid in (
-        "ARCH-037",
         "ARCH-047",
         "ARCH-048",
         "ARCH-051",
@@ -221,41 +220,6 @@ def test_given_a_repository_method_returning_a_report_row_type__when_checked__th
         encoding="utf-8",
     )
     assert _reports(root)["ARCH-051"].outcome is Outcome.FAIL
-
-
-def test_given_entrypoints_without_providers__when_checked__then_arch_037_fails(
-    tmp_path: Path,
-) -> None:
-    src = tmp_path / "src" / "sales"
-    (src / "entrypoints").mkdir(parents=True)
-    (src / "entrypoints" / "http.py").write_text("handler = 1\n", encoding="utf-8")
-    (src / "orders" / "domain").mkdir(parents=True)
-    layout = ProjectLayout.detect(tmp_path)
-    catalog = Catalog.load(packaged_rules_dir())
-    reports = {r.rule_id: r for r in StructureCheck().run(layout, catalog)}
-    assert reports["ARCH-037"].outcome is Outcome.FAIL
-
-
-def test_given_entrypoints_with_providers__when_checked__then_arch_037_passes(
-    tmp_path: Path,
-) -> None:
-    src = tmp_path / "src" / "sales"
-    (src / "entrypoints").mkdir(parents=True)
-    (src / "entrypoints" / "providers.py").write_text("svc = 1\n", encoding="utf-8")
-    (src / "orders" / "domain").mkdir(parents=True)
-    layout = ProjectLayout.detect(tmp_path)
-    catalog = Catalog.load(packaged_rules_dir())
-    reports = {r.rule_id: r for r in StructureCheck().run(layout, catalog)}
-    assert reports["ARCH-037"].outcome is Outcome.PASS
-
-
-def test_given_no_entrypoints__when_checked__then_arch_037_skips(tmp_path: Path) -> None:
-    src = tmp_path / "src" / "sales" / "orders" / "domain"
-    src.mkdir(parents=True)
-    layout = ProjectLayout.detect(tmp_path)
-    catalog = Catalog.load(packaged_rules_dir())
-    reports = {r.rule_id: r for r in StructureCheck().run(layout, catalog)}
-    assert reports["ARCH-037"].outcome is Outcome.SKIP
 
 
 def test_given_a_domain_services_file__when_checked__then_arch_054_fails(tmp_path: Path) -> None:
