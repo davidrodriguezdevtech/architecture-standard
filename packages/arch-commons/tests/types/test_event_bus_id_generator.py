@@ -10,7 +10,7 @@ def test_given_an_event_bus_implementation__when_publish_all_called__then_no_err
     from commons.types.events import DomainEvent
 
     @dataclass(frozen=True)
-    class Recorded:
+    class Recorded(EventBus):
         published: list[object]
 
         def publish_all(self, events: Iterable[DomainEvent]) -> None:
@@ -30,7 +30,7 @@ def test_given_an_event_bus_implementation__when_publish_all_called__then_no_err
 def test_given_an_id_generator_implementation__when_new_id_called__then_returns_a_string() -> None:
     from commons.types.id_generator import IdGenerator
 
-    class FixedIdGenerator:
+    class FixedIdGenerator(IdGenerator):
         def new_id(self) -> str:
             return "fixed-id"
 

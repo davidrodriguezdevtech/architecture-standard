@@ -94,4 +94,5 @@ def test_given_a_rule_with_a_validation_detail__when_rendered__then_the_caveat_i
     # of the contract is machine-checked and which is reviewed at PR time.
     text = render_standard(Catalog.load(RULES), PROSE)
     assert "layered contract (import half)" in text
-    assert "Protocol conformance of adapters is reviewed at PR time" in text
+    assert "fails mypy" in text
+    assert "raises TypeError" in text

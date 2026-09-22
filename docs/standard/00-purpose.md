@@ -17,11 +17,15 @@ The following framing decisions are fixed for v1:
   one deployable.
 - **Naming language.** English for all identifiers, folders, rule IDs, and for this
   standard.
-- **Ports.** `typing.Protocol` (structural typing; adapters do not inherit). Three
-  homes: `commons/types/` (generic technical protocols), the aggregate module's
+- **Ports.** `abc.ABC` with `@abstractmethod` (nominal typing; adapters inherit
+  explicitly, so a missing method fails at instantiation, not at first call). Three
+  homes: `commons/types/` (generic technical ports), the aggregate module's
   `domain/model/ports.py` (domain vocabulary), and colocated in the use-case module
-  (non-domain outbound). There is no `application/ports.py` by default.
-- **Persistence.** The normative contract (the `UnitOfWork` Protocol, repository ports,
+  (non-domain outbound). There is no `application/ports.py` by default. The one
+  exception is `commons.types.events.DomainEvent`, still a `Protocol`: concrete domain
+  events are independent per-module dataclasses that must never inherit from a
+  commons type (see its docstring).
+- **Persistence.** The normative contract (the `UnitOfWork` ABC, repository ports,
   translation living in `adapters/`) is store-agnostic. SQLAlchemy is the shipped
   reference implementation, with an `InMemoryUnitOfWork` for tests. Other stores
   (DynamoDB, sqlite, and others) provide their own `UnitOfWork` and repositories against

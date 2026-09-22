@@ -108,7 +108,7 @@ and those ID types live in `<context>/shared/ids.py`. (ARCH-046)
 | A use case (state change on one aggregate) | a method on `<module>/application/<aggregate>.py` |
 | A persistence/broker/third-party integration | one module in `<module>/adapters/` |
 | A contract the domain needs | `<module>/domain/model/ports.py` |
-| A non-domain outbound contract used by one use case | a `Protocol` colocated in that `application/` module |
+| A non-domain outbound contract used by one use case | an `abc.ABC` colocated in that `application/` module |
 | A fact other parts of this context react to | a domain event in `<module>/domain/model/events.py` |
 | An ID type referenced by another aggregate of this context | `<context>/shared/ids.py` |
 | A value object used by 2+ aggregates of this context | `<context>/shared/value_objects.py` |

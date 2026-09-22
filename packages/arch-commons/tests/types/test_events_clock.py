@@ -25,7 +25,7 @@ def test_given_an_object_without_occurred_at__when_checked__then_is_not_a_domain
 def test_given_a_clock_implementation__when_now_called__then_returns_a_datetime() -> None:
     from commons.types.clock import Clock
 
-    class FixedClock:
+    class FixedClock(Clock):
         def now(self) -> datetime:
             return datetime(2026, 1, 1, tzinfo=UTC)
 

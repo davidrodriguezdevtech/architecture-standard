@@ -44,7 +44,8 @@ rules:
       and makes the seam explicit for the teams on each side.
     correct: |
       # sales/orders/domain/model/ports.py
-      class CreditCheckPort(Protocol):
+      class CreditCheckPort(ABC):
+          @abstractmethod
           def has_credit(self, customer_id: CustomerId, amount: Money) -> bool: ...
       # bootstrap/ wires an adapter backed by billing's application service
     incorrect: |
@@ -61,13 +62,14 @@ rules:
     category: application
     description: >
       Any dependency on an external provider (email, payment, SMS, third-party
-      API) is used through a Protocol injected into the use case, not by
+      API) is used through an abc.ABC injected into the use case, not by
       importing the vendor SDK into application/.
     rationale: >
       A port at the integration seam keeps the use case testable with a fake
       and lets the provider be swapped without touching orchestration.
     correct: |
-      class PaymentGateway(Protocol):
+      class PaymentGateway(ABC):
+          @abstractmethod
           def charge(self, customer_id: CustomerId, amount: Money) -> ChargeId: ...
     incorrect: |
       # sales/orders/application/order.py
@@ -75,7 +77,7 @@ rules:
       stripe.Charge.create(amount=total, currency="eur")
     validation:
       tool: review
-      detail: PR checklist; is every external provider injected behind a Protocol?
+      detail: PR checklist; is every external provider injected behind a port?
     related: [ARCH-042]
   - id: ARCH-027
     name: The domain does not cross the application boundary
@@ -177,18 +179,18 @@ rules:
     automation: manual
     category: application
     description: >
-      A Protocol is placed by the three-homes rule (generic technical Protocols
-      in commons/types/, domain-vocabulary contracts in domain/model/ports.py,
-      non-domain outbound contracts colocated in the use-case module), and there
-      is no application/ports.py until a context has 3+ application ports shared
-      across use-case modules.
+      A port (abc.ABC) is placed by the three-homes rule (generic technical
+      ports in commons/types/, domain-vocabulary contracts in
+      domain/model/ports.py, non-domain outbound contracts colocated in the
+      use-case module), and there is no application/ports.py until a context
+      has 3+ application ports shared across use-case modules.
     rationale: >
       Keeping domain/model/ports.py a faithful list of domain concepts keeps
       integration-contract churn out of the stable domain file.
     correct: |
       # commons/types/clock.py                    -> Clock
       # sales/orders/domain/model/ports.py        -> OrderRepository
-      # sales/orders/application/order.py -> class OrderNotifier(Protocol): ...
+      # sales/orders/application/order.py -> class OrderNotifier(ABC): ...
     incorrect: |
       # sales/orders/application/ports.py -> EmailSender, Clock, OrderRepository (one dumping file)
     validation:
@@ -210,7 +212,8 @@ rules:
       carries.
     correct: |
       # sales/orders/domain/model/ports.py
-      class CreditCheckPort(Protocol):
+      class CreditCheckPort(ABC):
+          @abstractmethod
           def has_credit(self, customer_id: CustomerId, amount: Money) -> bool: ...
     incorrect: |
       # sales/orders/adapters/credit_gateway.py

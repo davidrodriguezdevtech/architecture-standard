@@ -5,9 +5,10 @@ from collections.abc import Iterable
 from sqlalchemy.orm import Session, sessionmaker
 
 from commons.types.events import DomainEvent
+from commons.types.unit_of_work import UnitOfWork
 
 
-class SqlAlchemyUnitOfWork:
+class SqlAlchemyUnitOfWork(UnitOfWork):
     """Reference UnitOfWork backed by a SQLAlchemy Session (spec Section 7.2).
 
     Events are captured once during ``commit()`` (before session close) and cached

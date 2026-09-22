@@ -39,4 +39,4 @@ def test_given_defaults__when_copied__then_domain_layer_files_compile_and_have_e
     assert "class OrderCreated:" in events_py
 
     ports_py = (dest / _DOMAIN_MODEL / "ports.py").read_text(encoding="utf-8")
-    assert "class OrderRepository(Protocol):" in ports_py
+    assert "class OrderRepository(ABC):" in ports_py
