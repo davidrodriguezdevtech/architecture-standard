@@ -191,10 +191,18 @@ project/
 │   │   │                             #   aggregate. No __init__.py (ARCH-055).
 │   │   ├── ids.py                    #   ID types referenced across aggregates
 │   │   ├── geo.py                    #   transversal VOs / enums / catalogues
-│   │   └── services.py               #   domain services spanning aggregates (rare)
+│   │   ├── services.py               #   domain services spanning aggregates (rare)
+│   │   └── adapters/                 #   framework-bound technical adapters shared
+│   │       │                         #   across contexts, not (yet) proposed
+│   │       │                         #   upstream into arch-commons (Section 8.3).
+│   │       │                         #   No __init__.py either (ARCH-055) - merges
+│   │       │                         #   with arch-commons' own commons/adapters/.
+│   │       └── <adapter>.py
 │   └── bootstrap/                    # Composition Root: config, singletons, DI container,
 │                                     #   service/UoW factories, router registration,
-│                                     #   consumer startup
+│                                     #   consumer startup - constructs adapters
+│                                     #   defined elsewhere, does not define them
+│                                     #   (ARCH-059)
 └── tests/                            # mirrors src/'s shape 1:1 (Section 11.3):
     └── <context>/<aggregate_module>/<layer>/test_<unit>.py
 ```
@@ -261,7 +269,7 @@ and those ID types live in `commons/ids.py`. (ARCH-046)
 | A listing/search/filter/sort/pagination query over ONE aggregate module's own data | a Finder ABC + DTOs in `<module>/application/<aggregate>_finder.py`, implemented in `<module>/adapters/<aggregate>_finder.py` - not `<context>/read/` |
 | A projection, report, dashboard, or any read spanning 2+ aggregate modules | `<context>/read/` |
 | A dependency-free technical primitive | the `arch-commons` package, `commons.types` (propose upstream) |
-| A shared framework-bound technical implementation | the `arch-commons` package, `commons.adapters` (propose upstream) |
+| A shared framework-bound technical implementation | propose upstream into the `arch-commons` package, `commons.adapters`; until accepted, or if project-specific, `src/commons/adapters/` (Section 8.3) |
 | A domain concept shared by 2+ contexts, with business policy | `src/commons/<concept>.py` |
 | Wiring / config / DI | `bootstrap/` |
 
@@ -274,8 +282,10 @@ rules in Section 3.6, not by a coordinating layer.
 There is no context-level code area at all. Anything above one aggregate - whether it
 crosses two aggregates of one context or two contexts - goes to `src/commons/`, which
 is strictly limited to the things in the table above: ID types, value objects, enums
-and reference catalogues, and domain services spanning aggregates. It never holds an
-aggregate root, a repository, or an application service. (ARCH-047)
+and reference catalogues, domain services spanning aggregates, and - held to
+adapters/-layer discipline instead, in `commons/adapters/` - framework-bound technical
+adapters shared across contexts (Section 8.3). It never holds an aggregate root, a
+repository, or an application service. (ARCH-047)
 
 One boundary is deliberately traded away here. A context-scoped shared area would
 confine sharing to one context; `commons/` is visible to all of them, so two contexts
@@ -912,7 +922,9 @@ everything above one aggregate lives in it. There is no `shared_kernel/` and no
 Neither portion carries a top-level `commons/__init__.py`. A regular package on either
 side would shadow the other outright rather than merge with it, so both are namespace
 portions and `src/commons/` is the one directory under `src/` that MUST NOT have an
-`__init__.py` (ARCH-055).
+`__init__.py` (ARCH-055). `commons/adapters/` — the project's own carve-out described in
+8.3 — repeats the same merge one level down, and is the second and only other such
+directory (ARCH-055).
 
 ## 8.1 `arch-commons` - a separately versioned package
 
@@ -936,8 +948,9 @@ a version and upgrade deliberately.
 
 **Contributing upward.** A technical primitive that a project invents locally, and
 that a second project would want, does not get copied - it is proposed upstream into
-`arch-commons`. Until it is accepted it lives in that project's own `commons/`,
-clearly marked.
+`arch-commons`. A framework-bound one lives, until accepted (or if it never is - some
+adapters are tuned to one project's concurrency model and are not generic enough to
+upstream), in that project's own `commons/adapters/` (8.3), clearly marked.
 
 Rules: ARCH-015 (`commons.types` imports nothing from contexts, application, adapters,
 or the project's own commons modules), ARCH-016 (`commons.types` has no business
@@ -975,6 +988,39 @@ visible instead of accumulating by accident.
 
 Generic subdomains (notifications, identity) are other bounded contexts, not shared
 code - consumed via the Section 3 mechanisms.
+
+## 8.3 The project's own `commons/adapters/`
+
+A framework-bound technical adapter used by more than one context - a UnitOfWork
+variant, a shared cache client, anything that would belong in `arch-commons`'
+`commons.adapters` but is not (yet) proposed upstream, or is specific enough to this
+project that upstreaming never applies - lives in `src/commons/adapters/`, this
+project's own mirror of `arch-commons`' `commons.adapters` portion. It merges with
+that portion at import time exactly the way `commons/` merges with `commons.types` and
+`commons.adapters` as a whole: neither side carries a `commons/adapters/__init__.py`
+(a regular package on either side would shadow the other), so `commons/adapters/` is
+the second directory under `src/` that MUST NOT have one (ARCH-055) - every directory
+nested inside it does, as normal.
+
+`commons/adapters/` follows **adapters/-layer discipline throughout**, not the domain
+discipline the rest of `commons/` is held to:
+
+| | rest of `commons/` (`ids.py`, `geo.py`, `services.py`, ...) | `commons/adapters/` |
+|---|---|---|
+| Framework imports | forbidden (ARCH-003) | allowed |
+| `*Service`/`*Repository` names | banned (ARCH-047) | normal |
+| Mutable state | forbidden outside `services.py`'s own narrow carve-out | expected |
+| Business meaning | expected | **forbidden** - same as `commons.adapters` upstream |
+
+It holds one thing only: a technical adapter implementation, typically subclassing a
+`commons.types` ABC exactly like its upstream counterparts do. It never holds a port
+(a port lives in `commons/types/`, upstream, per the three-homes rule, ARCH-042), an
+aggregate, or business logic of any kind (ARCH-047).
+
+`bootstrap/` constructs instances of adapters defined here (or anywhere else) and
+wires them into services; it does not define adapter classes itself (ARCH-059) - a
+class implementing a port belongs in an adapters/ directory, not the composition
+root, whether or not it happens to work either way.
 
 ---
 
@@ -1099,6 +1145,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 | ARCH-054 | Domain services for an aggregate live in a services/ directory | SHOULD | partial |
 | ARCH-055 | Every Python package directory has an __init__.py | SHOULD | full |
 | ARCH-056 | An entrypoint file serves at most one aggregate module | SHOULD | partial |
+| ARCH-059 | bootstrap/ wires adapters, it does not define them | SHOULD | full |
 
 ### Rule reference
 
@@ -1139,8 +1186,8 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-003 — Domain does not depend on frameworks
 - **Level:** MUST · **Automation:** full · **Tier:** core · **Category:** dependencies
-- **Validation:** `ast-checker` — forbidden imports in domain/ (and commons/); `from pydantic import <name>` is permitted only for names on the scalar-validator allowlist, `import pydantic` (bare) is never permitted
-- **Description:** No module under a context's domain/ package (or a project's commons/, held to the same discipline) imports a web framework, an ORM, a DI container, or pydantic -- with one narrow, explicit exception: a framework's own format-only scalar validators, imported by name. Today that allowlist is exactly `pydantic.EmailStr`, `pydantic.TypeAdapter` and `pydantic.ValidationError`, used only to validate a single field's string format in `__post_init__`, never to define a model, a schema, or anything with I/O. `import pydantic` (the bare form) stays banned even though names on the allowlist exist, because the bare form reaches `pydantic.BaseModel` through the module object; the same import line naming both an allowed and a banned symbol still fails.
+- **Validation:** `ast-checker` — forbidden imports in domain/ and commons/, excluding commons/adapters/; `from pydantic import <name>` is permitted only for names on the scalar-validator allowlist, `import pydantic` (bare) is never permitted
+- **Description:** No module under a context's domain/ package (or a project's commons/, held to the same discipline) imports a web framework, an ORM, a DI container, or pydantic -- with two narrow, explicit exceptions. The first: a framework's own format-only scalar validators, imported by name. Today that allowlist is exactly `pydantic.EmailStr`, `pydantic.TypeAdapter` and `pydantic.ValidationError`, used only to validate a single field's string format in `__post_init__`, never to define a model, a schema, or anything with I/O. `import pydantic` (the bare form) stays banned even though names on the allowlist exist, because the bare form reaches `pydantic.BaseModel` through the module object; the same import line naming both an allowed and a banned symbol still fails. The second: a project's own `commons/adapters/`, when it exists (ARCH-047) -- it follows adapters/-layer discipline throughout, exactly like arch-commons' own `commons.adapters` or any context's own `adapters/`, so this rule does not apply to it at all, not even the scalar-validator allowlist (there is no reason to allowlist anything -- the whole module is exempt).
 - **Rationale:** A framework-free domain stays unit-testable without a runtime and keeps vendor choices out of the business core -- reimplementing a well-known format (email, URL, phone) with a hand-rolled regex is not what that principle protects, and it trades one duplicated, under-tested validator per aggregate for one call into a library that already gets it right. The line stays exactly where the principle needs it: the domain may borrow a framework's scalar TYPE validator, never its MODELING machinery (no `BaseModel`, no `Field`, no framework runtime or I/O reaching the domain through the back door).
 - **Correct:**
   ```
@@ -1170,6 +1217,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   import pydantic                        # bare import -- reaches BaseModel too,
                                           # banned even though EmailStr exists
   ```
+- **Related:** ARCH-047
 
 #### ARCH-004 — Domain performs no I/O
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** dependencies
@@ -1954,9 +2002,9 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-047 — The commons area is strictly limited
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** structure
-- **Validation:** `ast-checker` — no class named *Service/*Repository outside commons/services.py; no aggregate roots; commons/services.py classes must not mutate their own state
-- **Description:** src/commons/ holds only ID types, value objects, enumerations and reference catalogues, and domain services spanning aggregates. Those spanning services live specifically in commons/services.py — the one file in commons/ exempt from the *Service/*Repository name-suffix ban, since it is the standard's own documented home for them. Every other file in commons/ keeps the full name-suffix ban, and commons/services.py classes still may not mutate their own state. commons/ never holds an aggregate root, a repository or an application service.
-- **Rationale:** commons/ is visible to every context, so without a narrow admission test it becomes the junk drawer that couples the whole project together. Unlike commons/types/ (ARCH-016) it may carry business meaning — that is what it is for — but business meaning is not licence to put behaviour-owning objects there. Naming the one legitimate exception explicitly (rather than banning *Service outright) keeps the carve-out narrow instead of inviting every file in commons/ to claim it.
+- **Validation:** `ast-checker` — no class named *Service/*Repository outside commons/services.py or commons/adapters/; no aggregate roots outside commons/adapters/; commons/services.py classes must not mutate their own state; commons/adapters/ is skipped entirely by both checks
+- **Description:** src/commons/ holds only ID types, value objects, enumerations and reference catalogues, and domain services spanning aggregates — plus one further carve-out, commons/adapters/: framework-bound technical adapters used by more than one context, not (yet) proposed upstream into arch-commons (Section 8.1), or specific enough to this project that upstreaming never applies. Domain services spanning aggregates live specifically in commons/services.py — the one top-level file in commons/ exempt from the *Service/*Repository name-suffix ban, since it is the standard's own documented home for them; commons/services.py classes still may not mutate their own state. commons/adapters/, by contrast, follows adapters/ -layer discipline throughout, exactly like arch-commons' own commons.adapters or any context's own adapters/: framework imports are allowed (ARCH-003 does not apply there), the name-suffix ban does not apply, and mutation is expected. Every other file directly in commons/ keeps the full name-suffix ban and framework-free discipline. commons/ never holds an aggregate root, a repository, or an application service, and commons/adapters/ never holds anything but a technical adapter implementation — no business logic, no aggregate, no port definition (a port lives in commons/types/, upstream, per the three-homes rule, ARCH-042).
+- **Rationale:** commons/ is visible to every context, so without a narrow admission test it becomes the junk drawer that couples the whole project together. Unlike commons/types/ (ARCH-016) it may carry business meaning — that is what it is for — but business meaning is not licence to put behaviour-owning objects there. Naming each legitimate exception explicitly (rather than banning *Service or framework imports outright everywhere in commons/) keeps every carve-out narrow instead of inviting the rest of commons/ to claim it. commons/adapters/ specifically exists because "propose it upstream into arch-commons" is the right long-term answer for a genuinely reusable technical primitive, but it is not a place to put code while a PR is pending, and some adapters (a request-scoped UnitOfWork tuned to one project's concurrency model, say) may never be generic enough to upstream at all. Without a documented, checked home, that code drifts into bootstrap/ instead — technically working, since bootstrap/ can import anything, but invisible to every context that could reuse it and indistinguishable from actual wiring code.
 - **Correct:**
   ```
   # commons/ids.py
@@ -1974,6 +2022,11 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   # commons/services.py — the documented carve-out
   class PricingService:
       def quote(self, order: Order) -> Money: ...
+  
+  # commons/adapters/unit_of_work.py — a project-owned technical adapter,
+  # shared by every context, not (yet) proposed upstream
+  class ScopedSqlAlchemyUnitOfWork(SqlAlchemyUnitOfWork):
+      def __enter__(self) -> ScopedSqlAlchemyUnitOfWork: ...
   ```
 - **Incorrect:**
   ```
@@ -1987,7 +2040,12 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   class PricingService:
       def bump(self) -> None:
           self.calls += 1
+  
+  # bootstrap/unit_of_work.py — a reusable, cross-context technical adapter
+  # defined in the composition root instead of commons/adapters/ (ARCH-059)
+  class ScopedSqlAlchemyUnitOfWork(SqlAlchemyUnitOfWork): ...
   ```
+- **Related:** ARCH-003, ARCH-034, ARCH-042, ARCH-055, ARCH-059
 
 #### ARCH-048 — No context-level application package
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** structure
@@ -2126,8 +2184,8 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 #### ARCH-055 — Every Python package directory has an __init__.py
 - **Level:** SHOULD · **Automation:** full · **Tier:** full · **Category:** structure
 - **Validation:** `ast-checker` — filesystem check - every directory under src/ holding a .py file has __init__.py, except src/commons/ itself, which must not have one
-- **Description:** Every directory under src/ that contains a .py file (directly or in a subdirectory) has an __init__.py, including empty ones. Implicit namespace packages (PEP 420) are not used. The single exception is src/commons/ itself, which MUST NOT have one: it is a PEP 420 namespace portion that merges with the installed arch-commons distribution. Directories nested under src/commons/ follow the normal rule and do have an __init__.py.
-- **Rationale:** An explicit __init__.py marks a directory as a package on purpose, rather than by the accident of holding a .py file; it also avoids the edge cases implicit namespace packages create for some tooling and IDEs. A missing one is easy to overlook when scaffolding a module by hand. commons/ is the deliberate exception: arch-commons ships commons.types and commons.adapters while the project supplies its own commons.<module> portions, and a regular package on either side would shadow the other outright rather than merge with it.
+- **Description:** Every directory under src/ that contains a .py file (directly or in a subdirectory) has an __init__.py, including empty ones. Implicit namespace packages (PEP 420) are not used. The exceptions are src/commons/ itself and, if it exists, src/commons/adapters/ — neither MUST have one: each is a PEP 420 namespace portion that merges with the matching portion the installed arch-commons distribution ships (commons/ with commons.types/commons.adapters as a whole; commons/adapters/ with arch-commons' own commons/adapters/ specifically, ARCH-047). Every other directory nested under src/commons/, including subdirectories of commons/adapters/ itself, follows the normal rule and does have an __init__.py.
+- **Rationale:** An explicit __init__.py marks a directory as a package on purpose, rather than by the accident of holding a .py file; it also avoids the edge cases implicit namespace packages create for some tooling and IDEs. A missing one is easy to overlook when scaffolding a module by hand. commons/ and commons/adapters/ are the deliberate exceptions: arch-commons ships commons.types and commons.adapters while the project supplies its own commons.<module> portions and, when it has one, its own framework-bound adapters alongside arch-commons' commons.adapters -- and a regular package on either side of either merge point would shadow the other outright rather than merge with it.
 - **Correct:**
   ```
   sales/orders/domain/model/__init__.py   # empty, present
@@ -2135,12 +2193,14 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   
   commons/geo.py                          # no commons/__init__.py -- namespace portion
   commons/ids/__init__.py                 # nested dirs still have one
+  commons/adapters/unit_of_work.py        # no commons/adapters/__init__.py either
   ```
 - **Incorrect:**
   ```
   sales/orders/domain/model/aggregate.py  # no __init__.py alongside it
   
   commons/__init__.py                     # shadows the installed arch-commons
+  commons/adapters/__init__.py            # shadows arch-commons' own commons/adapters/
   ```
 
 #### ARCH-056 — An entrypoint file serves at most one aggregate module
@@ -2203,6 +2263,34 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   from sales.orders.domain.model.aggregate import Order
   ```
 - **Related:** ARCH-040
+
+#### ARCH-059 — bootstrap/ wires adapters, it does not define them
+- **Level:** SHOULD · **Automation:** full · **Tier:** full · **Category:** structure
+- **Validation:** `ast-checker` — a class defined under bootstrap/ is flagged when any base class is a name imported directly from commons.types or commons.adapters; a base class defined by indirection through another project module is not resolved
+- **Description:** A class defined inside bootstrap/ MUST NOT directly subclass a port or adapter imported from commons.types or commons.adapters. Implementing a port is adapter-shaped code, and an adapter has a documented home already: a context's own <module>/adapters/ if it serves one aggregate module, or the project's own commons/adapters/ (ARCH-047) if it is framework-bound and shared across contexts. bootstrap/ constructs instances of adapters defined elsewhere and wires them into services; it does not define the classes themselves.
+- **Rationale:** bootstrap/ can import anything (it is the one module ARCH-017 allows to reach across every layer), so nothing stops a class implementing a port from being defined there by accident -- it will even run correctly. What is lost is reuse and legibility: an adapter sitting in bootstrap/ is invisible to every context that could import it from commons/adapters/, and a reader cannot tell wiring code from adapter code without reading every class body. A documented, checked home removes the judgment call: a technical adapter used by more than one context is proposed upstream into arch-commons (Section 8.1) or, until that lands or if it never will, placed in commons/adapters/ -- never left in the composition root because that is where it happened to be written first.
+- **Correct:**
+  ```
+  # commons/adapters/unit_of_work.py
+  class ScopedSqlAlchemyUnitOfWork(SqlAlchemyUnitOfWork): ...
+  
+  # bootstrap/__init__.py
+  from commons.adapters.unit_of_work import ScopedSqlAlchemyUnitOfWork
+  
+  def build_container() -> Container:
+      uow = ScopedSqlAlchemyUnitOfWork(session_factory)
+      ...
+  ```
+- **Incorrect:**
+  ```
+  # bootstrap/unit_of_work.py
+  from commons.adapters.sqlalchemy_unit_of_work import SqlAlchemyUnitOfWork
+  
+  class ScopedSqlAlchemyUnitOfWork(SqlAlchemyUnitOfWork): ...  # ARCH-059: this
+                                                                # is an adapter,
+                                                                # not wiring
+  ```
+- **Related:** ARCH-017, ARCH-047
 
 ---
 

@@ -53,14 +53,19 @@ rules:
     description: >
       No module under a context's domain/ package (or a project's commons/, held to
       the same discipline) imports a web framework, an ORM, a DI container, or
-      pydantic -- with one narrow, explicit exception: a framework's own format-only
-      scalar validators, imported by name. Today that allowlist is exactly
+      pydantic -- with two narrow, explicit exceptions. The first: a framework's own
+      format-only scalar validators, imported by name. Today that allowlist is exactly
       `pydantic.EmailStr`, `pydantic.TypeAdapter` and `pydantic.ValidationError`,
       used only to validate a single field's string format in `__post_init__`, never
       to define a model, a schema, or anything with I/O. `import pydantic` (the bare
       form) stays banned even though names on the allowlist exist, because the bare
       form reaches `pydantic.BaseModel` through the module object; the same import
-      line naming both an allowed and a banned symbol still fails.
+      line naming both an allowed and a banned symbol still fails. The second: a
+      project's own `commons/adapters/`, when it exists (ARCH-047) -- it follows
+      adapters/-layer discipline throughout, exactly like arch-commons' own
+      `commons.adapters` or any context's own `adapters/`, so this rule does not apply
+      to it at all, not even the scalar-validator allowlist (there is no reason to
+      allowlist anything -- the whole module is exempt).
     rationale: >
       A framework-free domain stays unit-testable without a runtime and keeps vendor
       choices out of the business core -- reimplementing a well-known format (email,
@@ -97,9 +102,10 @@ rules:
     validation:
       tool: ast-checker
       detail: >-
-        forbidden imports in domain/ (and commons/); `from pydantic import <name>` is
-        permitted only for names on the scalar-validator allowlist, `import pydantic`
-        (bare) is never permitted
+        forbidden imports in domain/ and commons/, excluding commons/adapters/;
+        `from pydantic import <name>` is permitted only for names on the
+        scalar-validator allowlist, `import pydantic` (bare) is never permitted
+    related: [ARCH-047]
   - id: ARCH-004
     name: Domain performs no I/O
     level: MUST

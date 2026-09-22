@@ -25,6 +25,7 @@ def test_given_the_modular_fixture__when_checked__then_structure_rules_pass() ->
         "ARCH-054",
         "ARCH-055",
         "ARCH-056",
+        "ARCH-059",
     ):
         assert reports[rid].outcome is Outcome.PASS, rid
 
@@ -412,3 +413,62 @@ def test_given_events_and_crons_with_functional_names__when_checked__then_arch_0
         "from sales.orders.application.order import OrderService\n", encoding="utf-8"
     )
     assert _reports(root)["ARCH-056"].outcome is Outcome.PASS
+
+
+def test_given_wiring_only_bootstrap__when_checked__then_arch_059_passes() -> None:
+    assert _reports(FIX / "good_project")["ARCH-059"].outcome is Outcome.PASS
+
+
+def test_given_an_adapter_defined_in_bootstrap__when_checked__then_arch_059_warns() -> None:
+    r = _reports(FIX / "bad_project")["ARCH-059"]
+    assert r.outcome is Outcome.WARN
+    assert any("ScopedSqlAlchemyUnitOfWork" in f.message for f in r.findings)
+
+
+def test_given_a_bootstrap_class_not_subclassing_commons__when_checked__then_arch_059_passes(
+    tmp_path: Path,
+) -> None:
+    # A class in bootstrap/ that has nothing to do with commons.types/commons.adapters
+    # -- e.g. a plain Container dataclass -- is exactly what bootstrap/ is for.
+    root = tmp_path / "p"
+    boot = root / "src/bootstrap"
+    boot.mkdir(parents=True)
+    (boot / "__init__.py").write_text(
+        "from dataclasses import dataclass\n\n\n"
+        "@dataclass(frozen=True)\nclass Container:\n    x: int\n",
+        encoding="utf-8",
+    )
+    (root / "src/sales/entrypoints").mkdir(parents=True)
+    assert _reports(root)["ARCH-059"].outcome is Outcome.PASS
+
+
+def test_given_commons_adapters__when_checked__then_arch_047_and_055_exempt_it(
+    tmp_path: Path,
+) -> None:
+    # commons/adapters/ follows adapters/-layer discipline: framework-ish stateful
+    # classes and *Repository-suffixed names are normal there, and it MUST NOT have
+    # an __init__.py, mirroring commons/ itself.
+    root = tmp_path / "p"
+    adapters = root / "src/commons/adapters"
+    adapters.mkdir(parents=True)
+    (adapters / "unit_of_work.py").write_text(
+        "class SqlAlchemyOrderRepository:\n    def bump(self) -> None:\n        self.calls += 1\n",
+        encoding="utf-8",
+    )
+    (root / "src/sales/entrypoints").mkdir(parents=True)
+    reports = _reports(root)
+    assert reports["ARCH-047"].outcome is Outcome.PASS
+    assert reports["ARCH-055"].outcome is Outcome.PASS
+
+
+def test_given_an_init_file_in_commons_adapters__when_checked__then_arch_055_fails(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "p"
+    adapters = root / "src/commons/adapters"
+    adapters.mkdir(parents=True)
+    (adapters / "__init__.py").write_text("", encoding="utf-8")
+    (root / "src/sales/entrypoints").mkdir(parents=True)
+    r = _reports(root)["ARCH-055"]
+    assert r.outcome is Outcome.WARN
+    assert any("adapters" in f.message and "__init__" in f.message for f in r.findings)
