@@ -3,7 +3,7 @@ from __future__ import annotations
 import dataclasses
 from datetime import datetime
 
-from sales.shared.ids import OrderId, UserId
+from commons.ids import OrderId, UserId
 
 
 @dataclasses.dataclass(frozen=True)

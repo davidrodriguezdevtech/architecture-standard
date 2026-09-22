@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from sales.orders.domain.model.aggregate import Order
-from sales.shared.ids import OrderId
+from commons.ids import OrderId
 
 
 class OrderRepository(ABC):

@@ -6,6 +6,112 @@ what kind of change requires which version bump; `arch-standard release-check`
 enforces it in CI on every push and pull request, `arch-standard changelog`
 renders these entries.
 
+## 0.3.0
+
+**Breaking: `<context>/shared/` and `shared_kernel/` are replaced by a single
+`src/commons/`.** `commons` becomes a PEP 420 namespace package assembled from two
+portions: `commons.types` / `commons.adapters` still ship from the installed
+`arch-commons`, and the project supplies its own `commons.<module>` portions from
+`src/commons/`. Everything that previously lived above one aggregate -- cross-aggregate
+ID types, value objects used by two or more aggregates, domain services spanning
+aggregates, and policy-bearing concepts shared across contexts -- now has one home
+instead of three. `arch-commons` is released as 0.3.0 alongside, since it drops its
+top-level `__init__.py`.
+
+### Changed
+- ARCH-014: retargeted -- `shared_kernel imports nothing from any context` becomes
+  `commons imports nothing from any context`. Same one-way guarantee, new subject.
+- ARCH-015: reworded -- `commons.types` now also imports nothing from the project's own
+  `commons.<module>` portions. `arch-commons` ships independently and cannot see them.
+- ARCH-016: narrowed -- the "no business logic" ban applies to `commons.types` /
+  `commons.adapters` only. A project's own `commons.<module>` MAY carry business
+  meaning; that is what it is for.
+- ARCH-046: cross-aggregate ID types move from `<context>/shared/ids.py` to
+  `commons/ids.py`.
+- ARCH-047: retargeted -- `Context shared area is strictly limited` becomes
+  `The commons area is strictly limited`. The admission test moves with it, and the
+  `services.py` name-suffix carve-out is now `commons/services.py`.
+- ARCH-055: gains its one exception -- `src/commons/` MUST NOT have an `__init__.py`,
+  because a regular package on either side shadows the other rather than merging.
+  Directories nested under it still follow the normal rule.
+
+No `level` changed in this half of the release.
+
+#### Migration notes
+
+For each existing project:
+
+1. Upgrade to `arch-commons` 0.3.0 and delete `src/commons/__init__.py` if one exists.
+2. Move `<context>/shared/ids.py` to `src/commons/ids.py`, `<context>/shared/value_objects.py`
+   to one `src/commons/<concept>.py` per concept, and `<context>/shared/services.py` to
+   `src/commons/services.py`. Delete the now-empty `<context>/shared/` directories.
+3. Move anything in `shared_kernel/` to `src/commons/` and delete the directory.
+4. Repoint imports: `from <context>.shared.ids import X` becomes `from commons.ids import X`.
+5. Add `"src/commons"` to `packages` in `pyproject.toml`, and set `mypy_path = "src"` with
+   `explicit_package_bases = true` if not already present -- without them mypy names
+   `src/commons/types/` after its own directory and reports it as shadowing the stdlib.
+6. Re-run `uv run arch-standard render-importlinter .` -- ARCH-014's contract now names
+   `commons`, and ARCH-015's forbidden list now includes the project's own commons modules.
+7. Re-run `uv run arch-standard check .`.
+
+**`providers.py` is removed from the standard entirely** -- there is no per-context or
+per-module wiring file anymore. ARCH-037 is retired. ARCH-009 and ARCH-011 are reworded
+for the replacement pattern, and a new rule, ARCH-057, requires that a web entrypoint
+context centralize response shaping (envelopes, error formatting) in one composition-root
+mechanism instead of duplicating it per handler. No rule `level` changed in this half
+either -- ARCH-057 lands as SHOULD, not MUST, per the "a new MUST never lands directly"
+rule (spec Section 16.3).
+
+### Added
+- ARCH-057 (SHOULD) -- HTTP entrypoints centralize response shaping in the composition root
+
+### Changed (entrypoints)
+- ARCH-005: wording/examples updated -- Application does not depend on adapters
+- ARCH-007: wording/examples updated -- Application does not construct concrete adapters
+- ARCH-009: wording/examples updated -- Entrypoints obtain wired services from the composition root; never construct or call outbound adapters directly
+- ARCH-011: wording/examples updated -- Entrypoints call application services, not other entrypoints
+
+### Removed
+- ARCH-037 -- Entrypoint wiring is defined in per-context providers.py, backed by bootstrap
+
+#### Migration notes (entrypoints)
+
+**New pattern.** Each entrypoint file defines its own small getter for the one service it
+needs (a `configure()` / `get_x_service()` pair, or the transport's own DI hook), set once
+at startup by the composition root (`main.py` -- still the only module allowed to import
+`bootstrap/`, ARCH-017). This keeps an aggregate module's wiring self-contained: extracting
+it into its own service later needs no untangling of a wiring file shared with other
+aggregate modules.
+
+**Why now:** a per-context `providers.py` under `entrypoints/` was also swept into ARCH-009's
+"entrypoints do not touch adapters" import-linter contract, which made the standard's own
+ARCH-037 example (`providers.py` constructing `SqlAlchemyOrderRepository` directly)
+contradict ARCH-009 as written. Moving wiring out of `entrypoints/` and into each
+entrypoint file directly (reading from what `main.py` configured) removes the contradiction
+and matches how these projects extract into microservices: an aggregate module travels with
+its own wiring, not entangled with siblings' construction in one shared file.
+
+**New response-shaping rule (ARCH-057):** a web entrypoint context that wants a uniform
+response shape applies it through one composition-root-registered mechanism (e.g. ASGI
+middleware wired in `main.py`), never by having each handler build it. The envelope's exact
+shape is a project decision this rule does not mandate; only the "one mechanism, one place"
+requirement is.
+
+For each existing project:
+
+1. Delete every `<context>/entrypoints/providers.py`.
+2. For each entrypoint file that called into it (e.g. `providers.order_service()`),
+   replace that with a locally defined `configure(service)` / `get_order_service()` pair
+   in that same file.
+3. In `main.py`, after `build_container()`, call each entrypoint module's `configure(...)`
+   once at startup with the matching service off the container, instead of routing through
+   a shared providers module.
+4. Re-run `uv run arch-standard render-importlinter .` -- the ARCH-011 contract dropped its
+   `providers` exemption, since every file under `entrypoints/` is now a genuine sibling.
+5. Re-run `uv run arch-standard check .` to confirm ARCH-009/011 still pass.
+6. If the project has web entrypoints, add a composition-root response-shaping mechanism
+   (ARCH-057, SHOULD) if it doesn't already have one.
+
 ## 0.2.0
 
 **Breaking: the `infrastructure` layer is renamed `adapters`.** The per-module layer

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from sales.shared.ids import UserId
+from commons.ids import UserId
 from sales.users.domain.model.aggregate import User
 
 

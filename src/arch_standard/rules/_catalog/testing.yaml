@@ -6,7 +6,7 @@ rules:
     category: testing
     description: >
       Tests never replace an aggregate, entity, domain value object, domain
-      service, or shared_kernel value object with a mock or stub; they exercise
+      service, or commons value object with a mock or stub; they exercise
       the real object.
     rationale: >
       Mocking the domain couples tests to its implementation and stops them

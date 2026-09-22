@@ -75,8 +75,8 @@ Inbound versus outbound:
   (SHOULD) - write it when the seam benefits from being explicit (testing,
   type-checking, multiple implementations, agent-readability), and skip it
   (duck-typed injection) for a trivial single-implementation dependency. Injection is
-  never optional: the concrete adapter is built in `providers.py` and injected;
-  `application/` never imports it.
+  never optional: the concrete adapter is built by the composition root
+  (`bootstrap/`, `main.py`) and injected; `application/` never imports it.
 
 Three homes, one rule each:
 

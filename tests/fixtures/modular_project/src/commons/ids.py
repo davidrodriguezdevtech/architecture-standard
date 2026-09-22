@@ -4,10 +4,15 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class UserId:
+class InvoiceId:
     value: str
 
 
 @dataclass(frozen=True)
 class OrderId:
+    value: str
+
+
+@dataclass(frozen=True)
+class UserId:
     value: str

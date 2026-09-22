@@ -7,7 +7,7 @@ ports, projections, exceptions), `services/` (one file per domain service; named
 after the aggregate when there's only one, e.g. `quote.py`), and `specifications.py`.
 
 `domain/` depends on: the standard library, `commons/types/`, and (rarely)
-`shared_kernel/`. Nothing else. No frameworks, no I/O, no ORM, no `datetime.now()` or
+`src/commons/`. Nothing else. No frameworks, no I/O, no ORM, no `datetime.now()` or
 `uuid4()` directly (use the `Clock` and `IdGenerator` ports), no application DTOs.
 (ARCH-001 to ARCH-004)
 

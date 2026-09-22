@@ -59,8 +59,9 @@ def _domain_files(project: ProjectLayout) -> list[Path]:
     files: list[Path] = []
     for context, module in project.iter_modules():
         files.extend(iter_python_files(project.module_domain_dir(context, module)))
-    for context in project.contexts:
-        files.extend(iter_python_files(project.shared_dir(context)))
+    # commons/ holds value objects and enumerations that any context's domain may
+    # import, so it is held to the same banned-symbol discipline as domain/ itself.
+    files.extend(iter_python_files(project.commons_dir()))
     return files
 
 

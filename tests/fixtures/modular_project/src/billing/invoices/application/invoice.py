@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from billing.invoices.domain.model.aggregate import Invoice
 from billing.invoices.domain.model.ports import InvoiceRepository
-from billing.shared.ids import InvoiceId
+from commons.ids import InvoiceId
 
 
 @dataclass(frozen=True)

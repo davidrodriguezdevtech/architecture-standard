@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from billing.invoices.domain.model.aggregate import Invoice
-from billing.shared.ids import InvoiceId
+from commons.ids import InvoiceId
 
 
 class InvoiceRepository(ABC):

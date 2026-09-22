@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sales.shared.ids import UserId
+from commons.ids import UserId
 from sales.users.domain.model.ports import UserRepository
 from sales.users.domain.model.aggregate import User
 

@@ -58,7 +58,7 @@ def _make_modular(tmp_path: Path) -> Path:
     root = tmp_path / "proj"
     for rel in [
         "src/sales/entrypoints/http.py",
-        "src/sales/shared/ids.py",
+        "src/commons/ids.py",
         "src/sales/read/customer_overview.py",
         "src/sales/users/domain/model/user.py",
         "src/sales/users/application/user_service.py",
@@ -88,7 +88,7 @@ def test_given_modular_tree__when_module_dirs__then_paths_are_nested(tmp_path: P
     assert layout.module_domain_dir("sales", "users") == root / "src/sales/users/domain"
     assert layout.module_application_dir("sales", "users") == root / "src/sales/users/application"
     assert layout.module_adapters_dir("sales", "users") == root / "src/sales/users/adapters"
-    assert layout.shared_dir("sales") == root / "src/sales/shared"
+    assert layout.commons_dir() == root / "src/commons"
     assert layout.read_dir("sales") == root / "src/sales/read"
 
 

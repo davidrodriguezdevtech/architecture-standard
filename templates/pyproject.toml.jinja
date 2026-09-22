@@ -23,6 +23,9 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
+# Add "src/commons" here as soon as this project gains its first commons/<module>.py.
+# commons/ is a PEP 420 namespace portion that merges with the installed
+# arch-commons, so it must NOT have an __init__.py (ARCH-055).
 packages = ["src/{{ context_name }}", "src/bootstrap"]
 
 [dependency-groups]

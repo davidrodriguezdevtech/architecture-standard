@@ -92,33 +92,31 @@ def _check_no_legacy_adapters_layer(project: ProjectLayout) -> list[Finding]:
     return findings
 
 
-def _check_shared_is_limited(project: ProjectLayout) -> list[Finding]:
+def _check_commons_is_limited(project: ProjectLayout) -> list[Finding]:
     findings: list[Finding] = []
-    for context in project.contexts:
-        services_path = project.shared_dir(context) / "services.py"
-        for path in iter_python_files(project.shared_dir(context)):
-            rel = str(path.relative_to(project.root))
-            # C2: <context>/shared/services.py is the documented home for domain
-            # services spanning aggregates, so it is exempt from the *Service
-            # name-suffix ban — but a stateful "service" hiding an aggregate is
-            # still wrong there, so the mutation check still applies.
-            is_services_file = path == services_path
-            for cls in _classes(path):
-                if not is_services_file and cls.name.endswith(("Service", "Repository")):
-                    findings.append(
-                        Finding(
-                            "ARCH-047", rel, cls.lineno, f"{cls.name} does not belong in shared/"
-                        )
+    commons = project.commons_dir()
+    services_path = commons / "services.py"
+    for path in iter_python_files(commons):
+        rel = str(path.relative_to(project.root))
+        # C2: commons/services.py is the documented home for domain services
+        # spanning aggregates, so it is exempt from the *Service name-suffix ban
+        # -- but a stateful "service" hiding an aggregate is still wrong there,
+        # so the mutation check still applies.
+        is_services_file = path == services_path
+        for cls in _classes(path):
+            if not is_services_file and cls.name.endswith(("Service", "Repository")):
+                findings.append(
+                    Finding("ARCH-047", rel, cls.lineno, f"{cls.name} does not belong in commons/")
+                )
+            elif _mutates_self(cls):
+                findings.append(
+                    Finding(
+                        "ARCH-047",
+                        rel,
+                        cls.lineno,
+                        f"{cls.name} mutates its own state; commons/ holds value objects",
                     )
-                elif _mutates_self(cls):
-                    findings.append(
-                        Finding(
-                            "ARCH-047",
-                            rel,
-                            cls.lineno,
-                            f"{cls.name} mutates its own state; shared/ holds value objects",
-                        )
-                    )
+                )
     return findings
 
 
@@ -210,16 +208,35 @@ def _check_init_files_present(project: ProjectLayout) -> list[Finding]:
 
     Directory-name-agnostic on purpose: any directory that (recursively)
     contains a .py file is treated as a package and must have one, whether
-    it's a context, an aggregate module, domain/model/, services/, shared/,
-    read/, or anything else the tree grows. src/ itself is the source root,
-    not a package, and is exempt.
+    it's a context, an aggregate module, domain/model/, services/, read/, or
+    anything else the tree grows. src/ itself is the source root, not a
+    package, and is exempt.
+
+    src/commons/ is the one inverted case: it is a PEP 420 namespace portion
+    that merges with the installed arch-commons distribution, so an __init__.py
+    there would shadow commons.types/commons.adapters outright instead of
+    merging with them. It is reported when it HAS one. Directories nested under
+    it follow the normal rule.
     """
     findings: list[Finding] = []
     src = project.src
     if not src.is_dir():
         return findings
+    commons = project.commons_dir()
+    if (commons / "__init__.py").exists():
+        findings.append(
+            Finding(
+                "ARCH-055",
+                str((commons / "__init__.py").relative_to(project.root)),
+                None,
+                "commons/ is a PEP 420 namespace portion and must not have an "
+                "__init__.py; it would shadow the installed arch-commons package",
+            )
+        )
     for path in sorted(p for p in src.rglob("*") if p.is_dir()):
         if path.name == "__pycache__" or path.name.startswith("."):
+            continue
+        if path == commons:
             continue
         has_py = any(p.suffix == ".py" for p in path.rglob("*.py") if "__pycache__" not in p.parts)
         if not has_py:
@@ -302,7 +319,7 @@ def _check_entrypoint_single_aggregate(project: ProjectLayout) -> list[Finding]:
             continue
         prefix = f"{context}."
         for path in sorted(entry_root.rglob("*.py")):
-            if path.stem in ("__init__", "providers") or "__pycache__" in path.parts:
+            if path.stem == "__init__" or "__pycache__" in path.parts:
                 continue
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             touched: set[str] = set()
@@ -326,35 +343,8 @@ def _check_entrypoint_single_aggregate(project: ProjectLayout) -> list[Finding]:
     return findings
 
 
-# ARCH-037: "each context exposes its wired services through
-# entrypoints/providers.py ... entrypoints import services only from
-# providers.py" has two halves. This check proves only the structural half --
-# a context with an entrypoints/ dir must also have entrypoints/providers.py.
-# It does NOT prove the import-discipline half (entrypoints importing services
-# only from providers.py); that is the ARCH-009/011 import-contract family in
-# import_contracts.py. A context lacking entrypoints/ entirely is genuinely
-# not applicable and SKIPs rather than vacuously PASSing.
-def _check_providers_present(project: ProjectLayout) -> list[Finding]:
-    findings: list[Finding] = []
-    for context in project.contexts:
-        entrypoints = project.entrypoints_dir(context)
-        if not entrypoints.is_dir():
-            continue
-        if not (entrypoints / "providers.py").is_file():
-            findings.append(
-                Finding(
-                    "ARCH-037",
-                    str(entrypoints.relative_to(project.root)),
-                    None,
-                    f"{context}/entrypoints/ has no providers.py",
-                )
-            )
-    return findings
-
-
 class StructureCheck:
     rule_ids: tuple[str, ...] = (
-        "ARCH-037",
         "ARCH-047",
         "ARCH-048",
         "ARCH-051",
@@ -367,7 +357,7 @@ class StructureCheck:
         if not project.is_scannable():
             return [CheckReport(rule_id=rid, outcome=Outcome.SKIP) for rid in self.rule_ids]
         by_rule = {
-            "ARCH-047": _check_shared_is_limited(project),
+            "ARCH-047": _check_commons_is_limited(project),
             "ARCH-048": [
                 *_check_no_context_application(project),
                 *_check_no_legacy_adapters_layer(project),
@@ -385,15 +375,4 @@ class StructureCheck:
             )
             for rid, findings in by_rule.items()
         ]
-        if not any(project.entrypoints_dir(c).is_dir() for c in project.contexts):
-            reports.append(CheckReport(rule_id="ARCH-037", outcome=Outcome.SKIP))
-        else:
-            findings = _check_providers_present(project)
-            reports.append(
-                CheckReport(
-                    rule_id="ARCH-037",
-                    outcome=outcome_for(catalog.get("ARCH-037").level, bool(findings)),
-                    findings=tuple(findings),
-                )
-            )
         return reports

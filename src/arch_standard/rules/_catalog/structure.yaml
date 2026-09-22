@@ -8,14 +8,14 @@ rules:
     description: >
       An aggregate module does not import another aggregate module's application/ or
       adapters/ package. References between aggregates are by ID, and those ID
-      types live in the context's shared/ids.py.
+      types live in commons/ids.py.
     rationale: >
       Aggregate modules are consistency boundaries. Reaching into a sibling's service or
       repository re-couples them and makes the one-transaction-one-aggregate rule
       unenforceable.
     correct: |
       # sales/orders/domain/model/aggregate.py
-      from sales.shared.ids import UserId
+      from commons.ids import UserId
       class Order:
           customer_id: UserId
     incorrect: |
@@ -26,44 +26,57 @@ rules:
       detail: forbidden contract between sibling modules' application and adapters
     related: [ARCH-020, ARCH-021]
   - id: ARCH-047
-    name: Context shared area is strictly limited
+    name: The commons area is strictly limited
     level: MUST
     automation: partial
     category: structure
     description: >
-      <context>/shared/ contains only ID types, policy-free value objects used by two or
-      more aggregates of that context, and domain services spanning them. Those spanning
-      services live specifically in shared/services.py — the one file in shared/ exempt
-      from the *Service/*Repository name-suffix ban, since it is the standard's own
-      documented home for them. Every other file in shared/ keeps the full name-suffix
-      ban, and shared/services.py classes still may not mutate their own state.
+      src/commons/ holds only ID types, value objects, enumerations and reference
+      catalogues, and domain services spanning aggregates. Those spanning services live
+      specifically in commons/services.py — the one file in commons/ exempt from the
+      *Service/*Repository name-suffix ban, since it is the standard's own documented
+      home for them. Every other file in commons/ keeps the full name-suffix ban, and
+      commons/services.py classes still may not mutate their own state. commons/ never
+      holds an aggregate root, a repository or an application service.
     rationale: >
-      It is the only context-level code area, so without a narrow admission test it
-      becomes the junk drawer that couples every aggregate module together. Naming the
-      one legitimate exception explicitly (rather than banning *Service outright) keeps
-      the carve-out narrow instead of inviting every file in shared/ to claim it.
+      commons/ is visible to every context, so without a narrow admission test it
+      becomes the junk drawer that couples the whole project together. Unlike
+      commons/types/ (ARCH-016) it may carry business meaning — that is what it is for —
+      but business meaning is not licence to put behaviour-owning objects there. Naming
+      the one legitimate exception explicitly (rather than banning *Service outright)
+      keeps the carve-out narrow instead of inviting every file in commons/ to claim it.
     correct: |
-      # sales/shared/ids.py
+      # commons/ids.py
       @dataclass(frozen=True)
       class UserId:
           value: str
 
-      # sales/shared/services.py — the documented carve-out
+      # commons/geo.py — a transversal value object with real business meaning
+      @dataclass(frozen=True)
+      class Location:
+          country: Country
+          department: Department
+          municipality: Municipality
+
+      # commons/services.py — the documented carve-out
       class PricingService:
           def quote(self, order: Order) -> Money: ...
     incorrect: |
-      # sales/shared/user_service.py — *Service outside services.py is still banned
+      # commons/user_service.py — *Service outside services.py is still banned
       class UserService: ...
 
-      # sales/shared/services.py — mutation is still banned even here
+      # commons/order.py — an aggregate root never lives in commons/
+      class Order: ...
+
+      # commons/services.py — mutation is still banned even here
       class PricingService:
           def bump(self) -> None:
               self.calls += 1
     validation:
       tool: ast-checker
       detail: >-
-        no class named *Service/*Repository outside shared/services.py; no aggregate
-        roots; shared/services.py classes must not mutate their own state
+        no class named *Service/*Repository outside commons/services.py; no aggregate
+        roots; commons/services.py classes must not mutate their own state
   - id: ARCH-048
     name: No context-level application package
     level: MUST
@@ -155,8 +168,8 @@ rules:
       An aggregate module's domain services live in domain/services/, one file per
       service - not a single domain/services.py file. A single service is named after
       the aggregate (order.py for the Order aggregate); 2+ services each get a
-      descriptive name instead. This does not apply to <context>/shared/services.py
-      (ARCH-047), the separate context-level home for services spanning aggregates.
+      descriptive name instead. This does not apply to commons/services.py
+      (ARCH-047), the separate project-level home for services spanning aggregates.
     rationale: >
       A single services.py invites every future domain service for this aggregate to
       pile into one file. A directory gives each service its own file from the start,
@@ -185,20 +198,33 @@ rules:
     description: >
       Every directory under src/ that contains a .py file (directly or in a
       subdirectory) has an __init__.py, including empty ones. Implicit namespace
-      packages (PEP 420) are not used.
+      packages (PEP 420) are not used. The single exception is src/commons/ itself,
+      which MUST NOT have one: it is a PEP 420 namespace portion that merges with the
+      installed arch-commons distribution. Directories nested under src/commons/ follow
+      the normal rule and do have an __init__.py.
     rationale: >
       An explicit __init__.py marks a directory as a package on purpose, rather than
       by the accident of holding a .py file; it also avoids the edge cases implicit
       namespace packages create for some tooling and IDEs. A missing one is easy to
-      overlook when scaffolding a module by hand.
+      overlook when scaffolding a module by hand. commons/ is the deliberate exception:
+      arch-commons ships commons.types and commons.adapters while the project supplies
+      its own commons.<module> portions, and a regular package on either side would
+      shadow the other outright rather than merge with it.
     correct: |
       sales/orders/domain/model/__init__.py   # empty, present
       sales/orders/domain/model/aggregate.py
+
+      commons/geo.py                          # no commons/__init__.py -- namespace portion
+      commons/ids/__init__.py                 # nested dirs still have one
     incorrect: |
       sales/orders/domain/model/aggregate.py  # no __init__.py alongside it
+
+      commons/__init__.py                     # shadows the installed arch-commons
     validation:
       tool: ast-checker
-      detail: filesystem check - every directory under src/ holding a .py file has __init__.py
+      detail: >-
+        filesystem check - every directory under src/ holding a .py file has
+        __init__.py, except src/commons/ itself, which must not have one
   - id: ARCH-056
     name: An entrypoint file serves at most one aggregate module
     level: SHOULD

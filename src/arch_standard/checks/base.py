@@ -9,9 +9,9 @@ from typing import Protocol
 from arch_standard.rules.catalog import Catalog
 from arch_standard.rules.model import Level
 
-_NON_CONTEXT_DIRS = {"commons", "shared_kernel", "bootstrap"}
+_NON_CONTEXT_DIRS = {"commons", "bootstrap"}
 _SKIP_DIRS = {".venv", "venv", "__pycache__", ".git", ".mypy_cache", ".ruff_cache"}
-_CONTEXT_RESERVED = frozenset({"entrypoints", "shared", "read"})
+_CONTEXT_RESERVED = frozenset({"entrypoints", "read"})
 _MODULE_LAYER_DIRS = ("domain", "application", "adapters")
 
 
@@ -111,8 +111,16 @@ class ProjectLayout:
     def module_adapters_dir(self, context: str, module: str) -> Path:
         return self.src / context / module / "adapters"
 
-    def shared_dir(self, context: str) -> Path:
-        return self.src / context / "shared"
+    def commons_dir(self) -> Path:
+        """The project's own portion of the ``commons`` namespace package.
+
+        Not context-scoped: ``commons/`` sits beside the contexts, is visible to
+        all of them, and is the single home for anything above one aggregate
+        (ARCH-047). It merges at import time with the ``commons.types`` and
+        ``commons.adapters`` portions shipped by the installed ``arch-commons``
+        distribution, which is why neither side carries an ``__init__.py``.
+        """
+        return self.src / "commons"
 
     def read_dir(self, context: str) -> Path:
         return self.src / context / "read"

@@ -19,7 +19,7 @@ parts. Example:
 ## 11.3 Mock / do not mock
 
 - **Never mock:** domain objects (aggregates, VOs, services), the code under test,
-  `shared_kernel` VOs. (ARCH-038)
+  `commons` VOs. (ARCH-038)
 - **Use in-memory fakes, not mocks:** repositories (`InMemoryOrderRepository` over a
   dict, bound to an `InMemoryUnitOfWork`), `EventBus` (`RecordingEventBus`), `Clock`
   (`FixedClock`). The same contract test runs against the fake and the real adapter -
