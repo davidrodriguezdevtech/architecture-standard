@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from billing.invoices.application.invoice_service import CreateInvoice, InvoiceService
+from billing.invoices.application.invoice import CreateInvoice, InvoiceService
 
 
 def create(service: InvoiceService, invoice_id: str, amount: float) -> None:

@@ -35,7 +35,7 @@ rules:
       The domain is the innermost layer; use-case orchestration depends on it,
       never the reverse.
     correct: |
-      # sales/orders/application/order_service.py
+      # sales/orders/application/order.py
       from sales.orders.domain.model.aggregate import Order
     incorrect: |
       # sales/orders/domain/model/aggregate.py
@@ -103,10 +103,10 @@ rules:
       Orchestration names ports only; the concrete adapter is injected from
       providers.py and is never imported by the use case.
     correct: |
-      # sales/orders/application/order_service.py
+      # sales/orders/application/order.py
       def __init__(self, orders: OrderRepository, uow: UnitOfWork) -> None: ...
     incorrect: |
-      # sales/orders/application/order_service.py
+      # sales/orders/application/order.py
       from sales.orders.adapters.order_repository import SqlAlchemyOrderRepository
     validation:
       tool: import-linter
@@ -127,7 +127,7 @@ rules:
       # sales/entrypoints/http.py
       from sales.orders.application.order_service import OrderService
     incorrect: |
-      # sales/orders/application/order_service.py
+      # sales/orders/application/order.py
       from sales.entrypoints.http import parse_body
     validation:
       tool: import-linter
@@ -149,7 +149,7 @@ rules:
       orders = SqlAlchemyOrderRepository(uow)
       return OrderService(uow=uow, orders=orders)
     incorrect: |
-      # sales/orders/application/order_service.py
+      # sales/orders/application/order.py
       self._orders = SqlAlchemyOrderRepository(SqlAlchemyUnitOfWork())
     validation:
       tool: grimp
@@ -372,7 +372,7 @@ rules:
       # main.py
       from bootstrap.container import build_container
     incorrect: |
-      # sales/orders/application/order_service.py
+      # sales/orders/application/order.py
       from bootstrap.container import build_container
     validation:
       tool: import-linter
@@ -392,7 +392,7 @@ rules:
       # sales/orders/adapters/unit_of_work.py
       from commons.adapters.unit_of_work import SqlAlchemyUnitOfWork
     incorrect: |
-      # sales/orders/application/order_service.py
+      # sales/orders/application/order.py
       from commons.adapters.unit_of_work import SqlAlchemyUnitOfWork
     validation:
       tool: import-linter

@@ -32,14 +32,15 @@ project/
 │   │   │   │   │   ├── projections.py     # domain-derived read projections (when they exist)
 │   │   │   │   │   └── exceptions.py
 │   │   │   │   ├── services/              # domain services for this aggregate (optional;
-│   │   │   │   │   └── service.py         #   a directory - one file per service. A single
-│   │   │   │   │                          #   service is service.py; 2+ services each get a
-│   │   │   │   │                          #   descriptive name. Pure domain logic only - no
-│   │   │   │   │                          #   I/O, no persistence queries (the repository's
-│   │   │   │   │                          #   job, not a domain service's)
+│   │   │   │   │   └── <aggregate>.py     #   a directory - one file per service, named after
+│   │   │   │   │                          #   the aggregate when there's only one (e.g.
+│   │   │   │   │                          #   quote.py for Quote); 2+ services each get a
+│   │   │   │   │                          #   descriptive name instead. Pure domain logic
+│   │   │   │   │                          #   only - no I/O, no persistence queries (the
+│   │   │   │   │                          #   repository's job, not a domain service's)
 │   │   │   │   └── specifications.py      # optional
 │   │   │   ├── application/
-│   │   │   │   └── <aggregate>_service.py # one method per use case
+│   │   │   │   └── <aggregate>.py         # one method per use case
 │   │   │   └── adapters/
 │   │   │       ├── <aggregate>_repository.py
 │   │   │       ├── mapping.py             # aggregate to stored-form translation
@@ -99,9 +100,9 @@ and those ID types live in `<context>/shared/ids.py`. (ARCH-046)
 | A new business boundary | `src/<context>/` |
 | A new aggregate | `src/<context>/<aggregate_module>/` (a new folder, full shape) |
 | A rule that protects an invariant of one aggregate | a method on the aggregate in `<module>/domain/model/aggregate.py` |
-| A calculation over one aggregate that is not a method | `<module>/domain/services/` (one file per domain service; `service.py` if there's only one) |
+| A calculation over one aggregate that is not a method | `<module>/domain/services/` (one file per domain service; named after the aggregate if there's only one, e.g. `quote.py`) |
 | A calculation spanning aggregates of the same context | `<context>/shared/services.py` |
-| A use case (state change on one aggregate) | a method on `<module>/application/<aggregate>_service.py` |
+| A use case (state change on one aggregate) | a method on `<module>/application/<aggregate>.py` |
 | A persistence/broker/third-party integration | one module in `<module>/adapters/` |
 | A contract the domain needs | `<module>/domain/model/ports.py` |
 | A non-domain outbound contract used by one use case | a `Protocol` colocated in that `application/` module |

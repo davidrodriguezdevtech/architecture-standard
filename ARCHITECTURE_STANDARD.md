@@ -155,14 +155,15 @@ project/
 │   │   │   │   │   ├── projections.py     # domain-derived read projections (when they exist)
 │   │   │   │   │   └── exceptions.py
 │   │   │   │   ├── services/              # domain services for this aggregate (optional;
-│   │   │   │   │   └── service.py         #   a directory - one file per service. A single
-│   │   │   │   │                          #   service is service.py; 2+ services each get a
-│   │   │   │   │                          #   descriptive name. Pure domain logic only - no
-│   │   │   │   │                          #   I/O, no persistence queries (the repository's
-│   │   │   │   │                          #   job, not a domain service's)
+│   │   │   │   │   └── <aggregate>.py     #   a directory - one file per service, named after
+│   │   │   │   │                          #   the aggregate when there's only one (e.g.
+│   │   │   │   │                          #   quote.py for Quote); 2+ services each get a
+│   │   │   │   │                          #   descriptive name instead. Pure domain logic
+│   │   │   │   │                          #   only - no I/O, no persistence queries (the
+│   │   │   │   │                          #   repository's job, not a domain service's)
 │   │   │   │   └── specifications.py      # optional
 │   │   │   ├── application/
-│   │   │   │   └── <aggregate>_service.py # one method per use case
+│   │   │   │   └── <aggregate>.py         # one method per use case
 │   │   │   └── adapters/
 │   │   │       ├── <aggregate>_repository.py
 │   │   │       ├── mapping.py             # aggregate to stored-form translation
@@ -222,9 +223,9 @@ and those ID types live in `<context>/shared/ids.py`. (ARCH-046)
 | A new business boundary | `src/<context>/` |
 | A new aggregate | `src/<context>/<aggregate_module>/` (a new folder, full shape) |
 | A rule that protects an invariant of one aggregate | a method on the aggregate in `<module>/domain/model/aggregate.py` |
-| A calculation over one aggregate that is not a method | `<module>/domain/services/` (one file per domain service; `service.py` if there's only one) |
+| A calculation over one aggregate that is not a method | `<module>/domain/services/` (one file per domain service; named after the aggregate if there's only one, e.g. `quote.py`) |
 | A calculation spanning aggregates of the same context | `<context>/shared/services.py` |
-| A use case (state change on one aggregate) | a method on `<module>/application/<aggregate>_service.py` |
+| A use case (state change on one aggregate) | a method on `<module>/application/<aggregate>.py` |
 | A persistence/broker/third-party integration | one module in `<module>/adapters/` |
 | A contract the domain needs | `<module>/domain/model/ports.py` |
 | A non-domain outbound contract used by one use case | a `Protocol` colocated in that `application/` module |
@@ -330,7 +331,7 @@ is nothing atomic to orchestrate. The rules, in order:
 
 1. Default - choreography by domain events. `users` emits `UserRegistered`;
    `entrypoints/events.py` consumes it and makes one call to
-   `subscriptions/application/subscription_service.py`. One service call per
+   `subscriptions/application/subscription.py`. One service call per
    entrypoint handler. This is an inbound adapter doing its job, not orchestration.
 2. Never sequence multi-step flow inside an entrypoint handler. Sequencing and
    compensation are logic: they would only be testable through the transport, they get
@@ -421,8 +422,8 @@ External stimulus -> Entrypoint -> Application use case -> Domain
 ## 5.1 Contents and dependencies
 
 `domain/` contains: `model/` (aggregates, entities, value objects, domain events,
-ports, projections, exceptions), `services/` (one file per domain service;
-`service.py` when there's only one), and `specifications.py`.
+ports, projections, exceptions), `services/` (one file per domain service; named
+after the aggregate when there's only one, e.g. `quote.py`), and `specifications.py`.
 
 `domain/` depends on: the standard library, `commons/types/`, and (rarely)
 `shared_kernel/`. Nothing else. No frameworks, no I/O, no ORM, no `datetime.now()` or
@@ -535,7 +536,7 @@ service that splits later," and no context-level application layer. The day-1 sh
 is the steady-state shape. (ARCH-030, SHOULD)
 
 ```python
-# sales/orders/application/order_service.py
+# sales/orders/application/order.py
 @dataclass(frozen=True)
 class CreateOrder:
     customer_id: str
@@ -923,6 +924,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 | ARCH-050 | Declared context dependency graph | MUST | full |
 | ARCH-052 | Read layer does not import the write side | MUST | full |
 | ARCH-054 | Domain services for an aggregate live in a services/ directory | SHOULD | partial |
+| ARCH-055 | Every Python package directory has an __init__.py | SHOULD | full |
 
 ### Rule reference
 
@@ -951,7 +953,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** The domain is the innermost layer; use-case orchestration depends on it, never the reverse.
 - **Correct:**
   ```
-  # sales/orders/application/order_service.py
+  # sales/orders/application/order.py
   from sales.orders.domain.model.aggregate import Order
   ```
 - **Incorrect:**
@@ -1004,12 +1006,12 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** Orchestration names ports only; the concrete adapter is injected from providers.py and is never imported by the use case.
 - **Correct:**
   ```
-  # sales/orders/application/order_service.py
+  # sales/orders/application/order.py
   def __init__(self, orders: OrderRepository, uow: UnitOfWork) -> None: ...
   ```
 - **Incorrect:**
   ```
-  # sales/orders/application/order_service.py
+  # sales/orders/application/order.py
   from sales.orders.adapters.order_repository import SqlAlchemyOrderRepository
   ```
 
@@ -1025,7 +1027,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # sales/orders/application/order_service.py
+  # sales/orders/application/order.py
   from sales.entrypoints.http import parse_body
   ```
 
@@ -1042,7 +1044,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # sales/orders/application/order_service.py
+  # sales/orders/application/order.py
   self._orders = SqlAlchemyOrderRepository(SqlAlchemyUnitOfWork())
   ```
 - **Related:** ARCH-005
@@ -1217,7 +1219,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # sales/orders/application/order_service.py
+  # sales/orders/application/order.py
   from bootstrap.container import build_container
   ```
 
@@ -1371,7 +1373,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # sales/orders/application/order_service.py
+  # sales/orders/application/order.py
   from billing.invoices.application.invoice_service import InvoiceService
   ```
 - **Related:** ARCH-012, ARCH-045
@@ -1388,7 +1390,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # sales/orders/application/order_service.py
+  # sales/orders/application/order.py
   import stripe
   stripe.Charge.create(amount=total, currency="eur")
   ```
@@ -1544,7 +1546,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # sales/orders/application/order_service.py
+  # sales/orders/application/order.py
   from commons.adapters.unit_of_work import SqlAlchemyUnitOfWork
   ```
 
@@ -1679,7 +1681,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
   # commons/types/clock.py                    -> Clock
   # sales/orders/domain/model/ports.py        -> OrderRepository
-  # sales/orders/application/order_service.py -> class OrderNotifier(Protocol): ...
+  # sales/orders/application/order.py -> class OrderNotifier(Protocol): ...
   ```
 - **Incorrect:**
   ```
@@ -1751,7 +1753,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # sales/orders/application/order_service.py
+  # sales/orders/application/order.py
   from sales.users.application.user_service import UserService
   ```
 - **Related:** ARCH-020, ARCH-021
@@ -1790,7 +1792,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** DDD has no "application service of the context"; application services are per use case and belong with the model they coordinate. A context-level one becomes a coordination layer that hides non-atomic multi-aggregate flow.
 - **Correct:**
   ```
-  sales/orders/application/order_service.py
+  sales/orders/application/order.py
   ```
 - **Incorrect:**
   ```
@@ -1885,18 +1887,34 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-054 — Domain services for an aggregate live in a services/ directory
 - **Level:** SHOULD · **Automation:** partial · **Tier:** full · **Category:** structure
-- **Validation:** `ast-checker` — domain/services.py must not exist as a file in an aggregate module
-- **Description:** An aggregate module's domain services live in domain/services/, one file per service (service.py when there is only one) - not a single domain/services.py file. This does not apply to <context>/shared/services.py (ARCH-047), the separate context-level home for services spanning aggregates.
-- **Rationale:** A single services.py invites every future domain service for this aggregate to pile into one file. A directory gives each service its own file from the start, the same way domain/model/ already gives each concept its own file, with no restructuring needed when a second service arrives.
+- **Validation:** `ast-checker` — domain/services.py must not exist as a file; when domain/services/ has exactly one file, its name must match the aggregate's own name
+- **Description:** An aggregate module's domain services live in domain/services/, one file per service - not a single domain/services.py file. A single service is named after the aggregate (order.py for the Order aggregate); 2+ services each get a descriptive name instead. This does not apply to <context>/shared/services.py (ARCH-047), the separate context-level home for services spanning aggregates.
+- **Rationale:** A single services.py invites every future domain service for this aggregate to pile into one file. A directory gives each service its own file from the start, the same way domain/model/ already gives each concept its own file, with no restructuring needed when a second service arrives. Naming the lone service after the aggregate (rather than a generic "service") makes it identifiable without opening it, the same reason domain/model/ports.py or events.py are named for what they hold, not for their role alone.
 - **Correct:**
   ```
-  # sales/orders/domain/services/pricing.py
+  # sales/orders/domain/services/order.py — file named for the aggregate,
+  # since this is the Order module's only domain service
   class PricingCalculator: ...
   ```
 - **Incorrect:**
   ```
-  # sales/orders/domain/services.py
+  # sales/orders/domain/services.py — must be a directory, not a file
   class PricingCalculator: ...
+  ```
+
+#### ARCH-055 — Every Python package directory has an __init__.py
+- **Level:** SHOULD · **Automation:** full · **Tier:** full · **Category:** structure
+- **Validation:** `ast-checker` — filesystem check - every directory under src/ holding a .py file has __init__.py
+- **Description:** Every directory under src/ that contains a .py file (directly or in a subdirectory) has an __init__.py, including empty ones. Implicit namespace packages (PEP 420) are not used.
+- **Rationale:** An explicit __init__.py marks a directory as a package on purpose, rather than by the accident of holding a .py file; it also avoids the edge cases implicit namespace packages create for some tooling and IDEs. A missing one is easy to overlook when scaffolding a module by hand.
+- **Correct:**
+  ```
+  sales/orders/domain/model/__init__.py   # empty, present
+  sales/orders/domain/model/aggregate.py
+  ```
+- **Incorrect:**
+  ```
+  sales/orders/domain/model/aggregate.py  # no __init__.py alongside it
   ```
 
 ---
@@ -2145,7 +2163,7 @@ problem, not a layout problem:
 
 | Signal | Threshold (starting point, tune per project) | What it actually means |
 |---|---|---|
-| `<module>/application/<aggregate>_service.py` | > ~7 public methods, > ~200 lines, or > 5 constructor params (checker warns) | The aggregate is probably doing too much. Look at the aggregate boundary before splitting the service. |
+| `<module>/application/<aggregate>.py` | > ~7 public methods, > ~200 lines, or > 5 constructor params (checker warns) | The aggregate is probably doing too much. Look at the aggregate boundary before splitting the service. |
 | `<module>/domain/model/aggregate.py` | > ~400 lines or > ~7 invariants | God Aggregate. Split into two aggregate modules. |
 | `<module>/domain/model/ports.py` | > ~8 protocols in one aggregate module | The aggregate depends on too much of the outside world. |
 | `<context>/shared/` | anything beyond IDs, policy-free VOs, and cross-aggregate domain services | ARCH-047 violation, or the aggregates are wrongly separated. |

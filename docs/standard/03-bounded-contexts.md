@@ -57,7 +57,7 @@ is nothing atomic to orchestrate. The rules, in order:
 
 1. Default - choreography by domain events. `users` emits `UserRegistered`;
    `entrypoints/events.py` consumes it and makes one call to
-   `subscriptions/application/subscription_service.py`. One service call per
+   `subscriptions/application/subscription.py`. One service call per
    entrypoint handler. This is an inbound adapter doing its job, not orchestration.
 2. Never sequence multi-step flow inside an entrypoint handler. Sequencing and
    compensation are logic: they would only be testable through the transport, they get

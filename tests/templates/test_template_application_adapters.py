@@ -22,7 +22,7 @@ def test_given_defaults__when_copied__then_application_and_adapters_files_compil
         skip_tasks=True,
     )
 
-    service_path = dest / "src/sales/orders/application/order_service.py"
+    service_path = dest / "src/sales/orders/application/order.py"
     repository_path = dest / "src/sales/orders/adapters/order_repository.py"
     py_compile.compile(str(service_path), doraise=True)
     py_compile.compile(str(repository_path), doraise=True)

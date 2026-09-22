@@ -6,7 +6,7 @@ problem, not a layout problem:
 
 | Signal | Threshold (starting point, tune per project) | What it actually means |
 |---|---|---|
-| `<module>/application/<aggregate>_service.py` | > ~7 public methods, > ~200 lines, or > 5 constructor params (checker warns) | The aggregate is probably doing too much. Look at the aggregate boundary before splitting the service. |
+| `<module>/application/<aggregate>.py` | > ~7 public methods, > ~200 lines, or > 5 constructor params (checker warns) | The aggregate is probably doing too much. Look at the aggregate boundary before splitting the service. |
 | `<module>/domain/model/aggregate.py` | > ~400 lines or > ~7 invariants | God Aggregate. Split into two aggregate modules. |
 | `<module>/domain/model/ports.py` | > ~8 protocols in one aggregate module | The aggregate depends on too much of the outside world. |
 | `<context>/shared/` | anything beyond IDs, policy-free VOs, and cross-aggregate domain services | ARCH-047 violation, or the aggregates are wrongly separated. |

@@ -18,7 +18,7 @@ def _reports(root: Path) -> dict[str, CheckReport]:
 
 def test_given_the_modular_fixture__when_checked__then_structure_rules_pass() -> None:
     reports = _reports(FIX / "modular_project")
-    for rid in ("ARCH-037", "ARCH-047", "ARCH-048", "ARCH-051"):
+    for rid in ("ARCH-037", "ARCH-047", "ARCH-048", "ARCH-051", "ARCH-054", "ARCH-055"):
         assert reports[rid].outcome is Outcome.PASS, rid
 
 
@@ -246,3 +246,117 @@ def test_given_no_entrypoints__when_checked__then_arch_037_skips(tmp_path: Path)
     catalog = Catalog.load(packaged_rules_dir())
     reports = {r.rule_id: r for r in StructureCheck().run(layout, catalog)}
     assert reports["ARCH-037"].outcome is Outcome.SKIP
+
+
+def test_given_a_domain_services_file__when_checked__then_arch_054_fails(tmp_path: Path) -> None:
+    root = tmp_path / "p"
+    model = root / "src/sales/orders/domain/model"
+    model.mkdir(parents=True)
+    (model / "order.py").write_text("class Order: pass\n", encoding="utf-8")
+    (root / "src/sales/orders/domain/services.py").write_text(
+        "class PricingCalculator: pass\n", encoding="utf-8"
+    )
+    report = _reports(root)["ARCH-054"]
+    assert report.outcome is Outcome.WARN
+    assert "services.py" in report.findings[0].message
+
+
+def test_given_a_correctly_named_single_domain_service__when_checked__then_arch_054_passes(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "p"
+    model = root / "src/sales/orders/domain/model"
+    model.mkdir(parents=True)
+    (model / "order.py").write_text("class Order: pass\n", encoding="utf-8")
+    services = root / "src/sales/orders/domain/services"
+    services.mkdir(parents=True)
+    (services / "order.py").write_text("class PricingCalculator: pass\n", encoding="utf-8")
+    assert _reports(root)["ARCH-054"].outcome is Outcome.PASS
+
+
+def test_given_a_misnamed_single_domain_service__when_checked__then_arch_054_fails(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "p"
+    model = root / "src/sales/orders/domain/model"
+    model.mkdir(parents=True)
+    (model / "order.py").write_text("class Order: pass\n", encoding="utf-8")
+    services = root / "src/sales/orders/domain/services"
+    services.mkdir(parents=True)
+    (services / "pricing.py").write_text("class PricingCalculator: pass\n", encoding="utf-8")
+    report = _reports(root)["ARCH-054"]
+    assert report.outcome is Outcome.WARN
+    assert "order.py" in report.findings[0].message
+
+
+def test_given_two_descriptively_named_domain_services__when_checked__then_arch_054_passes(
+    tmp_path: Path,
+) -> None:
+    # 2+ services are exempt from the aggregate-name check -- each keeps its own
+    # descriptive name.
+    root = tmp_path / "p"
+    model = root / "src/sales/orders/domain/model"
+    model.mkdir(parents=True)
+    (model / "order.py").write_text("class Order: pass\n", encoding="utf-8")
+    services = root / "src/sales/orders/domain/services"
+    services.mkdir(parents=True)
+    (services / "pricing.py").write_text("class PricingCalculator: pass\n", encoding="utf-8")
+    (services / "discounts.py").write_text("class DiscountPolicy: pass\n", encoding="utf-8")
+    assert _reports(root)["ARCH-054"].outcome is Outcome.PASS
+
+
+def test_given_a_camel_case_aggregate_name__when_checked__then_arch_054_expects_snake_case(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "p"
+    model = root / "src/accounting/po_lines/domain/model"
+    model.mkdir(parents=True)
+    (model / "aggregate.py").write_text("class PoLine: pass\n", encoding="utf-8")
+    services = root / "src/accounting/po_lines/domain/services"
+    services.mkdir(parents=True)
+    (services / "po_line.py").write_text("class Validator: pass\n", encoding="utf-8")
+    assert _reports(root)["ARCH-054"].outcome is Outcome.PASS
+
+
+def test_given_a_package_dir_with_no_init_py__when_checked__then_arch_055_fails(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "p"
+    model = root / "src/sales/orders/domain/model"
+    model.mkdir(parents=True)
+    (model / "order.py").write_text("class Order: pass\n", encoding="utf-8")
+    report = _reports(root)["ARCH-055"]
+    assert report.outcome is Outcome.WARN
+    assert len(report.findings) > 0
+
+
+def test_given_init_py_at_every_level__when_checked__then_arch_055_passes(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "p"
+    model = root / "src/sales/orders/domain/model"
+    model.mkdir(parents=True)
+    (model / "order.py").write_text("class Order: pass\n", encoding="utf-8")
+    for d in (
+        root / "src/sales",
+        root / "src/sales/orders",
+        root / "src/sales/orders/domain",
+        model,
+    ):
+        (d / "__init__.py").write_text("", encoding="utf-8")
+    assert _reports(root)["ARCH-055"].outcome is Outcome.PASS
+
+
+def test_given_a_non_python_directory__when_checked__then_arch_055_ignores_it(
+    tmp_path: Path,
+) -> None:
+    # A directory with no .py files anywhere inside it is not a package and
+    # is not expected to carry an __init__.py.
+    root = tmp_path / "p"
+    model = root / "src/sales/orders/domain/model"
+    model.mkdir(parents=True)
+    (model / "order.py").write_text("class Order: pass\n", encoding="utf-8")
+    (root / "src/sales/orders/static").mkdir(parents=True)
+    (root / "src/sales/orders/static" / "notes.txt").write_text("x", encoding="utf-8")
+    report = _reports(root)["ARCH-055"]
+    assert not any("static" in f.path for f in report.findings)

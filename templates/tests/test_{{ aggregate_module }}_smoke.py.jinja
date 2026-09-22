@@ -8,7 +8,7 @@ from commons.adapters.system_clock import SystemClock
 {% endset %}{% set context_imports %}from {{ context_name }}.{{ aggregate_module }}.adapters.{{ aggregate_name }}_repository import (
     InMemory{{ aggregate_name | capitalize }}Repository,
 )
-from {{ context_name }}.{{ aggregate_module }}.application.{{ aggregate_name }}_service import (
+from {{ context_name }}.{{ aggregate_module }}.application.{{ aggregate_name }} import (
     Create{{ aggregate_name | capitalize }},
     {{ aggregate_name | capitalize }}Service,
 )
