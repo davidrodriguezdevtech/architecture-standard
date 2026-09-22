@@ -83,28 +83,49 @@ def _commons_root_available(project: ProjectLayout) -> bool:
     return _importable("commons")
 
 
-def _shared_kernel_available(project: ProjectLayout) -> bool:
-    """True only when ``shared_kernel/`` actually exists on disk under src/.
+def _project_commons_available(project: ProjectLayout) -> bool:
+    """True only when the project supplies its OWN ``src/commons/`` portion.
 
-    Unlike ``commons``, shared_kernel has no installed-package fallback and no
-    template/fixture presence as of this task (it is a real spec concept,
-    §8.2, that no current project uses) -- its ARCH-014 contract must be
-    gated on this so absence yields a clean SKIP (I3), never an ERROR or a
+    ``commons`` always resolves to something once arch-commons is installed, so
+    the mere importability of ``commons`` says nothing about whether this
+    project has transversal modules of its own. ARCH-014 governs the project's
+    portion specifically, so its contract is gated on the directory actually
+    being present -- absence yields a clean SKIP (I3), never an ERROR or a
     spurious PASS.
     """
-    return (project.src / "shared_kernel").is_dir()
+    return (project.src / "commons").is_dir()
+
+
+def _project_commons_modules(project: ProjectLayout) -> list[str]:
+    """The project's own ``commons.<module>`` portions, as import-linter modules.
+
+    ``types`` and ``adapters`` are excluded: those are the installed
+    arch-commons portions, and ARCH-015's whole point is that they sit BELOW
+    the project's own modules rather than beside them.
+    """
+    root = project.src / "commons"
+    if not root.is_dir():
+        return []
+    names: set[str] = set()
+    for path in root.iterdir():
+        if path.name.startswith((".", "_")) or path.name in ("types", "adapters"):
+            continue
+        if path.is_dir():
+            names.add(path.name)
+        elif path.suffix == ".py":
+            names.add(path.stem)
+    return [f"    commons.{name}" for name in sorted(names)]
 
 
 def _roots(project: ProjectLayout) -> list[str]:
     """Root packages import-linter should know about: real contexts plus commons/
-    bootstrap/shared_kernel, but only when those directories actually exist (C1),
-    or commons when it resolves via an installed arch-commons instead of being
+    and bootstrap/, but only when those directories actually exist (C1), or
+    commons when it resolves via an installed arch-commons instead of being
     vendored."""
     return [
         *project.contexts,
         *(["commons"] if _commons_root_available(project) else []),
         *(["bootstrap"] if (project.src / "bootstrap").is_dir() else []),
-        *(["shared_kernel"] if _shared_kernel_available(project) else []),
     ]
 
 
@@ -278,27 +299,29 @@ def build_contracts(project: ProjectLayout) -> str:
             "",
         ]
 
-    # ARCH-014's contract only exists when shared_kernel/ is actually present.
-    # shared_kernel has zero presence in the generator template and zero
-    # fixtures as of this task -- it is a real spec concept (spec §8.2) no
-    # current project uses. Its absence must SKIP cleanly (I3), never ERROR
-    # or a vacuous PASS -- see ``ImportContractsCheck.run``'s ``covered`` set.
-    if _shared_kernel_available(project) and project.contexts:
+    # ARCH-014's contract only exists when the project has its own src/commons/
+    # portion. A project that only consumes the installed arch-commons has
+    # nothing of its own to govern here, so its absence must SKIP cleanly (I3),
+    # never ERROR or a vacuous PASS -- see ``ImportContractsCheck.run``'s
+    # ``covered`` set.
+    if _project_commons_available(project) and project.contexts:
         lines += [
             "[importlinter:contract:ARCH-014]",
-            "name = ARCH-014 shared_kernel imports nothing from any context",
+            "name = ARCH-014 commons imports nothing from any context",
             "type = forbidden",
             "source_modules =",
-            "    shared_kernel",
+            "    commons",
             "forbidden_modules =",
             *(f"    {context}" for context in project.contexts),
             "",
         ]
 
     if _commons_types_importable(project) and project.contexts:
+        # ARCH-015: commons.types sits below everything, including the project's
+        # own commons.<module> portions -- arch-commons ships independently and
+        # cannot see them, so such an import would not resolve in any other project.
         forbidden_015 = [f"    {context}" for context in project.contexts]
-        if _shared_kernel_available(project):
-            forbidden_015.append("    shared_kernel")
+        forbidden_015 += _project_commons_modules(project)
         lines += [
             "[importlinter:contract:ARCH-015]",
             "name = ARCH-015 commons.types depends on nothing above it",

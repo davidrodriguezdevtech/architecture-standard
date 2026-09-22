@@ -51,7 +51,7 @@ The following framing decisions are fixed for v1:
   when the use case explicitly tolerates eventual consistency.
 - **Structural levels.** Two: the bounded context (`sales/`), then the aggregate module
   (`users/`), which is 1:1 with an aggregate. There is no context-level
-  `application/`. `<context>/shared/` is the only context-level code area, and it is
+  `application/`. `src/commons/` is the only code area above an aggregate, and it is
   strictly limited.
 - **Cross-aggregate flow.** Choreography by domain events; one service call per
   entrypoint handler. There is no orchestration layer, and none appears in the

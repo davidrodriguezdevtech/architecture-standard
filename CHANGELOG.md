@@ -6,6 +6,54 @@ what kind of change requires which version bump; `arch-standard release-check`
 enforces it in CI on every push and pull request, `arch-standard changelog`
 renders these entries.
 
+## 0.3.0
+
+**Breaking: `<context>/shared/` and `shared_kernel/` are replaced by a single
+`src/commons/`.** `commons` becomes a PEP 420 namespace package assembled from two
+portions: `commons.types` / `commons.adapters` still ship from the installed
+`arch-commons`, and the project supplies its own `commons.<module>` portions from
+`src/commons/`. Everything that previously lived above one aggregate -- cross-aggregate
+ID types, value objects used by two or more aggregates, domain services spanning
+aggregates, and policy-bearing concepts shared across contexts -- now has one home
+instead of three. `arch-commons` is released as 0.3.0 alongside, since it drops its
+top-level `__init__.py`.
+
+### Changed
+- ARCH-014: retargeted -- `shared_kernel imports nothing from any context` becomes
+  `commons imports nothing from any context`. Same one-way guarantee, new subject.
+- ARCH-015: reworded -- `commons.types` now also imports nothing from the project's own
+  `commons.<module>` portions. `arch-commons` ships independently and cannot see them.
+- ARCH-016: narrowed -- the "no business logic" ban applies to `commons.types` /
+  `commons.adapters` only. A project's own `commons.<module>` MAY carry business
+  meaning; that is what it is for.
+- ARCH-046: cross-aggregate ID types move from `<context>/shared/ids.py` to
+  `commons/ids.py`.
+- ARCH-047: retargeted -- `Context shared area is strictly limited` becomes
+  `The commons area is strictly limited`. The admission test moves with it, and the
+  `services.py` name-suffix carve-out is now `commons/services.py`.
+- ARCH-055: gains its one exception -- `src/commons/` MUST NOT have an `__init__.py`,
+  because a regular package on either side shadows the other rather than merging.
+  Directories nested under it still follow the normal rule.
+
+No rule `id` was removed and no `level` changed.
+
+#### Migration notes
+
+For each existing project:
+
+1. Upgrade to `arch-commons` 0.3.0 and delete `src/commons/__init__.py` if one exists.
+2. Move `<context>/shared/ids.py` to `src/commons/ids.py`, `<context>/shared/value_objects.py`
+   to one `src/commons/<concept>.py` per concept, and `<context>/shared/services.py` to
+   `src/commons/services.py`. Delete the now-empty `<context>/shared/` directories.
+3. Move anything in `shared_kernel/` to `src/commons/` and delete the directory.
+4. Repoint imports: `from <context>.shared.ids import X` becomes `from commons.ids import X`.
+5. Add `"src/commons"` to `packages` in `pyproject.toml`, and set `mypy_path = "src"` with
+   `explicit_package_bases = true` if not already present -- without them mypy names
+   `src/commons/types/` after its own directory and reports it as shadowing the stdlib.
+6. Re-run `uv run arch-standard render-importlinter .` -- ARCH-014's contract now names
+   `commons`, and ARCH-015's forbidden list now includes the project's own commons modules.
+7. Re-run `uv run arch-standard check .`.
+
 ## 0.2.0
 
 **Breaking: the `infrastructure` layer is renamed `adapters`.** The per-module layer

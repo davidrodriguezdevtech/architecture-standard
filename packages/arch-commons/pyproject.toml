@@ -1,7 +1,7 @@
 [project]
 name = "arch-commons"
-version = "0.2.0"
-description = "Architecture Standard — shared technical package (commons.types, commons.adapters)"
+version = "0.3.0"
+description = "Architecture Standard — shared technical package (commons.types, commons.adapters). `commons` is a PEP 420 namespace package so projects may add their own commons.<module> portions."
 requires-python = ">=3.12"
 dependencies = []
 
@@ -28,6 +28,12 @@ select = ["E", "F", "I", "UP", "B", "SIM", "TID"]
 [tool.mypy]
 strict = true
 files = ["src", "tests"]
+# commons/ is a PEP 420 namespace package (no top-level __init__.py) so that a
+# consuming project can add its own commons.<module> portions from its src/.
+# Without these two settings mypy names src/commons/types/ after its own
+# directory ("types") and reports it as shadowing the stdlib module.
+mypy_path = "src"
+explicit_package_bases = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

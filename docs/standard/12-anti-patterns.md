@@ -10,7 +10,7 @@
 | Repository as business service | business queries leak into persistence, repo grows unbounded | repo = collection of roots; complex reads -> read model |
 | Domain imports adapters / frameworks | domain not testable in isolation, tech locked in | DIP - domain defines ports, adapters implement |
 | Active Record aggregate | invariants entangled with the DB, not unit-testable | data mapper; plain aggregate |
-| Shared module as junk drawer | global coupling, contexts cannot evolve independently | strict `commons` / `shared_kernel` rules; duplicate by default |
+| Shared module as junk drawer | global coupling, contexts cannot evolve independently | strict `commons` admission rules (ARCH-014/047); duplicate by default |
 | Cross-context coupling | contexts fused, not independently deployable | integration events + ACL; zero imports (ARCH-012) |
 | Premature abstraction | indirection with no payoff, wrong abstraction locks in | YAGNI + Progressive Structure; abstract on 2+ concrete cases |
 | Domain leaking across the application boundary | transport coupled to the internal model | use case returns a DTO; map in application |

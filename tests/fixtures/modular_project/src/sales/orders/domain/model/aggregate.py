@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sales.shared.ids import OrderId, UserId
+from commons.ids import OrderId, UserId
 
 
 @dataclass

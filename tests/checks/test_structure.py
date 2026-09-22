@@ -67,32 +67,30 @@ def test_given_an_adapters_layer__when_checked__then_arch_048_passes() -> None:
     assert _reports(FIX / "good_project")["ARCH-048"].outcome is Outcome.PASS
 
 
-def test_given_a_service_in_shared__when_checked__then_arch_047_fails(tmp_path: Path) -> None:
+def test_given_a_service_in_commons__when_checked__then_arch_047_fails(tmp_path: Path) -> None:
     root = tmp_path / "p"
-    (root / "src/sales/shared").mkdir(parents=True)
+    (root / "src/commons").mkdir(parents=True)
     (root / "src/sales/users/domain/model").mkdir(parents=True)
     (root / "src/sales/users/domain/model/user.py").write_text(
         "class User: pass\n", encoding="utf-8"
     )
-    (root / "src/sales/shared/helpers.py").write_text(
-        "class UserService:\n    pass\n", encoding="utf-8"
-    )
+    (root / "src/commons/helpers.py").write_text("class UserService:\n    pass\n", encoding="utf-8")
     assert _reports(root)["ARCH-047"].outcome is Outcome.FAIL
 
 
-def test_given_a_pricing_service_in_shared_services_file__when_checked__then_arch_047_passes(
+def test_given_a_pricing_service_in_commons_services_file__when_checked__then_arch_047_passes(
     tmp_path: Path,
 ) -> None:
-    # C2: <context>/shared/services.py is the documented home for domain
+    # C2: commons/services.py is the documented home for domain
     # services spanning aggregates; a non-mutating *Service class there is
     # exactly the pattern the standard names it for.
     root = tmp_path / "p"
-    (root / "src/sales/shared").mkdir(parents=True)
+    (root / "src/commons").mkdir(parents=True)
     (root / "src/sales/users/domain/model").mkdir(parents=True)
     (root / "src/sales/users/domain/model/user.py").write_text(
         "class User: pass\n", encoding="utf-8"
     )
-    (root / "src/sales/shared/services.py").write_text(
+    (root / "src/commons/services.py").write_text(
         "class PricingService:\n    def quote(self, order): return order\n", encoding="utf-8"
     )
     assert _reports(root)["ARCH-047"].outcome is Outcome.PASS
@@ -102,31 +100,31 @@ def test_given_a_service_named_class_outside_services_py__when_checked__then_arc
     tmp_path: Path,
 ) -> None:
     # The name-suffix carve-out is narrow to services.py; every other file in
-    # shared/ keeps the full *Service/*Repository ban.
+    # commons/ keeps the full *Service/*Repository ban.
     root = tmp_path / "p"
-    (root / "src/sales/shared").mkdir(parents=True)
+    (root / "src/commons").mkdir(parents=True)
     (root / "src/sales/users/domain/model").mkdir(parents=True)
     (root / "src/sales/users/domain/model/user.py").write_text(
         "class User: pass\n", encoding="utf-8"
     )
-    (root / "src/sales/shared/ids.py").write_text(
+    (root / "src/commons/ids.py").write_text(
         "class PricingService:\n    def quote(self, order): return order\n", encoding="utf-8"
     )
     assert _reports(root)["ARCH-047"].outcome is Outcome.FAIL
 
 
-def test_given_a_mutating_class_in_shared_services_file__when_checked__then_arch_047_fails(
+def test_given_a_mutating_class_in_commons_services_file__when_checked__then_arch_047_fails(
     tmp_path: Path,
 ) -> None:
     # The mutation check still applies inside services.py: a stateful "service"
     # hiding an aggregate is still wrong there.
     root = tmp_path / "p"
-    (root / "src/sales/shared").mkdir(parents=True)
+    (root / "src/commons").mkdir(parents=True)
     (root / "src/sales/users/domain/model").mkdir(parents=True)
     (root / "src/sales/users/domain/model/user.py").write_text(
         "class User: pass\n", encoding="utf-8"
     )
-    (root / "src/sales/shared/services.py").write_text(
+    (root / "src/commons/services.py").write_text(
         "class PricingPolicy:\n    def bump(self):\n        self.n = 1\n", encoding="utf-8"
     )
     assert _reports(root)["ARCH-047"].outcome is Outcome.FAIL
@@ -189,18 +187,18 @@ def test_given_an_async_reporting_method_on_a_repository_port__when_checked__the
     assert _reports(root)["ARCH-051"].outcome is Outcome.FAIL
 
 
-def test_given_an_async_mutating_method_in_shared__when_checked__then_arch_047_fails(
+def test_given_an_async_mutating_method_in_commons__when_checked__then_arch_047_fails(
     tmp_path: Path,
 ) -> None:
     # I6: an async method mutating self was invisible to ARCH-047's mutation
     # check before.
     root = tmp_path / "p"
-    (root / "src/sales/shared").mkdir(parents=True)
+    (root / "src/commons").mkdir(parents=True)
     (root / "src/sales/users/domain/model").mkdir(parents=True)
     (root / "src/sales/users/domain/model/user.py").write_text(
         "class User: pass\n", encoding="utf-8"
     )
-    (root / "src/sales/shared/helpers.py").write_text(
+    (root / "src/commons/helpers.py").write_text(
         "class Counter:\n    async def bump(self):\n        self.n = 1\n", encoding="utf-8"
     )
     assert _reports(root)["ARCH-047"].outcome is Outcome.FAIL

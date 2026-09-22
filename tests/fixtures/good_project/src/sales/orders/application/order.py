@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sales.orders.domain.model.aggregate import Order
 from sales.orders.domain.model.ports import OrderRepository
-from sales.shared.ids import OrderId
+from commons.ids import OrderId
 
 
 class OrderService:

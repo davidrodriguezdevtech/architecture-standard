@@ -20,10 +20,6 @@ project/
 │   │   │   │   └── <concern>.py
 │   │   │   ├── cli.py               #   CLI (flat; split into cli/ the same way if needed)
 │   │   │   └── providers.py         #   thin: pulls wired services from the container
-│   │   ├── shared/                  # ONLY what crosses this context's aggregates
-│   │   │   ├── ids.py               #   ID types of this context's aggregates
-│   │   │   ├── value_objects.py     #   policy-free VOs used by 2+ aggregates
-│   │   │   └── services.py          #   domain services spanning aggregates (rare)
 │   │   ├── <aggregate_module>/      # LEVEL 2 - 1:1 with an aggregate (e.g. users)
 │   │   │   ├── domain/
 │   │   │   │   ├── model/
@@ -53,8 +49,12 @@ project/
 │   │                                 #   dashboards, cross-aggregate reads. Returns DTOs.
 │   │                                 #   Imports no aggregate module's domain/ or
 │   │                                 #   application/. May query the store directly.
-│   ├── shared_kernel/                # governed cross-context domain VOs.
-│   │                                 #   Not scaffolded until genuinely needed.
+│   ├── commons/                      # THIS PROJECT's own portion of the `commons`
+│   │   │                             #   namespace package - everything above one
+│   │   │                             #   aggregate. No __init__.py (ARCH-055).
+│   │   ├── ids.py                    #   ID types referenced across aggregates
+│   │   ├── geo.py                    #   transversal VOs / enums / catalogues
+│   │   └── services.py               #   domain services spanning aggregates (rare)
 │   └── bootstrap/                    # Composition Root: config, singletons, DI container,
 │                                     #   service/UoW factories, router registration,
 │                                     #   consumer startup
@@ -65,10 +65,18 @@ project/
 clients. `entrypoints/` holds the context's **inbound (driving) adapters**: HTTP, consumers,
 CLI. Both are adapters; the folder names say which side of the core they sit on.
 
-`commons/` is not part of `src/`. It is an installed, separately versioned package
-(`arch-commons`) that every project depends on, so a fix reaches all of them at once
-(Section 8.1). `shared_kernel/` stays in the repository - it holds this project's own
-cross-context domain concepts.
+`commons` is a **PEP 420 namespace package with two portions**. `commons.types` and
+`commons.adapters` ship from `arch-commons`, an installed, separately versioned package
+that every project depends on, so a fix reaches all of them at once (Section 8.1).
+`src/commons/` is this project's own portion: it merges with the installed one at import
+time, so `commons.types.errors` and `commons.geo` both resolve while living in different
+distributions. Neither side carries a top-level `__init__.py` - a regular package on
+either side would shadow the other outright instead of merging (ARCH-055).
+
+`src/commons/` is the single home for anything above one aggregate. Unlike
+`commons.types`, it MAY carry business meaning - that is what it is for. What it may
+not do is import a context (ARCH-014): the dependency is one-way, and a concept a
+commons module needs is promoted into commons rather than imported down from a context.
 
 The folder shape is fixed and canonical. Files appear when they have content. A
 context does not start as loose modules and get restructured later:
@@ -94,7 +102,7 @@ visibly crossing a line.
 Isolation between aggregate modules is weaker than between contexts. They share the
 context's ubiquitous language. An aggregate module MUST NOT import another aggregate
 module's `application/` or `adapters/`; references between aggregates are by ID,
-and those ID types live in `<context>/shared/ids.py`. (ARCH-046)
+and those ID types live in `commons/ids.py`. (ARCH-046)
 
 ## 2.3 What goes where
 
@@ -104,18 +112,18 @@ and those ID types live in `<context>/shared/ids.py`. (ARCH-046)
 | A new aggregate | `src/<context>/<aggregate_module>/` (a new folder, full shape) |
 | A rule that protects an invariant of one aggregate | a method on the aggregate in `<module>/domain/model/aggregate.py` |
 | A calculation over one aggregate that is not a method | `<module>/domain/services/` (one file per domain service; named after the aggregate if there's only one, e.g. `quote.py`) |
-| A calculation spanning aggregates of the same context | `<context>/shared/services.py` |
+| A calculation spanning aggregates | `commons/services.py` |
 | A use case (state change on one aggregate) | a method on `<module>/application/<aggregate>.py` |
 | A persistence/broker/third-party integration | one module in `<module>/adapters/` |
 | A contract the domain needs | `<module>/domain/model/ports.py` |
 | A non-domain outbound contract used by one use case | an `abc.ABC` colocated in that `application/` module |
 | A fact other parts of this context react to | a domain event in `<module>/domain/model/events.py` |
-| An ID type referenced by another aggregate of this context | `<context>/shared/ids.py` |
-| A value object used by 2+ aggregates of this context | `<context>/shared/value_objects.py` |
+| An ID type referenced by another aggregate | `commons/ids.py` |
+| A value object, enum or reference catalogue used above one aggregate | `src/commons/<concept>.py` |
 | A projection, report, search, dashboard, or any cross-aggregate read | `<context>/read/` |
 | A dependency-free technical primitive | the `arch-commons` package, `commons.types` (propose upstream) |
 | A shared framework-bound technical implementation | the `arch-commons` package, `commons.adapters` (propose upstream) |
-| A domain concept genuinely shared by 2+ contexts, with business policy | `shared_kernel/` (with governance) |
+| A domain concept shared by 2+ contexts, with business policy | `src/commons/<concept>.py` |
 | Wiring / config / DI | `bootstrap/` |
 
 ## 2.4 There is no context-level `application/`
@@ -124,10 +132,17 @@ DDD has no "application service of the context" - application services are per u
 case and belong with the model they coordinate. Cross-aggregate flow is handled by the
 rules in Section 3.6, not by a coordinating layer.
 
-`<context>/shared/` is the only context-level code area, and it is strictly limited to
-the three things in the table above: ID types, policy-free value objects used by 2+
-aggregates, and domain services spanning aggregates. It never holds a service, a
-repository, or an aggregate. (ARCH-047)
+There is no context-level code area at all. Anything above one aggregate - whether it
+crosses two aggregates of one context or two contexts - goes to `src/commons/`, which
+is strictly limited to the things in the table above: ID types, value objects, enums
+and reference catalogues, and domain services spanning aggregates. It never holds an
+aggregate root, a repository, or an application service. (ARCH-047)
+
+One boundary is deliberately traded away here. A context-scoped shared area would
+confine sharing to one context; `commons/` is visible to all of them, so two contexts
+can come to depend on the same concept. The one-way import rule is what keeps that
+honest: `commons/` never imports a context, so the coupling can only ever be a
+deliberate promotion into `commons/`, never a quiet reach sideways.
 
 ## 2.5 The Read/Query layer
 

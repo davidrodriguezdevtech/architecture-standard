@@ -301,35 +301,44 @@ rules:
       detail: import-graph cycle detection across top-level context packages
     related: [ARCH-012]
   - id: ARCH-014
-    name: shared_kernel imports nothing from any context
+    name: commons imports nothing from any context
     level: MUST
     automation: full
     category: dependencies
     description: >
-      No module under shared_kernel/ imports from any src/<context> package.
+      No module under src/commons/ imports from any src/<context> package. A commons
+      module may import other commons modules, including commons.types from the
+      installed arch-commons package. When a context concept is needed in commons, the
+      concept is promoted into commons rather than imported down from the context.
     rationale: >
-      The shared kernel is upstream of every context; importing a context would
-      invert the governance direction and couple all consumers.
+      commons/ is upstream of every context; importing a context would invert the
+      governance direction, couple all consumers and create a cycle. Keeping the
+      dependency one-way is what lets any context use commons freely without asking
+      which other context it might drag in.
     correct: |
-      # shared_kernel/money.py
+      # commons/geo.py
       from commons.types.errors import DomainError
     incorrect: |
-      # shared_kernel/pricing.py
+      # commons/geo.py
       from sales.orders.domain.model.aggregate import Order
     validation:
       tool: import-linter
-      detail: forbidden contract; shared_kernel -/-> contexts
+      detail: forbidden contract; commons -/-> contexts
   - id: ARCH-015
-    name: commons/types imports nothing from contexts, application, adapters, or shared_kernel
+    name: commons/types imports nothing from contexts, application, adapters, or project commons modules
     level: MUST
     automation: full
     category: dependencies
     description: >
       No module under commons/types/ imports from any context package, from any
-      application/ or adapters/ package, or from shared_kernel/.
+      application/ or adapters/ package, or from a project-local commons module. The
+      dependency inside commons/ is one-way: a project's commons.<module> may import
+      commons.types, never the reverse.
     rationale: >
-      commons/types is the dependency-free base importable by everyone
-      including domain/; any upward import would create a cycle.
+      commons/types is the dependency-free base importable by everyone including
+      domain/; any upward import would create a cycle. It also ships from the
+      installed arch-commons distribution, which cannot see a consuming project's
+      own commons modules -- such an import would simply not resolve anywhere else.
     correct: |
       # commons/types/clock.py
       from abc import ABC, abstractmethod
@@ -346,11 +355,16 @@ rules:
     automation: manual
     category: dependencies
     description: >
-      Modules under commons/types/ hold only dependency-free technical
-      primitives and ports, with no rule a business person would recognise.
+      Modules under commons/types/ hold only dependency-free technical primitives and
+      ports, with no rule a business person would recognise. This applies to
+      commons/types/ and commons/adapters/ -- the portions shipped by the installed
+      arch-commons package -- and not to a project's own commons.<module> portions,
+      which exist precisely to hold the project's transversal domain concepts.
     rationale: >
-      A business policy hidden in commons/types is invisible to the owning
-      context and silently shared with every other one.
+      arch-commons is installed by many projects, so a business policy placed there is
+      invisible to the context that owns it and silently shared with every unrelated
+      project that upgrades. A project's own commons module has neither problem: it
+      ships with that project alone.
     correct: |
       # commons/types/pagination.py
       @dataclass(frozen=True)
@@ -358,8 +372,9 @@ rules:
           items: tuple[object, ...]
           total: int
     incorrect: |
-      # commons/types/pricing.py
-      VAT_RATE = Decimal("0.21")  # a tax rule belongs to a context or shared_kernel
+      # commons/types/pricing.py  (shipped by arch-commons)
+      VAT_RATE = Decimal("0.21")  # a tax rule belongs to a context, or to the
+                                  # project's own commons/pricing.py -- never here
     validation:
       tool: review
       detail: PR checklist; would you mention this when describing the business?

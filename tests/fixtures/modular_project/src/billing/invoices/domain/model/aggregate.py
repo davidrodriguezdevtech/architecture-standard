@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from billing.shared.ids import InvoiceId
+from commons.ids import InvoiceId
 
 
 @dataclass

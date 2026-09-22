@@ -33,9 +33,9 @@ def test_good_project_passes() -> None:
     reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, Catalog.load(RULES))}
     # good_project has only one module and no read/ dir: ARCH-046/052 have
     # nothing to check (I3: uncovered means SKIP, not a vacuous PASS).
-    # good_project has no shared_kernel/ (Task 7: zero fixture presence, see
-    # ``_shared_kernel_available``), so ARCH-014 has nothing to check either.
-    skipped = {"ARCH-046", "ARCH-052", "ARCH-014"}
+    # good_project HAS its own src/commons/ (ids.py), so ARCH-014's contract is
+    # genuinely emitted and genuinely satisfied -- commons/ids.py imports no context.
+    skipped = {"ARCH-046", "ARCH-052"}
     for rule_id, report in reports.items():
         expected = Outcome.SKIP if rule_id in skipped else Outcome.PASS
         assert report.outcome is expected, rule_id
@@ -96,7 +96,7 @@ def test_minimal_project_with_no_commons_or_bootstrap_passes() -> None:
     # satisfied (nothing in minimal_project imports commons.adapters, and
     # commons.types imports no forbidden framework) — a real PASS, not a vacuous one.
     # Task 7: minimal_project also has no entrypoints/ (ARCH-009/011 have nothing
-    # to check) and no shared_kernel/ (ARCH-014 has nothing to check). ARCH-017
+    # to check) and no src/commons/ of its own (ARCH-014 has nothing to check). ARCH-017
     # also has nothing to check (no bootstrap/). ARCH-015 DOES get evaluated: its
     # source is commons.types, which resolves via the installed arch-commons
     # dependency the same way ARCH-034/035 do, and nothing in minimal_project
@@ -183,13 +183,13 @@ def test_given_the_modular_fixture__when_checked__then_every_rule_passes() -> No
     # genuinely emitted (sales has 2 modules, entrypoints, and a read/ dir;
     # billing has entrypoints; both contexts have 2 entrypoint modules each as
     # of Task 7, so ARCH-011 is genuinely emitted too) and nothing in the
-    # fixture violates any of them, so every rule PASSes -- except ARCH-014
-    # (no shared_kernel/ anywhere in this fixture; Task 7 gives it zero
-    # fixture presence, see ``_shared_kernel_available``) and ARCH-017 (no
-    # bootstrap/ in this fixture either), which both SKIP instead.
+    # fixture violates any of them, so every rule PASSes -- except ARCH-017 (no
+    # bootstrap/ in this fixture), which SKIPs instead. ARCH-014 IS evaluated:
+    # the fixture has its own src/commons/ids.py, shared by both contexts, and it
+    # imports no context.
     layout = ProjectLayout.detect(MODULAR)
     reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, Catalog.load(RULES))}
-    skipped_here = {"ARCH-014", "ARCH-017"}
+    skipped_here = {"ARCH-017"}
     for rule_id, report in reports.items():
         if rule_id in skipped_here:
             assert report.outcome is Outcome.SKIP, (rule_id, [f.message for f in report.findings])
@@ -212,9 +212,8 @@ def test_migrated_fixtures_report_the_expected_outcomes() -> None:
             ProjectLayout.detect(FIX / "good_project"), Catalog.load(RULES)
         )
     }
-    # good_project has no shared_kernel/ (Task 7: zero fixture presence), so
-    # ARCH-014 has nothing to check either.
-    good_skipped = {"ARCH-046", "ARCH-052", "ARCH-014"}
+    # good_project has its own src/commons/, so ARCH-014 is evaluated and passes.
+    good_skipped = {"ARCH-046", "ARCH-052"}
     for rule_id, report in good.items():
         expected = Outcome.SKIP if rule_id in good_skipped else Outcome.PASS
         assert report.outcome is expected, rule_id
@@ -429,20 +428,22 @@ def test_given_a_bootstrap_dir__when_building__then_arch_017_forbids_importing_i
     assert "bootstrap" in ini
 
 
-def test_given_a_shared_kernel__when_building__then_arch_014_contract_is_emitted(
+def test_given_a_project_commons__when_building__then_arch_014_contract_is_emitted(
     tmp_path: Path,
 ) -> None:
     src = tmp_path / "src"
-    (src / "shared_kernel").mkdir(parents=True)
+    (src / "commons").mkdir(parents=True)
     (src / "sales" / "orders" / "domain").mkdir(parents=True)
     layout = ProjectLayout.detect(tmp_path)
     ini = build_contracts(layout)
     assert "ARCH-014" in ini
 
 
-def test_given_no_shared_kernel__when_building__then_no_arch_014_contract(
+def test_given_no_project_commons__when_building__then_no_arch_014_contract(
     tmp_path: Path,
 ) -> None:
+    # `commons` still resolves via the installed arch-commons, but a project with
+    # no src/commons/ of its own has nothing for ARCH-014 to govern.
     src = tmp_path / "src"
     (src / "sales" / "orders" / "domain").mkdir(parents=True)
     layout = ProjectLayout.detect(tmp_path)
@@ -462,11 +463,11 @@ def test_given_entrypoints__when_building__then_arch_009_and_011_contracts_exist
     assert "ARCH-011" in ini
 
 
-def test_given_no_shared_kernel_dir__when_checked__then_arch_014_skips_cleanly() -> None:
-    # good_project has no shared_kernel/ anywhere -- ARCH-014's contract must
+def test_given_no_project_commons_dir__when_checked__then_arch_014_skips_cleanly() -> None:
+    # minimal_project has no src/commons/ of its own -- ARCH-014's contract must
     # never be emitted for it, so the rule SKIPs (I3), not ERRORs or PASSes
     # vacuously.
-    layout = ProjectLayout.detect(FIX / "good_project")
+    layout = ProjectLayout.detect(FIX / "minimal_project")
     reports = {r.rule_id: r for r in ImportContractsCheck().run(layout, Catalog.load(RULES))}
     assert reports["ARCH-014"].outcome is Outcome.SKIP
     assert reports["ARCH-014"].findings == ()
@@ -504,13 +505,13 @@ def test_given_a_context_importing_bootstrap__when_checked__then_arch_017_fails(
     assert reports["ARCH-001"].outcome is Outcome.PASS
 
 
-def test_given_a_shared_kernel_importing_a_context__when_checked__then_arch_014_fails(
+def test_given_commons_importing_a_context__when_checked__then_arch_014_fails(
     tmp_path: Path,
 ) -> None:
     src = tmp_path / "src"
-    sk = src / "shared_kernel"
+    # No __init__.py: commons/ is a PEP 420 namespace portion (ARCH-055).
+    sk = src / "commons"
     sk.mkdir(parents=True)
-    (sk / "__init__.py").write_text("", encoding="utf-8")
     (sk / "leak.py").write_text("from sales.orders.domain import model\n", encoding="utf-8")
     domain_model = src / "sales" / "orders" / "domain" / "model"
     domain_model.mkdir(parents=True)

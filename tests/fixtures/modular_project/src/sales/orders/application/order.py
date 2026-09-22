@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from sales.orders.domain.model.aggregate import Order
 from sales.orders.domain.model.ports import OrderRepository
-from sales.shared.ids import OrderId, UserId
+from commons.ids import OrderId, UserId
 
 
 @dataclass(frozen=True)

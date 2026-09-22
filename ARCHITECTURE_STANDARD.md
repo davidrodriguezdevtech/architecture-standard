@@ -51,7 +51,7 @@ The following framing decisions are fixed for v1:
   when the use case explicitly tolerates eventual consistency.
 - **Structural levels.** Two: the bounded context (`sales/`), then the aggregate module
   (`users/`), which is 1:1 with an aggregate. There is no context-level
-  `application/`. `<context>/shared/` is the only context-level code area, and it is
+  `application/`. `src/commons/` is the only code area above an aggregate, and it is
   strictly limited.
 - **Cross-aggregate flow.** Choreography by domain events; one service call per
   entrypoint handler. There is no orchestration layer, and none appears in the
@@ -147,10 +147,6 @@ project/
 │   │   │   │   └── <concern>.py
 │   │   │   ├── cli.py               #   CLI (flat; split into cli/ the same way if needed)
 │   │   │   └── providers.py         #   thin: pulls wired services from the container
-│   │   ├── shared/                  # ONLY what crosses this context's aggregates
-│   │   │   ├── ids.py               #   ID types of this context's aggregates
-│   │   │   ├── value_objects.py     #   policy-free VOs used by 2+ aggregates
-│   │   │   └── services.py          #   domain services spanning aggregates (rare)
 │   │   ├── <aggregate_module>/      # LEVEL 2 - 1:1 with an aggregate (e.g. users)
 │   │   │   ├── domain/
 │   │   │   │   ├── model/
@@ -180,8 +176,12 @@ project/
 │   │                                 #   dashboards, cross-aggregate reads. Returns DTOs.
 │   │                                 #   Imports no aggregate module's domain/ or
 │   │                                 #   application/. May query the store directly.
-│   ├── shared_kernel/                # governed cross-context domain VOs.
-│   │                                 #   Not scaffolded until genuinely needed.
+│   ├── commons/                      # THIS PROJECT's own portion of the `commons`
+│   │   │                             #   namespace package - everything above one
+│   │   │                             #   aggregate. No __init__.py (ARCH-055).
+│   │   ├── ids.py                    #   ID types referenced across aggregates
+│   │   ├── geo.py                    #   transversal VOs / enums / catalogues
+│   │   └── services.py               #   domain services spanning aggregates (rare)
 │   └── bootstrap/                    # Composition Root: config, singletons, DI container,
 │                                     #   service/UoW factories, router registration,
 │                                     #   consumer startup
@@ -192,10 +192,18 @@ project/
 clients. `entrypoints/` holds the context's **inbound (driving) adapters**: HTTP, consumers,
 CLI. Both are adapters; the folder names say which side of the core they sit on.
 
-`commons/` is not part of `src/`. It is an installed, separately versioned package
-(`arch-commons`) that every project depends on, so a fix reaches all of them at once
-(Section 8.1). `shared_kernel/` stays in the repository - it holds this project's own
-cross-context domain concepts.
+`commons` is a **PEP 420 namespace package with two portions**. `commons.types` and
+`commons.adapters` ship from `arch-commons`, an installed, separately versioned package
+that every project depends on, so a fix reaches all of them at once (Section 8.1).
+`src/commons/` is this project's own portion: it merges with the installed one at import
+time, so `commons.types.errors` and `commons.geo` both resolve while living in different
+distributions. Neither side carries a top-level `__init__.py` - a regular package on
+either side would shadow the other outright instead of merging (ARCH-055).
+
+`src/commons/` is the single home for anything above one aggregate. Unlike
+`commons.types`, it MAY carry business meaning - that is what it is for. What it may
+not do is import a context (ARCH-014): the dependency is one-way, and a concept a
+commons module needs is promoted into commons rather than imported down from a context.
 
 The folder shape is fixed and canonical. Files appear when they have content. A
 context does not start as loose modules and get restructured later:
@@ -221,7 +229,7 @@ visibly crossing a line.
 Isolation between aggregate modules is weaker than between contexts. They share the
 context's ubiquitous language. An aggregate module MUST NOT import another aggregate
 module's `application/` or `adapters/`; references between aggregates are by ID,
-and those ID types live in `<context>/shared/ids.py`. (ARCH-046)
+and those ID types live in `commons/ids.py`. (ARCH-046)
 
 ## 2.3 What goes where
 
@@ -231,18 +239,18 @@ and those ID types live in `<context>/shared/ids.py`. (ARCH-046)
 | A new aggregate | `src/<context>/<aggregate_module>/` (a new folder, full shape) |
 | A rule that protects an invariant of one aggregate | a method on the aggregate in `<module>/domain/model/aggregate.py` |
 | A calculation over one aggregate that is not a method | `<module>/domain/services/` (one file per domain service; named after the aggregate if there's only one, e.g. `quote.py`) |
-| A calculation spanning aggregates of the same context | `<context>/shared/services.py` |
+| A calculation spanning aggregates | `commons/services.py` |
 | A use case (state change on one aggregate) | a method on `<module>/application/<aggregate>.py` |
 | A persistence/broker/third-party integration | one module in `<module>/adapters/` |
 | A contract the domain needs | `<module>/domain/model/ports.py` |
 | A non-domain outbound contract used by one use case | an `abc.ABC` colocated in that `application/` module |
 | A fact other parts of this context react to | a domain event in `<module>/domain/model/events.py` |
-| An ID type referenced by another aggregate of this context | `<context>/shared/ids.py` |
-| A value object used by 2+ aggregates of this context | `<context>/shared/value_objects.py` |
+| An ID type referenced by another aggregate | `commons/ids.py` |
+| A value object, enum or reference catalogue used above one aggregate | `src/commons/<concept>.py` |
 | A projection, report, search, dashboard, or any cross-aggregate read | `<context>/read/` |
 | A dependency-free technical primitive | the `arch-commons` package, `commons.types` (propose upstream) |
 | A shared framework-bound technical implementation | the `arch-commons` package, `commons.adapters` (propose upstream) |
-| A domain concept genuinely shared by 2+ contexts, with business policy | `shared_kernel/` (with governance) |
+| A domain concept shared by 2+ contexts, with business policy | `src/commons/<concept>.py` |
 | Wiring / config / DI | `bootstrap/` |
 
 ## 2.4 There is no context-level `application/`
@@ -251,10 +259,17 @@ DDD has no "application service of the context" - application services are per u
 case and belong with the model they coordinate. Cross-aggregate flow is handled by the
 rules in Section 3.6, not by a coordinating layer.
 
-`<context>/shared/` is the only context-level code area, and it is strictly limited to
-the three things in the table above: ID types, policy-free value objects used by 2+
-aggregates, and domain services spanning aggregates. It never holds a service, a
-repository, or an aggregate. (ARCH-047)
+There is no context-level code area at all. Anything above one aggregate - whether it
+crosses two aggregates of one context or two contexts - goes to `src/commons/`, which
+is strictly limited to the things in the table above: ID types, value objects, enums
+and reference catalogues, and domain services spanning aggregates. It never holds an
+aggregate root, a repository, or an application service. (ARCH-047)
+
+One boundary is deliberately traded away here. A context-scoped shared area would
+confine sharing to one context; `commons/` is visible to all of them, so two contexts
+can come to depend on the same concept. The one-way import rule is what keeps that
+honest: `commons/` never imports a context, so the coupling can only ever be a
+deliberate promotion into `commons/`, never a quiet reach sideways.
 
 ## 2.5 The Read/Query layer
 
@@ -466,7 +481,7 @@ ports, projections, exceptions), `services/` (one file per domain service; named
 after the aggregate when there's only one, e.g. `quote.py`), and `specifications.py`.
 
 `domain/` depends on: the standard library, `commons/types/`, and (rarely)
-`shared_kernel/`. Nothing else. No frameworks, no I/O, no ORM, no `datetime.now()` or
+`src/commons/`. Nothing else. No frameworks, no I/O, no ORM, no `datetime.now()` or
 `uuid4()` directly (use the `Clock` and `IdGenerator` ports), no application DTOs.
 (ARCH-001 to ARCH-004)
 
@@ -801,14 +816,31 @@ individually. (ARCH-033)
 
 ---
 
-# 8. commons/ and shared_kernel/
+# 8. commons/
+
+`commons` is a single **PEP 420 namespace package assembled from two portions**, and
+everything above one aggregate lives in it. There is no `shared_kernel/` and no
+`<context>/shared/`: one home, one set of admission rules, one import direction.
+
+| | `commons.types` / `commons.adapters` | `commons.<module>` |
+|---|---|---|
+| Ships from | the installed `arch-commons` package | this project's own `src/commons/` |
+| Content | dependency-free technical primitives, ports, and framework-bound shared implementations | this project's transversal domain concepts |
+| Business meaning | **forbidden** (ARCH-016) | **expected** - that is what it is for |
+| Governed by | semver on `arch-commons` | this project's own review |
+
+Neither portion carries a top-level `commons/__init__.py`. A regular package on either
+side would shadow the other outright rather than merge with it, so both are namespace
+portions and `src/commons/` is the one directory under `src/` that MUST NOT have an
+`__init__.py` (ARCH-055).
 
 ## 8.1 `arch-commons` - a separately versioned package
 
-`commons/` is not vendored into each project. It is published as `arch-commons` and
-declared as a dependency, so a fix or a new primitive reaches every project that
-upgrades instead of drifting into N divergent copies. This is what makes the standard
-usable as the base of many repositories rather than a one-off scaffold.
+`commons.types` and `commons.adapters` are not vendored into each project. They are
+published as `arch-commons` and declared as a dependency, so a fix or a new primitive
+reaches every project that upgrades instead of drifting into N divergent copies. This
+is what makes the standard usable as the base of many repositories rather than a
+one-off scaffold.
 
 | | `commons.types` | `commons.adapters` |
 |---|---|---|
@@ -824,29 +856,42 @@ a version and upgrade deliberately.
 
 **Contributing upward.** A technical primitive that a project invents locally, and
 that a second project would want, does not get copied - it is proposed upstream into
-`arch-commons`. Until it is accepted it lives in that project, clearly marked.
+`arch-commons`. Until it is accepted it lives in that project's own `commons/`,
+clearly marked.
 
-Rules: ARCH-015 (`commons.types` imports nothing from
-contexts/application/adapters/shared_kernel), ARCH-016 (`commons.types` has no
-business logic), ARCH-034 (`commons.adapters` not imported by
-domain/application), ARCH-035 (`commons.types` imports no framework).
+Rules: ARCH-015 (`commons.types` imports nothing from contexts, application, adapters,
+or the project's own commons modules), ARCH-016 (`commons.types` has no business
+logic), ARCH-034 (`commons.adapters` not imported by domain/application), ARCH-035
+(`commons.types` imports no framework).
 
-## 8.2 shared_kernel/
+## 8.2 The project's own `commons/` modules
 
-Deliberately shared domain concepts across 2+ contexts, with sign-off from every
-consuming context. Only small, immutable, policy-bearing value objects - no entities,
-aggregates, domain services, or repositories.
+`src/commons/` holds the concepts this project needs above a single aggregate: ID types
+referenced across aggregates, value objects, enumerations and reference catalogues, and
+the rare domain service spanning aggregates. One file per concept, named for the
+concept - `commons/geo.py`, `commons/ids.py`, `commons/money.py`.
 
-The test: does the concept encode a business policy?
+Unlike `commons.types`, these MAY encode business policy. A list of the municipalities a
+business operates in, a tax rule, an accounting rounding convention - all belong here if
+more than one aggregate needs them. The test is no longer "does it encode a policy?" but
+simply "is it needed above one aggregate?".
 
-- **No** (a typed wrapper plus format validation, e.g. `Email` syntax, `Money`
-  arithmetic that raises on currency mismatch) goes to `commons/types/`. No ceremony.
-- **Yes** (accounting rounding, tax rules, business-specific validation, an ID two
-  contexts agree to share) goes to `shared_kernel/` with change governance.
+What it may never do is depend downward:
 
-Governance: a change requires review from every consuming context; the kernel is
-versioned. It is not scaffolded until the first genuine shared policy-bearing concept
-exists. (ARCH-014: `shared_kernel` imports nothing from any context.)
+| Direction | Allowed? |
+|---|---|
+| any context → `commons` | yes, freely |
+| `commons` → any context | **no** (ARCH-014) |
+| `commons.<module>` → `commons.types` | yes |
+| `commons.types` → `commons.<module>` | **no** (ARCH-015) - `arch-commons` ships independently and cannot see them |
+
+When a commons module needs a concept that currently lives in a context, the concept is
+**promoted into commons**, not imported down from the context. That promotion is the
+only way a concept becomes shared, which is what keeps the sharing deliberate and
+visible instead of accumulating by accident.
+
+`commons/` never holds an aggregate root, a repository, or an application service
+(ARCH-047). Business meaning is not licence to put behaviour-owning objects there.
 
 Generic subdomains (notifications, identity) are other bounded contexts, not shared
 code - consumed via the Section 3 mechanisms.
@@ -900,8 +945,8 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 | ARCH-011 | Entrypoints call application services, not other entrypoints | MUST | full |
 | ARCH-012 | A context imports nothing from another context | MUST | full |
 | ARCH-013 | No dependency cycles between contexts | SHOULD | full |
-| ARCH-014 | shared_kernel imports nothing from any context | MUST | full |
-| ARCH-015 | commons/types imports nothing from contexts, application, adapters, or shared_kernel | MUST | full |
+| ARCH-014 | commons imports nothing from any context | MUST | full |
+| ARCH-015 | commons/types imports nothing from contexts, application, adapters, or project commons modules | MUST | full |
 | ARCH-016 | commons/types contains no business logic | MUST | manual |
 | ARCH-017 | Nothing imports bootstrap | MUST | full |
 | ARCH-034 | commons/adapters is not imported by domain or application | MUST | full |
@@ -965,7 +1010,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 | ID | Rule | Level | Automation |
 |---|---|---|---|
 | ARCH-046 | Aggregate module isolation | MUST | full |
-| ARCH-047 | Context shared area is strictly limited | MUST | partial |
+| ARCH-047 | The commons area is strictly limited | MUST | partial |
 | ARCH-048 | No context-level application package | MUST | full |
 | ARCH-049 | One aggregate root per aggregate module | MUST | partial |
 | ARCH-050 | Declared context dependency graph | MUST | full |
@@ -1204,27 +1249,27 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Related:** ARCH-012
 
-#### ARCH-014 — shared_kernel imports nothing from any context
+#### ARCH-014 — commons imports nothing from any context
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** dependencies
-- **Validation:** `import-linter` — forbidden contract; shared_kernel -/-> contexts
-- **Description:** No module under shared_kernel/ imports from any src/<context> package.
-- **Rationale:** The shared kernel is upstream of every context; importing a context would invert the governance direction and couple all consumers.
+- **Validation:** `import-linter` — forbidden contract; commons -/-> contexts
+- **Description:** No module under src/commons/ imports from any src/<context> package. A commons module may import other commons modules, including commons.types from the installed arch-commons package. When a context concept is needed in commons, the concept is promoted into commons rather than imported down from the context.
+- **Rationale:** commons/ is upstream of every context; importing a context would invert the governance direction, couple all consumers and create a cycle. Keeping the dependency one-way is what lets any context use commons freely without asking which other context it might drag in.
 - **Correct:**
   ```
-  # shared_kernel/money.py
+  # commons/geo.py
   from commons.types.errors import DomainError
   ```
 - **Incorrect:**
   ```
-  # shared_kernel/pricing.py
+  # commons/geo.py
   from sales.orders.domain.model.aggregate import Order
   ```
 
-#### ARCH-015 — commons/types imports nothing from contexts, application, adapters, or shared_kernel
+#### ARCH-015 — commons/types imports nothing from contexts, application, adapters, or project commons modules
 - **Level:** MUST · **Automation:** full · **Tier:** full · **Category:** dependencies
 - **Validation:** `import-linter` — forbidden contract; commons.types -/-> everything above it
-- **Description:** No module under commons/types/ imports from any context package, from any application/ or adapters/ package, or from shared_kernel/.
-- **Rationale:** commons/types is the dependency-free base importable by everyone including domain/; any upward import would create a cycle.
+- **Description:** No module under commons/types/ imports from any context package, from any application/ or adapters/ package, or from a project-local commons module. The dependency inside commons/ is one-way: a project's commons.<module> may import commons.types, never the reverse.
+- **Rationale:** commons/types is the dependency-free base importable by everyone including domain/; any upward import would create a cycle. It also ships from the installed arch-commons distribution, which cannot see a consuming project's own commons modules -- such an import would simply not resolve anywhere else.
 - **Correct:**
   ```
   # commons/types/clock.py
@@ -1240,8 +1285,8 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 #### ARCH-016 — commons/types contains no business logic
 - **Level:** MUST · **Automation:** manual · **Tier:** full · **Category:** dependencies
 - **Validation:** `review` — PR checklist; would you mention this when describing the business?
-- **Description:** Modules under commons/types/ hold only dependency-free technical primitives and ports, with no rule a business person would recognise.
-- **Rationale:** A business policy hidden in commons/types is invisible to the owning context and silently shared with every other one.
+- **Description:** Modules under commons/types/ hold only dependency-free technical primitives and ports, with no rule a business person would recognise. This applies to commons/types/ and commons/adapters/ -- the portions shipped by the installed arch-commons package -- and not to a project's own commons.<module> portions, which exist precisely to hold the project's transversal domain concepts.
+- **Rationale:** arch-commons is installed by many projects, so a business policy placed there is invisible to the context that owns it and silently shared with every unrelated project that upgrades. A project's own commons module has neither problem: it ships with that project alone.
 - **Correct:**
   ```
   # commons/types/pagination.py
@@ -1252,8 +1297,9 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # commons/types/pricing.py
-  VAT_RATE = Decimal("0.21")  # a tax rule belongs to a context or shared_kernel
+  # commons/types/pricing.py  (shipped by arch-commons)
+  VAT_RATE = Decimal("0.21")  # a tax rule belongs to a context, or to the
+                              # project's own commons/pricing.py -- never here
   ```
 
 #### ARCH-017 — Nothing imports bootstrap
@@ -1665,7 +1711,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 #### ARCH-038 — Domain objects are never mocked
 - **Level:** SHOULD · **Automation:** partial · **Tier:** full · **Category:** testing
 - **Validation:** `review` — PR checklist plus grep for Mock(spec=<domain type>) in tests
-- **Description:** Tests never replace an aggregate, entity, domain value object, domain service, or shared_kernel value object with a mock or stub; they exercise the real object.
+- **Description:** Tests never replace an aggregate, entity, domain value object, domain service, or commons value object with a mock or stub; they exercise the real object.
 - **Rationale:** Mocking the domain couples tests to its implementation and stops them verifying the real invariants.
 - **Correct:**
   ```
@@ -1798,12 +1844,12 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 #### ARCH-046 — Aggregate module isolation
 - **Level:** MUST · **Automation:** full · **Tier:** core · **Category:** structure
 - **Validation:** `import-linter` — forbidden contract between sibling modules' application and adapters
-- **Description:** An aggregate module does not import another aggregate module's application/ or adapters/ package. References between aggregates are by ID, and those ID types live in the context's shared/ids.py.
+- **Description:** An aggregate module does not import another aggregate module's application/ or adapters/ package. References between aggregates are by ID, and those ID types live in commons/ids.py.
 - **Rationale:** Aggregate modules are consistency boundaries. Reaching into a sibling's service or repository re-couples them and makes the one-transaction-one-aggregate rule unenforceable.
 - **Correct:**
   ```
   # sales/orders/domain/model/aggregate.py
-  from sales.shared.ids import UserId
+  from commons.ids import UserId
   class Order:
       customer_id: UserId
   ```
@@ -1814,28 +1860,38 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Related:** ARCH-020, ARCH-021
 
-#### ARCH-047 — Context shared area is strictly limited
+#### ARCH-047 — The commons area is strictly limited
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** structure
-- **Validation:** `ast-checker` — no class named *Service/*Repository outside shared/services.py; no aggregate roots; shared/services.py classes must not mutate their own state
-- **Description:** <context>/shared/ contains only ID types, policy-free value objects used by two or more aggregates of that context, and domain services spanning them. Those spanning services live specifically in shared/services.py — the one file in shared/ exempt from the *Service/*Repository name-suffix ban, since it is the standard's own documented home for them. Every other file in shared/ keeps the full name-suffix ban, and shared/services.py classes still may not mutate their own state.
-- **Rationale:** It is the only context-level code area, so without a narrow admission test it becomes the junk drawer that couples every aggregate module together. Naming the one legitimate exception explicitly (rather than banning *Service outright) keeps the carve-out narrow instead of inviting every file in shared/ to claim it.
+- **Validation:** `ast-checker` — no class named *Service/*Repository outside commons/services.py; no aggregate roots; commons/services.py classes must not mutate their own state
+- **Description:** src/commons/ holds only ID types, value objects, enumerations and reference catalogues, and domain services spanning aggregates. Those spanning services live specifically in commons/services.py — the one file in commons/ exempt from the *Service/*Repository name-suffix ban, since it is the standard's own documented home for them. Every other file in commons/ keeps the full name-suffix ban, and commons/services.py classes still may not mutate their own state. commons/ never holds an aggregate root, a repository or an application service.
+- **Rationale:** commons/ is visible to every context, so without a narrow admission test it becomes the junk drawer that couples the whole project together. Unlike commons/types/ (ARCH-016) it may carry business meaning — that is what it is for — but business meaning is not licence to put behaviour-owning objects there. Naming the one legitimate exception explicitly (rather than banning *Service outright) keeps the carve-out narrow instead of inviting every file in commons/ to claim it.
 - **Correct:**
   ```
-  # sales/shared/ids.py
+  # commons/ids.py
   @dataclass(frozen=True)
   class UserId:
       value: str
   
-  # sales/shared/services.py — the documented carve-out
+  # commons/geo.py — a transversal value object with real business meaning
+  @dataclass(frozen=True)
+  class Location:
+      country: Country
+      department: Department
+      municipality: Municipality
+  
+  # commons/services.py — the documented carve-out
   class PricingService:
       def quote(self, order: Order) -> Money: ...
   ```
 - **Incorrect:**
   ```
-  # sales/shared/user_service.py — *Service outside services.py is still banned
+  # commons/user_service.py — *Service outside services.py is still banned
   class UserService: ...
   
-  # sales/shared/services.py — mutation is still banned even here
+  # commons/order.py — an aggregate root never lives in commons/
+  class Order: ...
+  
+  # commons/services.py — mutation is still banned even here
   class PricingService:
       def bump(self) -> None:
           self.calls += 1
@@ -1947,7 +2003,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 #### ARCH-054 — Domain services for an aggregate live in a services/ directory
 - **Level:** SHOULD · **Automation:** partial · **Tier:** full · **Category:** structure
 - **Validation:** `ast-checker` — domain/services.py must not exist as a file; when domain/services/ has exactly one file, its name must match the aggregate's own name
-- **Description:** An aggregate module's domain services live in domain/services/, one file per service - not a single domain/services.py file. A single service is named after the aggregate (order.py for the Order aggregate); 2+ services each get a descriptive name instead. This does not apply to <context>/shared/services.py (ARCH-047), the separate context-level home for services spanning aggregates.
+- **Description:** An aggregate module's domain services live in domain/services/, one file per service - not a single domain/services.py file. A single service is named after the aggregate (order.py for the Order aggregate); 2+ services each get a descriptive name instead. This does not apply to commons/services.py (ARCH-047), the separate project-level home for services spanning aggregates.
 - **Rationale:** A single services.py invites every future domain service for this aggregate to pile into one file. A directory gives each service its own file from the start, the same way domain/model/ already gives each concept its own file, with no restructuring needed when a second service arrives. Naming the lone service after the aggregate (rather than a generic "service") makes it identifiable without opening it, the same reason domain/model/ports.py or events.py are named for what they hold, not for their role alone.
 - **Correct:**
   ```
@@ -1963,17 +2019,22 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-055 — Every Python package directory has an __init__.py
 - **Level:** SHOULD · **Automation:** full · **Tier:** full · **Category:** structure
-- **Validation:** `ast-checker` — filesystem check - every directory under src/ holding a .py file has __init__.py
-- **Description:** Every directory under src/ that contains a .py file (directly or in a subdirectory) has an __init__.py, including empty ones. Implicit namespace packages (PEP 420) are not used.
-- **Rationale:** An explicit __init__.py marks a directory as a package on purpose, rather than by the accident of holding a .py file; it also avoids the edge cases implicit namespace packages create for some tooling and IDEs. A missing one is easy to overlook when scaffolding a module by hand.
+- **Validation:** `ast-checker` — filesystem check - every directory under src/ holding a .py file has __init__.py, except src/commons/ itself, which must not have one
+- **Description:** Every directory under src/ that contains a .py file (directly or in a subdirectory) has an __init__.py, including empty ones. Implicit namespace packages (PEP 420) are not used. The single exception is src/commons/ itself, which MUST NOT have one: it is a PEP 420 namespace portion that merges with the installed arch-commons distribution. Directories nested under src/commons/ follow the normal rule and do have an __init__.py.
+- **Rationale:** An explicit __init__.py marks a directory as a package on purpose, rather than by the accident of holding a .py file; it also avoids the edge cases implicit namespace packages create for some tooling and IDEs. A missing one is easy to overlook when scaffolding a module by hand. commons/ is the deliberate exception: arch-commons ships commons.types and commons.adapters while the project supplies its own commons.<module> portions, and a regular package on either side would shadow the other outright rather than merge with it.
 - **Correct:**
   ```
   sales/orders/domain/model/__init__.py   # empty, present
   sales/orders/domain/model/aggregate.py
+  
+  commons/geo.py                          # no commons/__init__.py -- namespace portion
+  commons/ids/__init__.py                 # nested dirs still have one
   ```
 - **Incorrect:**
   ```
   sales/orders/domain/model/aggregate.py  # no __init__.py alongside it
+  
+  commons/__init__.py                     # shadows the installed arch-commons
   ```
 
 #### ARCH-056 — An entrypoint file serves at most one aggregate module
@@ -2112,7 +2173,7 @@ parts. Example:
 ## 11.3 Mock / do not mock
 
 - **Never mock:** domain objects (aggregates, VOs, services), the code under test,
-  `shared_kernel` VOs. (ARCH-038)
+  `commons` VOs. (ARCH-038)
 - **Use in-memory fakes, not mocks:** repositories (`InMemoryOrderRepository` over a
   dict, bound to an `InMemoryUnitOfWork`), `EventBus` (`RecordingEventBus`), `Clock`
   (`FixedClock`). The same contract test runs against the fake and the real adapter -
@@ -2161,7 +2222,7 @@ only.
 | Repository as business service | business queries leak into persistence, repo grows unbounded | repo = collection of roots; complex reads -> read model |
 | Domain imports adapters / frameworks | domain not testable in isolation, tech locked in | DIP - domain defines ports, adapters implement |
 | Active Record aggregate | invariants entangled with the DB, not unit-testable | data mapper; plain aggregate |
-| Shared module as junk drawer | global coupling, contexts cannot evolve independently | strict `commons` / `shared_kernel` rules; duplicate by default |
+| Shared module as junk drawer | global coupling, contexts cannot evolve independently | strict `commons` admission rules (ARCH-014/047); duplicate by default |
 | Cross-context coupling | contexts fused, not independently deployable | integration events + ACL; zero imports (ARCH-012) |
 | Premature abstraction | indirection with no payoff, wrong abstraction locks in | YAGNI + Progressive Structure; abstract on 2+ concrete cases |
 | Domain leaking across the application boundary | transport coupled to the internal model | use case returns a DTO; map in application |
@@ -2242,7 +2303,7 @@ problem, not a layout problem:
 | `<module>/application/<aggregate>.py` | > ~7 public methods, > ~200 lines, or > 5 constructor params (checker warns) | The aggregate is probably doing too much. Look at the aggregate boundary before splitting the service. |
 | `<module>/domain/model/aggregate.py` | > ~400 lines or > ~7 invariants | God Aggregate. Split into two aggregate modules. |
 | `<module>/domain/model/ports.py` | > ~8 protocols in one aggregate module | The aggregate depends on too much of the outside world. |
-| `<context>/shared/` | anything beyond IDs, policy-free VOs, and cross-aggregate domain services | ARCH-047 violation, or the aggregates are wrongly separated. |
+| `src/commons/` | anything beyond IDs, VOs, enums/catalogues, and cross-aggregate domain services | ARCH-047 violation, or the aggregates are wrongly separated. |
 | Cross-aggregate atomicity needed | more than occasionally | The aggregate boundaries are drawn wrong (Section 3.6). Redraw before adding any coordinating construct. |
 | Reads through the aggregate | complex joins, reporting, dashboard shapes | Introduce a dedicated read model in `<context>/read/` (Section 2.5). |
 | Cross-context integration | more than one team, or independent deployability needed | Move from an in-process gateway to async events + ACL as the default. |
