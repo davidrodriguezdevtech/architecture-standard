@@ -16,7 +16,21 @@
 parts. Example:
 `given_shipped_order__when_add_item__then_raises_order_already_shipped`. (ARCH-040)
 
-## 11.3 Mock / do not mock
+## 11.3 Directory structure
+
+`tests/` has the same directory shape as `src/`: a test that imports from exactly
+one source directory lives at the same path under `tests/`, not flattened at the
+`tests/` root with the layer or module folded into the filename.
+`tests/sales/orders/domain/model/test_aggregate.py`, not
+`tests/test_order_aggregate.py`. A test that legitimately spans more than one
+source directory -- a smoke test through the composition root, an end-to-end test
+through a real entrypoint -- has no single mirrored path and is not flattened by
+this rule; it stays wherever it already sits (typically `tests/` root, named
+`test_<aggregate>_smoke.py` or similar). Shared test infrastructure that is not
+itself a test -- `conftest.py`, builders, in-memory doubles, fixtures -- is
+unaffected; only `test_*.py` files are placed by this rule. (ARCH-058)
+
+## 11.4 Mock / do not mock
 
 - **Never mock:** domain objects (aggregates, VOs, services), the code under test,
   `commons` VOs. (ARCH-038)
@@ -29,7 +43,7 @@ parts. Example:
 - **Rule of thumb:** an application test with more than 1 to 2 mocks means the service
   does too much or dependencies are not properly injected.
 
-## 11.4 Per-layer guidance
+## 11.5 Per-layer guidance
 
 - **Aggregates:** pure objects, never through the repository. Assert new state, emitted
   domain events, and that invalid cases raise the correct domain exception. One test
@@ -48,7 +62,7 @@ parts. Example:
   (consumer-driven: removing a field the consumer uses breaks the build). A schema
   change means a new event version, never an in-place edit.
 
-## 11.5 Coverage as a rule
+## 11.6 Coverage as a rule
 
 Domain above 90% (pure, cheap). Application: every use case with happy path, rollback,
 and events. Adapters: round-trip plus error translation. E2E: critical business flows

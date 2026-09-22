@@ -17,7 +17,7 @@ def test_given_the_installed_package__when_locating_rules__then_dir_is_inside_th
 
 
 def test_given_the_packaged_dir__when_loading__then_the_whole_catalog_loads() -> None:
-    assert len(Catalog.load(packaged_rules_dir())) == 56
+    assert len(Catalog.load(packaged_rules_dir())) == 57
 
 
 def test_given_a_built_wheel__when_installed_clean__then_it_ships_and_loads_the_catalog(
@@ -42,4 +42,4 @@ def test_given_a_built_wheel__when_installed_clean__then_it_ships_and_loads_the_
         "print(len(Catalog.load(packaged_rules_dir())))"
     )
     done = subprocess.run([str(python), "-c", probe], check=True, capture_output=True, text=True)
-    assert done.stdout.strip() == "56"
+    assert done.stdout.strip() == "57"

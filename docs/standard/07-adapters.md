@@ -110,7 +110,7 @@ are hostile to imperative mapping (deeply immutable structures, computed state).
 ### Test note
 
 Domain unit tests run without the store's mapping or translation configuration so
-aggregate classes stay uninstrumented (guarded by a fixture). See Section 11.4. Every
+aggregate classes stay uninstrumented (guarded by a fixture). See Section 11.5. Every
 use-case write goes through a UoW; the service never commits repositories
 individually. (ARCH-033)
 

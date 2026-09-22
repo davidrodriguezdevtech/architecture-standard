@@ -264,6 +264,77 @@ def _check_test_naming(project: ProjectLayout) -> list[Finding]:
     return findings
 
 
+def _resolve_content_import(project: ProjectLayout, dotted: str) -> Path | None:
+    """The src/-relative path `dotted` names, if it is a real module file.
+
+    Only a leaf module file counts (``sales/orders/domain/model/aggregate.py``);
+    a package import (``sales.orders.domain``, matched by a directory with an
+    ``__init__.py``) carries no single-file signal and is not resolved.
+    """
+    parts = dotted.split(".")
+    candidate = project.src.joinpath(*parts).with_suffix(".py")
+    if candidate.is_file():
+        return candidate.relative_to(project.src)
+    return None
+
+
+def _test_file_content_dirs(path: Path, project: ProjectLayout) -> set[Path]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    resolved: set[Path] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                hit = _resolve_content_import(project, alias.name)
+                if hit:
+                    resolved.add(hit.parent)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            hit = _resolve_content_import(project, node.module)
+            if hit:
+                resolved.add(hit.parent)
+            for alias in node.names:
+                hit = _resolve_content_import(project, f"{node.module}.{alias.name}")
+                if hit:
+                    resolved.add(hit.parent)
+    return resolved
+
+
+def _check_test_mirrors_source(project: ProjectLayout) -> list[Finding]:
+    """A test file's directory mirrors the src/ directory it tests (ARCH-058).
+
+    Only meaningful for a test file whose imports resolve to exactly one src/
+    directory -- zero means no content signal (a stub, or a file reached only
+    through fixtures), 2+ means it is legitimately cross-cutting (a smoke/e2e
+    test through the composition root) and this rule does not force it into
+    one aggregate's tree.
+    """
+    findings: list[Finding] = []
+    tests_dir = project.root / "tests"
+    if not tests_dir.is_dir():
+        return findings
+    skip_fixtures = "fixtures" not in project.root.parts
+    for path in iter_python_files(tests_dir):
+        if skip_fixtures and "fixtures" in path.parts:
+            continue
+        if not path.stem.startswith("test_"):
+            continue
+        dirs = _test_file_content_dirs(path, project)
+        if len(dirs) != 1:
+            continue
+        src_relative = next(iter(dirs))
+        expected_dir = tests_dir / src_relative
+        if path.parent != expected_dir:
+            findings.append(
+                Finding(
+                    "ARCH-058",
+                    str(path.relative_to(project.root)),
+                    None,
+                    f"imports from src/{src_relative.as_posix()} but does not live "
+                    f"under {expected_dir.relative_to(project.root).as_posix()}/",
+                )
+            )
+    return findings
+
+
 def _check_promotion_thresholds(project: ProjectLayout) -> list[Finding]:
     findings: list[Finding] = []
     for context, module in project.iter_modules():
@@ -442,6 +513,7 @@ _IMPLEMENTED: dict[str, Callable[[ProjectLayout], list[Finding]]] = {
     "ARCH-040": _check_test_naming,
     "ARCH-041": _check_promotion_thresholds,
     "ARCH-049": _check_one_aggregate_per_module,
+    "ARCH-058": _check_test_mirrors_source,
 }
 
 
@@ -456,6 +528,7 @@ class AstRulesCheck:
         "ARCH-040",
         "ARCH-041",
         "ARCH-049",
+        "ARCH-058",
     )
 
     def run(self, project: ProjectLayout, catalog: Catalog) -> list[CheckReport]:

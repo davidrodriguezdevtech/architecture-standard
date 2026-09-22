@@ -68,7 +68,8 @@ project/
 │   └── bootstrap/                    # Composition Root: config, singletons, DI container,
 │                                     #   service/UoW factories, router registration,
 │                                     #   consumer startup
-└── tests/
+└── tests/                            # mirrors src/'s shape 1:1 (Section 11.3):
+    └── <context>/<aggregate_module>/<layer>/test_<unit>.py
 ```
 
 `adapters/` holds a module's **outbound (driven) adapters**: repositories, gateways,

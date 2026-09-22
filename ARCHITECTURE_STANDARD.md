@@ -195,7 +195,8 @@ project/
 │   └── bootstrap/                    # Composition Root: config, singletons, DI container,
 │                                     #   service/UoW factories, router registration,
 │                                     #   consumer startup
-└── tests/
+└── tests/                            # mirrors src/'s shape 1:1 (Section 11.3):
+    └── <context>/<aggregate_module>/<layer>/test_<unit>.py
 ```
 
 `adapters/` holds a module's **outbound (driven) adapters**: repositories, gateways,
@@ -881,7 +882,7 @@ are hostile to imperative mapping (deeply immutable structures, computed state).
 ### Test note
 
 Domain unit tests run without the store's mapping or translation configuration so
-aggregate classes stay uninstrumented (guarded by a fixture). See Section 11.4. Every
+aggregate classes stay uninstrumented (guarded by a fixture). See Section 11.5. Every
 use-case write goes through a UoW; the service never commits repositories
 individually. (ARCH-033)
 
@@ -1069,6 +1070,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 | ARCH-038 | Domain objects are never mocked | SHOULD | partial |
 | ARCH-039 | In-memory fakes share the contract test with the real adapter | SHOULD | manual |
 | ARCH-040 | Test names follow given_<state>__when_<action>__then_<result> | SHOULD | full |
+| ARCH-058 | A test file's directory mirrors the source it tests | SHOULD | partial |
 
 ### progressive_structure
 
@@ -2185,6 +2187,23 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Related:** ARCH-009, ARCH-010
 
+#### ARCH-058 — A test file's directory mirrors the source it tests
+- **Level:** SHOULD · **Automation:** partial · **Tier:** full · **Category:** testing
+- **Validation:** `ast-checker` — a tests/**/test_*.py file whose imports resolve to exactly one src/ directory is flagged when it does not live at the mirrored tests/ path; a file with zero or 2+ resolved directories (fixtures, conftest, smoke/e2e) is not flagged
+- **Description:** tests/ has the same directory shape as src/: a test file that imports from exactly one source directory (one aggregate's one layer, or one cross-cutting module) lives at the same path under tests/ instead of being flattened into tests/ with the layer or module folded into the filename. A test that legitimately spans more than one source directory -- a smoke test through the composition root, an end-to-end test through a real entrypoint -- is not flattened by this rule; there is no single mirrored path for it to move to.
+- **Rationale:** A prefixed, flattened tests/ directory (test_client_aggregate.py, test_client_web.py, test_client_repository.py, ...) hides which layer each test belongs to and stops growing once two aggregates share a prefix word; tests/<context>/<module>/<layer>/test_<unit>.py answers "where does the test for this file live" the same way src/ answers "where does this file live" -- by walking the same path, not by parsing a filename.
+- **Correct:**
+  ```
+  # tests/sales/orders/domain/model/test_aggregate.py
+  from sales.orders.domain.model.aggregate import Order
+  ```
+- **Incorrect:**
+  ```
+  # tests/test_order_aggregate.py
+  from sales.orders.domain.model.aggregate import Order
+  ```
+- **Related:** ARCH-040
+
 ---
 
 # 10. DDD Rules
@@ -2301,7 +2320,21 @@ Adding behavior?
 parts. Example:
 `given_shipped_order__when_add_item__then_raises_order_already_shipped`. (ARCH-040)
 
-## 11.3 Mock / do not mock
+## 11.3 Directory structure
+
+`tests/` has the same directory shape as `src/`: a test that imports from exactly
+one source directory lives at the same path under `tests/`, not flattened at the
+`tests/` root with the layer or module folded into the filename.
+`tests/sales/orders/domain/model/test_aggregate.py`, not
+`tests/test_order_aggregate.py`. A test that legitimately spans more than one
+source directory -- a smoke test through the composition root, an end-to-end test
+through a real entrypoint -- has no single mirrored path and is not flattened by
+this rule; it stays wherever it already sits (typically `tests/` root, named
+`test_<aggregate>_smoke.py` or similar). Shared test infrastructure that is not
+itself a test -- `conftest.py`, builders, in-memory doubles, fixtures -- is
+unaffected; only `test_*.py` files are placed by this rule. (ARCH-058)
+
+## 11.4 Mock / do not mock
 
 - **Never mock:** domain objects (aggregates, VOs, services), the code under test,
   `commons` VOs. (ARCH-038)
@@ -2314,7 +2347,7 @@ parts. Example:
 - **Rule of thumb:** an application test with more than 1 to 2 mocks means the service
   does too much or dependencies are not properly injected.
 
-## 11.4 Per-layer guidance
+## 11.5 Per-layer guidance
 
 - **Aggregates:** pure objects, never through the repository. Assert new state, emitted
   domain events, and that invalid cases raise the correct domain exception. One test
@@ -2333,7 +2366,7 @@ parts. Example:
   (consumer-driven: removing a field the consumer uses breaks the build). A schema
   change means a new event version, never an in-place edit.
 
-## 11.5 Coverage as a rule
+## 11.6 Coverage as a rule
 
 Domain above 90% (pure, cheap). Application: every use case with happy path, rollback,
 and events. Adapters: round-trip plus error translation. E2E: critical business flows
@@ -2394,12 +2427,12 @@ rule on every PR.
 | Import contracts (layering, independence, cycles) | import-linter (`.importlinter`) | 001-003, 005, 006, 008, 011-015, 017, 034, 035 | CI + pre-commit |
 | Import-graph queries / bespoke asserts | grimp | 007, cycle detection, "who imports X" | pytest arch suite |
 | Banned symbols/patterns per layer | ruff (`flake8-tidy-imports` banned-api, `TID`, `TCH`) | 003, 004, 028 | CI + pre-commit |
-| AST structural rules | custom `ast` checker shipped with the standard | 023, 031, 018, 019, 030 (service size: methods/lines/params), 040, 041 (promotion thresholds), 043 (envelope shape) | CI + pytest |
+| AST structural rules | custom `ast` checker shipped with the standard | 023, 031, 018, 019, 030 (service size: methods/lines/params), 040, 041 (promotion thresholds), 043 (envelope shape), 058 (tests/ mirrors src/) | CI + pytest |
 | ADR waiver expiry | validator date check over `docs/adr/` | 021*, 036, any waived MUST | CI |
 | Package boundaries with a public API | tach (`tach.toml`) | 012, 042, 045 | CI |
 | Event schema / contract testing | pydantic/jsonschema export + consumer fixtures; optionally Pact | 024, 043, 044 | CI (producer & consumer) |
 | Test taxonomy | pytest markers + a conftest rule forbidding adapter imports in domain tests | 038 | CI |
-| Coverage gates per layer | coverage.py with per-path thresholds | Section 11.5 | CI |
+| Coverage gates per layer | coverage.py with per-path thresholds | Section 11.6 | CI |
 | Manual review checklist | shipped PR checklist for the "manual" rules | 016, 021*, 027, 029, 036, 039, 042 | code review |
 
 ## 14.2 Confidence tiers
