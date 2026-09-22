@@ -168,6 +168,33 @@ def _check_one_aggregate_per_module(project: ProjectLayout) -> list[Finding]:
                     "ARCH-049", rel, None, f"{module} declares more than one aggregate: {names}"
                 )
             )
+        elif files[0].stem != "aggregate":
+            findings.append(
+                Finding(
+                    "ARCH-049",
+                    rel,
+                    None,
+                    f"{module}'s aggregate root is {files[0].name}, expected aggregate.py",
+                )
+            )
+    return findings
+
+
+def _check_domain_services_location(project: ProjectLayout) -> list[Finding]:
+    findings: list[Finding] = []
+    for context, module in project.iter_modules():
+        services_file = project.module_domain_dir(context, module) / "services.py"
+        if services_file.exists():
+            rel = str(services_file.relative_to(project.root))
+            findings.append(
+                Finding(
+                    "ARCH-054",
+                    rel,
+                    None,
+                    f"{module} has a domain/services.py file; use domain/services/ instead"
+                    " (one file per service, service.py when there's only one)",
+                )
+            )
     return findings
 
 
@@ -433,6 +460,7 @@ _IMPLEMENTED: dict[str, Callable[[ProjectLayout], list[Finding]]] = {
     "ARCH-040": _check_test_naming,
     "ARCH-041": _check_promotion_thresholds,
     "ARCH-049": _check_one_aggregate_per_module,
+    "ARCH-054": _check_domain_services_location,
 }
 
 
@@ -447,6 +475,7 @@ class AstRulesCheck:
         "ARCH-040",
         "ARCH-041",
         "ARCH-049",
+        "ARCH-054",
     )
 
     def run(self, project: ProjectLayout, catalog: Catalog) -> list[CheckReport]:

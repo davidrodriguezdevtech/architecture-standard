@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sales.shared.ids import UserId
-from sales.users.domain.model.user import User
+from sales.users.domain.model.aggregate import User
 
 
 class InMemoryUserRepository:

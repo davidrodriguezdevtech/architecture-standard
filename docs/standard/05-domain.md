@@ -3,7 +3,8 @@
 ## 5.1 Contents and dependencies
 
 `domain/` contains: `model/` (aggregates, entities, value objects, domain events,
-ports, projections, exceptions), `services.py`, and `specifications.py`.
+ports, projections, exceptions), `services/` (one file per domain service;
+`service.py` when there's only one), and `specifications.py`.
 
 `domain/` depends on: the standard library, `commons/types/`, and (rarely)
 `shared_kernel/`. Nothing else. No frameworks, no I/O, no ORM, no `datetime.now()` or

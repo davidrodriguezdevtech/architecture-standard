@@ -14,7 +14,7 @@ rules:
       repository re-couples them and makes the one-transaction-one-aggregate rule
       unenforceable.
     correct: |
-      # sales/orders/domain/model/order.py
+      # sales/orders/domain/model/aggregate.py
       from sales.shared.ids import UserId
       class Order:
           customer_id: UserId
@@ -90,16 +90,17 @@ rules:
     automation: partial
     category: structure
     description: >
-      An aggregate module's domain/model/ declares exactly one aggregate root, in a file
-      named after it.
+      An aggregate module's domain/model/ declares exactly one aggregate root, in
+      aggregate.py.
     rationale: >
       The 1:1 mapping is what makes "where does this go?" answerable without judgement,
-      and it makes the transaction boundary visible in the tree.
-    correct: "sales/users/domain/model/user.py declaring class User"
-    incorrect: "sales/users/domain/model/user.py declaring class User and class Order"
+      and a fixed filename means there is no decision to make about what to call it
+      either - the tree looks the same in every module.
+    correct: "sales/users/domain/model/aggregate.py declaring class User"
+    incorrect: "sales/users/domain/model/aggregate.py declaring class User and class Order"
     validation:
       tool: ast-checker
-      detail: exactly one non-reserved module in domain/model
+      detail: exactly one non-reserved module in domain/model, named aggregate.py
   - id: ARCH-050
     name: Declared context dependency graph
     level: MUST
@@ -141,7 +142,31 @@ rules:
           user_id: str
     incorrect: |
       # sales/read/customer_overview.py
-      from sales.users.domain.model.user import User
+      from sales.users.domain.model.aggregate import User
     validation:
       tool: import-linter
       detail: forbidden contract read -> modules' domain/application
+  - id: ARCH-054
+    name: Domain services for an aggregate live in a services/ directory
+    level: SHOULD
+    automation: partial
+    category: structure
+    description: >
+      An aggregate module's domain services live in domain/services/, one file per
+      service (service.py when there is only one) - not a single domain/services.py
+      file. This does not apply to <context>/shared/services.py (ARCH-047), the
+      separate context-level home for services spanning aggregates.
+    rationale: >
+      A single services.py invites every future domain service for this aggregate to
+      pile into one file. A directory gives each service its own file from the start,
+      the same way domain/model/ already gives each concept its own file, with no
+      restructuring needed when a second service arrives.
+    correct: |
+      # sales/orders/domain/services/pricing.py
+      class PricingCalculator: ...
+    incorrect: |
+      # sales/orders/domain/services.py
+      class PricingCalculator: ...
+    validation:
+      tool: ast-checker
+      detail: domain/services.py must not exist as a file in an aggregate module

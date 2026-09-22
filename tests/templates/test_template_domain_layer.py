@@ -23,11 +23,11 @@ def test_given_defaults__when_copied__then_domain_layer_files_compile_and_have_e
         skip_tasks=True,
     )
 
-    for filename in ("order.py", "exceptions.py", "events.py", "ports.py"):
+    for filename in ("aggregate.py", "exceptions.py", "events.py", "ports.py"):
         path = dest / _DOMAIN_MODEL / filename
         py_compile.compile(str(path), doraise=True)
 
-    order_py = (dest / _DOMAIN_MODEL / "order.py").read_text(encoding="utf-8")
+    order_py = (dest / _DOMAIN_MODEL / "aggregate.py").read_text(encoding="utf-8")
     assert "class OrderId(EntityId):" in order_py
     assert "class Order:" in order_py
     assert "def create(" in order_py

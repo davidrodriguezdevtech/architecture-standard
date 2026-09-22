@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from sales.orders.domain.model.order import Order
+from sales.orders.domain.model.aggregate import Order
 from sales.shared.ids import OrderId
 
 

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from commons.adapters.uuid7_id_generator import Uuid7IdGenerator
 
-from {{ context_name }}.{{ aggregate_module }}.domain.model.exceptions import (
-    {{ aggregate_name | capitalize }}NotFound,
-)
-from {{ context_name }}.{{ aggregate_module }}.domain.model.{{ aggregate_name }} import (
+from {{ context_name }}.{{ aggregate_module }}.domain.model.aggregate import (
     {{ aggregate_name | capitalize }},
     {{ aggregate_name | capitalize }}Id,
+)
+from {{ context_name }}.{{ aggregate_module }}.domain.model.exceptions import (
+    {{ aggregate_name | capitalize }}NotFound,
 )
 
 

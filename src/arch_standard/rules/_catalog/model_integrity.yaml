@@ -159,13 +159,13 @@ rules:
       An Active Record aggregate entangles invariants with the database and
       cannot be unit-tested without it.
     correct: |
-      # sales/orders/domain/model/order.py
+      # sales/orders/domain/model/aggregate.py
       @dataclass
       class Order: ...
       # sales/orders/adapters/mapping.py
       map_imperatively(Order, order_table)
     incorrect: |
-      # sales/orders/domain/model/order.py
+      # sales/orders/domain/model/aggregate.py
       class Order(Base):
           __tablename__ = "orders"
           def save(self) -> None: self._session.add(self)
@@ -221,10 +221,10 @@ rules:
     correct: |
       # sales/orders/domain/model/exceptions.py
       class OrderAlreadyShipped(DomainError): ...
-      # sales/orders/domain/model/order.py
+      # sales/orders/domain/model/aggregate.py
       raise OrderAlreadyShipped(self.id)
     incorrect: |
-      # sales/orders/domain/model/order.py
+      # sales/orders/domain/model/aggregate.py
       raise ValueError("order already shipped")
     validation:
       tool: review
