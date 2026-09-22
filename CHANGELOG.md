@@ -8,6 +8,71 @@ renders these entries.
 
 ## 0.3.0
 
+**Added: a narrow, explicit exception to ARCH-003 for a framework's own scalar
+format validators.** Domain (and a project's own `commons/`) MAY import
+`pydantic.EmailStr`, `pydantic.TypeAdapter` and `pydantic.ValidationError` by name,
+used only to validate one field's string format in `__post_init__`. `import pydantic`
+(the bare form) and every other pydantic name -- `BaseModel`, `Field`, decorators --
+stay banned. This closes a real gap found in practice: a hand-rolled email regex
+duplicated per aggregate, reinventing a problem pydantic already solves correctly,
+purely because ARCH-003 read as an all-or-nothing ban.
+
+### Changed
+- ARCH-003: reworded to document the allowlist and the line it does not cross
+  (scalar TYPE validators, never MODELING machinery). `validation.tool` corrected
+  from `import-linter` to `ast-checker`, matching what actually enforces it
+  (`BannedSymbolsCheck`) -- the old text was stale, not a behaviour change.
+
+**Clarified: a single-aggregate listing is not a `<context>/read/` concern, and it
+is a port -- not a class an entrypoint reaches into `adapters/` for.** Section 2.5's
+"what goes where" table listed "search" and "any cross-aggregate read" in the same
+row, which reads as license to put a plain paginated listing of one aggregate type
+at context level. It is not: `<context>/read/` exists because some queries span
+aggregate modules, and a query touching only one aggregate's own data has nothing to
+span. That query -- however many rows it returns, however it is filtered, sorted or
+paginated -- belongs to that aggregate module's own **Finder**: a `Finder` ABC and
+its DTOs in `application/<aggregate>_finder.py` (entrypoint-importable, like any
+other application module), implemented in `adapters/<aggregate>_finder.py` (wired by
+`bootstrap/`, never imported by an entrypoint directly) -- the same ABC/
+implementation split the repository already uses, and for the same reason: ARCH-009
+forbids an entrypoint from importing a module's `adapters/` directly. An early
+version of this change put the whole Finder in `adapters/`; that breaks ARCH-009 the
+moment an entrypoint actually calls it, caught by `lint-imports` before release.
+
+### Changed
+- Section 2.5 rewritten around a three-row table (by id / by anything else, same
+  aggregate / spanning 2+ aggregates), and gives the Finder's ABC/implementation
+  split its own paragraph, mirroring how the repository already splits between
+  `domain/model/ports.py` and `adapters/`.
+- The canonical tree (2.1) and "what goes where" table (2.3) gained the
+  `<aggregate>_finder.py` pair (`application/` + `adapters/`) and the split row.
+- ARCH-051: description, rationale and the two-part `correct` example now show the
+  Finder as a port (ABC in `application/`, implementation in `adapters/`), with an
+  `incorrect` example showing exactly the ARCH-009 violation an unsplit Finder
+  causes: an entrypoint importing `adapters/<aggregate>_finder.py` directly.
+- ARCH-051's automated finding message (a repository method that looks like a
+  query) now names both files of the split, read/ only for a query spanning 2+
+  aggregate modules.
+
+No rule `id` was removed and no `level` changed.
+
+#### Migration notes
+
+For each existing project with a `<context>/read/<name>.py` module that only ever
+reads one aggregate module's own store:
+
+1. Split it in two: the `Finder` ABC and its query/result DTOs move to that
+   aggregate module's `application/<aggregate>_finder.py`; the implementation
+   (`InMemoryXFinder` or a real one) moves to `adapters/<aggregate>_finder.py`.
+2. Wire the implementation in `bootstrap/`, alongside the repository, and pass the
+   `Finder`-typed instance to the entrypoint's `configure()`.
+3. Re-run `uv run arch-standard render-importlinter .` and `uv run lint-imports` --
+   confirm ARCH-009 stays green (the entrypoint now imports the port from
+   `application/`, never the implementation from `adapters/`).
+4. Re-run `uv run arch-standard check .` -- ARCH-052's contract is gated on
+   `<context>/read/` existing at all, so removing an unneeded `read/` directory
+   entirely is safe and causes no new findings.
+
 **Breaking: `<context>/shared/` and `shared_kernel/` are replaced by a single
 `src/commons/`.** `commons` becomes a PEP 420 namespace package assembled from two
 portions: `commons.types` / `commons.adapters` still ship from the installed

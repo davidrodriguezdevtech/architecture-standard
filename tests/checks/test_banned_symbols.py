@@ -51,3 +51,60 @@ def test_given_the_modular_fixture__when_checked__then_all_banned_symbol_rules_p
         for rid, r in reports.items()
         if r.outcome is not Outcome.PASS
     ]
+
+
+def _domain_file(tmp_path: Path, body: str) -> ProjectLayout:
+    """A minimal project with one domain/model file, for isolated ARCH-003 checks."""
+    domain_model = tmp_path / "src" / "sales" / "orders" / "domain" / "model"
+    domain_model.mkdir(parents=True)
+    (domain_model / "value_objects.py").write_text(body, encoding="utf-8")
+    (tmp_path / "src" / "sales" / "orders" / "domain" / "__init__.py").write_text(
+        "", encoding="utf-8"
+    )
+    return ProjectLayout.detect(tmp_path)
+
+
+def test_given_domain_imports_emailstr_by_name__when_checked__then_arch_003_passes(
+    tmp_path: Path,
+) -> None:
+    layout = _domain_file(tmp_path, "from pydantic import EmailStr, TypeAdapter, ValidationError\n")
+    report = {r.rule_id: r for r in BannedSymbolsCheck().run(layout, Catalog.load(RULES))}[
+        "ARCH-003"
+    ]
+    assert report.outcome is Outcome.PASS
+
+
+def test_given_domain_imports_basemodel__when_checked__then_arch_003_fails(
+    tmp_path: Path,
+) -> None:
+    """The allowlist is by name, not by module: BaseModel is still banned."""
+    layout = _domain_file(tmp_path, "from pydantic import BaseModel\n")
+    report = {r.rule_id: r for r in BannedSymbolsCheck().run(layout, Catalog.load(RULES))}[
+        "ARCH-003"
+    ]
+    assert report.outcome is Outcome.FAIL
+    assert any("BaseModel" in f.message for f in report.findings)
+
+
+def test_given_domain_bare_imports_pydantic__when_checked__then_arch_003_fails(
+    tmp_path: Path,
+) -> None:
+    """`import pydantic` stays banned even though EmailStr is allowed by name --
+    the bare form would let code reach BaseModel through the module object."""
+    layout = _domain_file(tmp_path, "import pydantic\n")
+    report = {r.rule_id: r for r in BannedSymbolsCheck().run(layout, Catalog.load(RULES))}[
+        "ARCH-003"
+    ]
+    assert report.outcome is Outcome.FAIL
+
+
+def test_given_domain_imports_emailstr_and_basemodel_together__when_checked__then_arch_003_fails(
+    tmp_path: Path,
+) -> None:
+    """One allowed name alongside one banned name on the same import still fails."""
+    layout = _domain_file(tmp_path, "from pydantic import BaseModel, EmailStr\n")
+    report = {r.rule_id: r for r in BannedSymbolsCheck().run(layout, Catalog.load(RULES))}[
+        "ARCH-003"
+    ]
+    assert report.outcome is Outcome.FAIL
+    assert any("BaseModel" in f.message and "EmailStr" not in f.message for f in report.findings)

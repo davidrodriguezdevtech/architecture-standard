@@ -43,6 +43,17 @@ DEFAULT_BANNED_CALLS = frozenset(
 # flagging them by bare name false-positives ARCH-028 (a MUST) on compliant
 # domain code. Narrowed to the one name that unambiguously means "ORM base".
 _ORM_BASES = {"DeclarativeBase"}
+# I5: ARCH-003 bans frameworks wholesale, with one narrow, explicit exception -- a
+# framework's own format-only SCALAR validators, imported by name. This is not a
+# blanket pydantic allowance: `import pydantic` (bare, below) stays banned even
+# though EmailStr is on this list, because the bare form would let code reach
+# BaseModel/Field through the module object; and any name not listed here --
+# BaseModel, Field, field_validator, dataclasses, RootModel, ... -- stays banned
+# too. See ARCH-003's rule text for the rationale and the line this exception
+# does not cross.
+DOMAIN_ALLOWED_SYMBOLS: dict[str, frozenset[str]] = {
+    "pydantic": frozenset({"EmailStr", "TypeAdapter", "ValidationError"}),
+}
 DEFAULT_BANNED_LOGGING = frozenset({"logging", "structlog", "loguru"})
 _LOG_METHODS = frozenset({"debug", "info", "warning", "warn", "error", "exception", "critical"})
 
@@ -98,9 +109,19 @@ class BannedSymbolsCheck:
                 elif isinstance(node, ast.ImportFrom) and node.module:
                     top = node.module.split(".")[0]
                     if top in DEFAULT_BANNED_IMPORTS:
-                        imports.append(
-                            Finding("ARCH-003", rel, node.lineno, f"domain imports {node.module}")
+                        allowed = DOMAIN_ALLOWED_SYMBOLS.get(top, frozenset())
+                        disallowed = sorted(
+                            alias.name for alias in node.names if alias.name not in allowed
                         )
+                        if disallowed:
+                            imports.append(
+                                Finding(
+                                    "ARCH-003",
+                                    rel,
+                                    node.lineno,
+                                    f"domain imports {node.module}.{', '.join(disallowed)}",
+                                )
+                            )
                 elif isinstance(node, ast.Call):
                     target = _dotted(node.func)
                     tail = ".".join(target.split(".")[-2:]) if "." in target else target

@@ -51,22 +51,55 @@ rules:
     tier: core
     category: dependencies
     description: >
-      No module under a context's domain/ package imports a web framework, an
-      ORM, a DI container, or pydantic.
+      No module under a context's domain/ package (or a project's commons/, held to
+      the same discipline) imports a web framework, an ORM, a DI container, or
+      pydantic -- with one narrow, explicit exception: a framework's own format-only
+      scalar validators, imported by name. Today that allowlist is exactly
+      `pydantic.EmailStr`, `pydantic.TypeAdapter` and `pydantic.ValidationError`,
+      used only to validate a single field's string format in `__post_init__`, never
+      to define a model, a schema, or anything with I/O. `import pydantic` (the bare
+      form) stays banned even though names on the allowlist exist, because the bare
+      form reaches `pydantic.BaseModel` through the module object; the same import
+      line naming both an allowed and a banned symbol still fails.
     rationale: >
-      A framework-free domain stays unit-testable without a runtime and keeps
-      vendor choices out of the business core.
+      A framework-free domain stays unit-testable without a runtime and keeps vendor
+      choices out of the business core -- reimplementing a well-known format (email,
+      URL, phone) with a hand-rolled regex is not what that principle protects, and
+      it trades one duplicated, under-tested validator per aggregate for one call
+      into a library that already gets it right. The line stays exactly where the
+      principle needs it: the domain may borrow a framework's scalar TYPE validator,
+      never its MODELING machinery (no `BaseModel`, no `Field`, no framework runtime
+      or I/O reaching the domain through the back door).
     correct: |
-      # sales/orders/domain/model/aggregate.py
-      from dataclasses import dataclass
-      from commons.types.ids import EntityId
+      # sales/orders/domain/model/value_objects.py
+      from pydantic import EmailStr, TypeAdapter, ValidationError
+
+      _EMAIL = TypeAdapter(EmailStr)
+
+      @dataclass(frozen=True)
+      class ContactInfo:
+          email: EmailStr
+
+          def __post_init__(self) -> None:
+              if self.email:
+                  try:
+                      _EMAIL.validate_python(self.email)
+                  except ValidationError as exc:
+                      raise InvalidOrder(f"Email is not valid: {self.email}") from exc
     incorrect: |
       # sales/orders/domain/model/aggregate.py
-      from pydantic import BaseModel
+      from pydantic import BaseModel        # modeling machinery, not a scalar validator
       from sqlalchemy.orm import Mapped
+
+      # sales/orders/domain/model/value_objects.py
+      import pydantic                        # bare import -- reaches BaseModel too,
+                                              # banned even though EmailStr exists
     validation:
-      tool: import-linter
-      detail: forbidden contract; domain -/-> (pydantic, sqlalchemy, fastapi, ...)
+      tool: ast-checker
+      detail: >-
+        forbidden imports in domain/ (and commons/); `from pydantic import <name>` is
+        permitted only for names on the scalar-validator allowlist, `import pydantic`
+        (bare) is never permitted
   - id: ARCH-004
     name: Domain performs no I/O
     level: MUST

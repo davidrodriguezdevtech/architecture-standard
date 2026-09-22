@@ -196,8 +196,10 @@ def _check_repositories_are_not_queries(project: ProjectLayout) -> list[Finding]
                         "ARCH-051",
                         rel,
                         stmt.lineno,
-                        f"{cls.name}.{stmt.name} is a query, not aggregate retrieval; "
-                        f"move it to {context}/read/",
+                        f"{cls.name}.{stmt.name} is a query, not aggregate retrieval; move it to "
+                        f"this module's own Finder (application/{module}_finder.py + "
+                        f"adapters/{module}_finder.py), or to {context}/read/ if it spans "
+                        "2+ aggregate modules",
                     )
                 )
     return findings
