@@ -16,7 +16,7 @@ rules:
       class OrderRepository(Protocol):
           def get(self, order_id: OrderId) -> Order: ...
     incorrect: |
-      # sales/orders/domain/model/order.py
+      # sales/orders/domain/model/aggregate.py
       from sales.orders.adapters.postgres_order_repository import PostgresOrderRepository
     validation:
       tool: import-linter
@@ -38,7 +38,7 @@ rules:
       # sales/orders/application/order_service.py
       from sales.orders.domain.model.order import Order
     incorrect: |
-      # sales/orders/domain/model/order.py
+      # sales/orders/domain/model/aggregate.py
       from sales.orders.application.order_service import OrderService
     validation:
       tool: import-linter
@@ -56,11 +56,11 @@ rules:
       A framework-free domain stays unit-testable without a runtime and keeps
       vendor choices out of the business core.
     correct: |
-      # sales/orders/domain/model/order.py
+      # sales/orders/domain/model/aggregate.py
       from dataclasses import dataclass
       from commons.types.ids import EntityId
     incorrect: |
-      # sales/orders/domain/model/order.py
+      # sales/orders/domain/model/aggregate.py
       from pydantic import BaseModel
       from sqlalchemy.orm import Mapped
     validation:
@@ -79,12 +79,12 @@ rules:
       A domain that reads datetime.now() or a socket is non-deterministic and
       cannot be tested in microseconds.
     correct: |
-      # sales/orders/domain/model/order.py
+      # sales/orders/domain/model/aggregate.py
       @classmethod
       def place(cls, clock: Clock, ids: IdGenerator) -> "Order":
           return cls(id=ids.next_identity(), placed_at=clock.now())
     incorrect: |
-      # sales/orders/domain/model/order.py
+      # sales/orders/domain/model/aggregate.py
       from datetime import datetime
       placed_at = datetime.now()
     validation:
@@ -175,7 +175,7 @@ rules:
       class SqlAlchemyOrderRepository:  # implements OrderRepository (domain port)
           def get(self, order_id: OrderId) -> Order: ...
     incorrect: |
-      # sales/orders/domain/services.py
+      # sales/orders/domain/services/service.py
       from sales.orders.adapters.order_repository import SqlAlchemyOrderRepository
     validation:
       tool: import-linter

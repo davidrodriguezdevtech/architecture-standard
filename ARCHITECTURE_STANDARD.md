@@ -147,13 +147,19 @@ project/
 │   │   ├── <aggregate_module>/      # LEVEL 2 - 1:1 with an aggregate (e.g. users)
 │   │   │   ├── domain/
 │   │   │   │   ├── model/
-│   │   │   │   │   ├── <aggregate>.py     # the aggregate root and its entities
+│   │   │   │   │   ├── aggregate.py       # the aggregate root and its entities -
+│   │   │   │   │   │                      #   a fixed name, not derived from the aggregate
 │   │   │   │   │   ├── value_objects.py
 │   │   │   │   │   ├── events.py          # domain events (frozen, past tense)
 │   │   │   │   │   ├── ports.py           # domain-vocabulary ports (repository, ...)
 │   │   │   │   │   ├── projections.py     # domain-derived read projections (when they exist)
 │   │   │   │   │   └── exceptions.py
-│   │   │   │   ├── services.py            # domain services for this aggregate (optional)
+│   │   │   │   ├── services/              # domain services for this aggregate (optional;
+│   │   │   │   │   └── service.py         #   a directory - one file per service. A single
+│   │   │   │   │                          #   service is service.py; 2+ services each get a
+│   │   │   │   │                          #   descriptive name. Pure domain logic only - no
+│   │   │   │   │                          #   I/O, no persistence queries (the repository's
+│   │   │   │   │                          #   job, not a domain service's)
 │   │   │   │   └── specifications.py      # optional
 │   │   │   ├── application/
 │   │   │   │   └── <aggregate>_service.py # one method per use case
@@ -215,8 +221,8 @@ and those ID types live in `<context>/shared/ids.py`. (ARCH-046)
 |---|---|
 | A new business boundary | `src/<context>/` |
 | A new aggregate | `src/<context>/<aggregate_module>/` (a new folder, full shape) |
-| A rule that protects an invariant of one aggregate | a method on the aggregate in `<module>/domain/model/<aggregate>.py` |
-| A calculation over one aggregate that is not a method | `<module>/domain/services.py` |
+| A rule that protects an invariant of one aggregate | a method on the aggregate in `<module>/domain/model/aggregate.py` |
+| A calculation over one aggregate that is not a method | `<module>/domain/services/` (one file per domain service; `service.py` if there's only one) |
 | A calculation spanning aggregates of the same context | `<context>/shared/services.py` |
 | A use case (state change on one aggregate) | a method on `<module>/application/<aggregate>_service.py` |
 | A persistence/broker/third-party integration | one module in `<module>/adapters/` |
@@ -415,7 +421,8 @@ External stimulus -> Entrypoint -> Application use case -> Domain
 ## 5.1 Contents and dependencies
 
 `domain/` contains: `model/` (aggregates, entities, value objects, domain events,
-ports, projections, exceptions), `services.py`, and `specifications.py`.
+ports, projections, exceptions), `services/` (one file per domain service;
+`service.py` when there's only one), and `specifications.py`.
 
 `domain/` depends on: the standard library, `commons/types/`, and (rarely)
 `shared_kernel/`. Nothing else. No frameworks, no I/O, no ORM, no `datetime.now()` or
@@ -931,7 +938,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # sales/orders/domain/model/order.py
+  # sales/orders/domain/model/aggregate.py
   from sales.orders.adapters.postgres_order_repository import PostgresOrderRepository
   ```
 - **Related:** ARCH-008
@@ -948,7 +955,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # sales/orders/domain/model/order.py
+  # sales/orders/domain/model/aggregate.py
   from sales.orders.application.order_service import OrderService
   ```
 
@@ -959,13 +966,13 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** A framework-free domain stays unit-testable without a runtime and keeps vendor choices out of the business core.
 - **Correct:**
   ```
-  # sales/orders/domain/model/order.py
+  # sales/orders/domain/model/aggregate.py
   from dataclasses import dataclass
   from commons.types.ids import EntityId
   ```
 - **Incorrect:**
   ```
-  # sales/orders/domain/model/order.py
+  # sales/orders/domain/model/aggregate.py
   from pydantic import BaseModel
   from sqlalchemy.orm import Mapped
   ```
@@ -977,14 +984,14 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** A domain that reads datetime.now() or a socket is non-deterministic and cannot be tested in microseconds.
 - **Correct:**
   ```
-  # sales/orders/domain/model/order.py
+  # sales/orders/domain/model/aggregate.py
   @classmethod
   def place(cls, clock: Clock, ids: IdGenerator) -> "Order":
       return cls(id=ids.next_identity(), placed_at=clock.now())
   ```
 - **Incorrect:**
   ```
-  # sales/orders/domain/model/order.py
+  # sales/orders/domain/model/aggregate.py
   from datetime import datetime
   placed_at = datetime.now()
   ```
@@ -1052,7 +1059,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # sales/orders/domain/services.py
+  # sales/orders/domain/services/service.py
   from sales.orders.adapters.order_repository import SqlAlchemyOrderRepository
   ```
 - **Related:** ARCH-001, ARCH-042
@@ -1410,7 +1417,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** An Active Record aggregate entangles invariants with the database and cannot be unit-tested without it.
 - **Correct:**
   ```
-  # sales/orders/domain/model/order.py
+  # sales/orders/domain/model/aggregate.py
   @dataclass
   class Order: ...
   # sales/orders/adapters/mapping.py
@@ -1418,7 +1425,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
 - **Incorrect:**
   ```
-  # sales/orders/domain/model/order.py
+  # sales/orders/domain/model/aggregate.py
   class Order(Base):
       __tablename__ = "orders"
       def save(self) -> None: self._session.add(self)
@@ -1493,12 +1500,12 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   ```
   # sales/orders/domain/model/exceptions.py
   class OrderAlreadyShipped(DomainError): ...
-  # sales/orders/domain/model/order.py
+  # sales/orders/domain/model/aggregate.py
   raise OrderAlreadyShipped(self.id)
   ```
 - **Incorrect:**
   ```
-  # sales/orders/domain/model/order.py
+  # sales/orders/domain/model/aggregate.py
   raise ValueError("order already shipped")
   ```
 
@@ -1736,7 +1743,7 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 - **Rationale:** Aggregate modules are consistency boundaries. Reaching into a sibling's service or repository re-couples them and makes the one-transaction-one-aggregate rule unenforceable.
 - **Correct:**
   ```
-  # sales/orders/domain/model/order.py
+  # sales/orders/domain/model/aggregate.py
   from sales.shared.ids import UserId
   class Order:
       customer_id: UserId
@@ -1792,15 +1799,15 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 #### ARCH-049 — One aggregate root per aggregate module
 - **Level:** MUST · **Automation:** partial · **Tier:** full · **Category:** structure
 - **Validation:** `ast-checker` — exactly one non-reserved module in domain/model
-- **Description:** An aggregate module's domain/model/ declares exactly one aggregate root, in a file named after it.
-- **Rationale:** The 1:1 mapping is what makes "where does this go?" answerable without judgement, and it makes the transaction boundary visible in the tree.
+- **Description:** An aggregate module's domain/model/ declares exactly one aggregate root, in aggregate.py.
+- **Rationale:** The 1:1 mapping is what makes "where does this go?" answerable without judgement, and a fixed filename means there is no decision to make about what to call it either - the tree looks the same in every module.
 - **Correct:**
   ```
-  sales/users/domain/model/user.py declaring class User
+  sales/users/domain/model/aggregate.py declaring class User
   ```
 - **Incorrect:**
   ```
-  sales/users/domain/model/user.py declaring class User and class Order
+  sales/users/domain/model/aggregate.py declaring class User and class Order
   ```
 
 #### ARCH-050 — Declared context dependency graph
@@ -2122,7 +2129,7 @@ problem, not a layout problem:
 | Signal | Threshold (starting point, tune per project) | What it actually means |
 |---|---|---|
 | `<module>/application/<aggregate>_service.py` | > ~7 public methods, > ~200 lines, or > 5 constructor params (checker warns) | The aggregate is probably doing too much. Look at the aggregate boundary before splitting the service. |
-| `<module>/domain/model/<aggregate>.py` | > ~400 lines or > ~7 invariants | God Aggregate. Split into two aggregate modules. |
+| `<module>/domain/model/aggregate.py` | > ~400 lines or > ~7 invariants | God Aggregate. Split into two aggregate modules. |
 | `<module>/domain/model/ports.py` | > ~8 protocols in one aggregate module | The aggregate depends on too much of the outside world. |
 | `<context>/shared/` | anything beyond IDs, policy-free VOs, and cross-aggregate domain services | ARCH-047 violation, or the aggregates are wrongly separated. |
 | Cross-aggregate atomicity needed | more than occasionally | The aggregate boundaries are drawn wrong (Section 3.6). Redraw before adding any coordinating construct. |

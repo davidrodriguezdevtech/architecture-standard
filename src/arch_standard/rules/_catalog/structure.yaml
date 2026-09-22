@@ -14,7 +14,7 @@ rules:
       repository re-couples them and makes the one-transaction-one-aggregate rule
       unenforceable.
     correct: |
-      # sales/orders/domain/model/order.py
+      # sales/orders/domain/model/aggregate.py
       from sales.shared.ids import UserId
       class Order:
           customer_id: UserId
@@ -90,13 +90,14 @@ rules:
     automation: partial
     category: structure
     description: >
-      An aggregate module's domain/model/ declares exactly one aggregate root, in a file
-      named after it.
+      An aggregate module's domain/model/ declares exactly one aggregate root, in
+      aggregate.py.
     rationale: >
       The 1:1 mapping is what makes "where does this go?" answerable without judgement,
-      and it makes the transaction boundary visible in the tree.
-    correct: "sales/users/domain/model/user.py declaring class User"
-    incorrect: "sales/users/domain/model/user.py declaring class User and class Order"
+      and a fixed filename means there is no decision to make about what to call it
+      either - the tree looks the same in every module.
+    correct: "sales/users/domain/model/aggregate.py declaring class User"
+    incorrect: "sales/users/domain/model/aggregate.py declaring class User and class Order"
     validation:
       tool: ast-checker
       detail: exactly one non-reserved module in domain/model
