@@ -8,6 +8,29 @@ renders these entries.
 
 ## 0.3.0
 
+**Added: `tests/` must have the same directory shape as `src/` (ARCH-058, SHOULD).**
+A test file whose imports resolve to exactly one `src/` directory now lives at the
+mirrored path under `tests/` -- `tests/sales/orders/domain/model/test_aggregate.py`,
+not a flattened `tests/test_order_aggregate.py` with the layer folded into the
+filename. A test spanning 2+ source directories (a smoke/e2e test through the
+composition root) is not flattened by this rule and is left wherever it sits.
+
+### Added
+- ARCH-058 (SHOULD) -- a test file's directory mirrors the source it tests
+
+#### Migration notes (tests mirror src)
+
+For each existing project:
+
+1. For every `tests/test_*.py` file that imports from exactly one `src/<context>/
+   <module>/<layer>/...` directory, move it to `tests/<context>/<module>/<layer>/
+   test_<unit>.py`, adding `__init__.py` files as the rest of the project's test
+   tree requires.
+2. Leave smoke/e2e tests, `conftest.py`, and shared test infrastructure (builders,
+   in-memory doubles, fixtures) where they are -- this rule only places
+   `test_*.py` files whose imports point at one source directory.
+3. Re-run `uv run arch-standard check .` to confirm ARCH-058 passes.
+
 **Added: a narrow, explicit exception to ARCH-003 for a framework's own scalar
 format validators.** Domain (and a project's own `commons/`) MAY import
 `pydantic.EmailStr`, `pydantic.TypeAdapter` and `pydantic.ValidationError` by name,

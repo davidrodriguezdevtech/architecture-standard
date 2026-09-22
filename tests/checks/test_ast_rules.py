@@ -43,6 +43,20 @@ def test_bad_test_naming_warns() -> None:
     assert any("test_add_line_works" in f.message for f in r.findings)
 
 
+def test_good_test_mirrors_source_passes() -> None:
+    r = _reports("good_project")["ARCH-058"]
+    assert r.outcome is Outcome.PASS
+
+
+def test_bad_test_mirrors_source_warns() -> None:
+    r = _reports("bad_project")["ARCH-058"]
+    assert r.outcome is Outcome.WARN
+    assert any(
+        "test_order_aggregate.py" in f.path and "sales/orders/domain/model" in f.message
+        for f in r.findings
+    )
+
+
 def test_promotion_thresholds_pass_on_small_fixture() -> None:
     assert _reports("good_project")["ARCH-041"].outcome is Outcome.PASS
 
