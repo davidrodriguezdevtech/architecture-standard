@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from sales.orders.application.order_service import OrderService
+from sales.orders.application.order import OrderService
 from sales.orders.domain.model.ports import OrderRepository
-from sales.users.application.user_service import UserService
+from sales.users.application.user import UserService
 from sales.users.domain.model.ports import UserRepository
 
 

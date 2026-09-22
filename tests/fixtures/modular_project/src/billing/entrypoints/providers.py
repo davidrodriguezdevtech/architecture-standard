@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from billing.invoices.application.invoice_service import InvoiceService
+from billing.invoices.application.invoice import InvoiceService
 from billing.invoices.domain.model.ports import InvoiceRepository
 
 

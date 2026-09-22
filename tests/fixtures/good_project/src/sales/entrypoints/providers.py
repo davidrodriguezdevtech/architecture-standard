@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sales.orders.application.order_service import OrderService
+from sales.orders.application.order import OrderService
 from sales.orders.domain.model.ports import OrderRepository
 
 

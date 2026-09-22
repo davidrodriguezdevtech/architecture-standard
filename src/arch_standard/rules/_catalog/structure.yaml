@@ -19,7 +19,7 @@ rules:
       class Order:
           customer_id: UserId
     incorrect: |
-      # sales/orders/application/order_service.py
+      # sales/orders/application/order.py
       from sales.users.application.user_service import UserService
     validation:
       tool: import-linter
@@ -76,7 +76,7 @@ rules:
       DDD has no "application service of the context"; application services are per use
       case and belong with the model they coordinate. A context-level one becomes a
       coordination layer that hides non-atomic multi-aggregate flow.
-    correct: "sales/orders/application/order_service.py"
+    correct: "sales/orders/application/order.py"
     incorrect: "sales/application/sales_service.py"
     validation:
       tool: ast-checker
@@ -153,20 +153,49 @@ rules:
     category: structure
     description: >
       An aggregate module's domain services live in domain/services/, one file per
-      service (service.py when there is only one) - not a single domain/services.py
-      file. This does not apply to <context>/shared/services.py (ARCH-047), the
-      separate context-level home for services spanning aggregates.
+      service - not a single domain/services.py file. A single service is named after
+      the aggregate (order.py for the Order aggregate); 2+ services each get a
+      descriptive name instead. This does not apply to <context>/shared/services.py
+      (ARCH-047), the separate context-level home for services spanning aggregates.
     rationale: >
       A single services.py invites every future domain service for this aggregate to
       pile into one file. A directory gives each service its own file from the start,
       the same way domain/model/ already gives each concept its own file, with no
-      restructuring needed when a second service arrives.
+      restructuring needed when a second service arrives. Naming the lone service
+      after the aggregate (rather than a generic "service") makes it identifiable
+      without opening it, the same reason domain/model/ports.py or events.py are
+      named for what they hold, not for their role alone.
     correct: |
-      # sales/orders/domain/services/pricing.py
+      # sales/orders/domain/services/order.py — file named for the aggregate,
+      # since this is the Order module's only domain service
       class PricingCalculator: ...
     incorrect: |
-      # sales/orders/domain/services.py
+      # sales/orders/domain/services.py — must be a directory, not a file
       class PricingCalculator: ...
     validation:
       tool: ast-checker
-      detail: domain/services.py must not exist as a file in an aggregate module
+      detail: >-
+        domain/services.py must not exist as a file; when domain/services/ has
+        exactly one file, its name must match the aggregate's own name
+  - id: ARCH-055
+    name: Every Python package directory has an __init__.py
+    level: SHOULD
+    automation: full
+    category: structure
+    description: >
+      Every directory under src/ that contains a .py file (directly or in a
+      subdirectory) has an __init__.py, including empty ones. Implicit namespace
+      packages (PEP 420) are not used.
+    rationale: >
+      An explicit __init__.py marks a directory as a package on purpose, rather than
+      by the accident of holding a .py file; it also avoids the edge cases implicit
+      namespace packages create for some tooling and IDEs. A missing one is easy to
+      overlook when scaffolding a module by hand.
+    correct: |
+      sales/orders/domain/model/__init__.py   # empty, present
+      sales/orders/domain/model/aggregate.py
+    incorrect: |
+      sales/orders/domain/model/aggregate.py  # no __init__.py alongside it
+    validation:
+      tool: ast-checker
+      detail: filesystem check - every directory under src/ holding a .py file has __init__.py

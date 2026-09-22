@@ -16,7 +16,7 @@ service that splits later," and no context-level application layer. The day-1 sh
 is the steady-state shape. (ARCH-030, SHOULD)
 
 ```python
-# sales/orders/application/order_service.py
+# sales/orders/application/order.py
 @dataclass(frozen=True)
 class CreateOrder:
     customer_id: str

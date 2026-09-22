@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 from arch_standard.checks.ast_rules import _aggregate_files
@@ -149,6 +150,10 @@ def _subscript_element_name(node: ast.expr | None) -> str | None:
     return None
 
 
+def _snake(name: str) -> str:
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+
+
 def _aggregate_class_name(model_dir: Path) -> str | None:
     """The module's aggregate type name, if unambiguous (C1).
 
@@ -200,6 +205,78 @@ def _check_repositories_are_not_queries(project: ProjectLayout) -> list[Finding]
     return findings
 
 
+def _check_init_files_present(project: ProjectLayout) -> list[Finding]:
+    """Every Python package directory under src/ has an __init__.py.
+
+    Directory-name-agnostic on purpose: any directory that (recursively)
+    contains a .py file is treated as a package and must have one, whether
+    it's a context, an aggregate module, domain/model/, services/, shared/,
+    read/, or anything else the tree grows. src/ itself is the source root,
+    not a package, and is exempt.
+    """
+    findings: list[Finding] = []
+    src = project.src
+    if not src.is_dir():
+        return findings
+    for path in sorted(p for p in src.rglob("*") if p.is_dir()):
+        if path.name == "__pycache__" or path.name.startswith("."):
+            continue
+        has_py = any(
+            p.suffix == ".py" for p in path.rglob("*.py") if "__pycache__" not in p.parts
+        )
+        if not has_py:
+            continue
+        if not (path / "__init__.py").exists():
+            findings.append(
+                Finding(
+                    "ARCH-055",
+                    str(path.relative_to(project.root)),
+                    None,
+                    f"{path.relative_to(src)}/ is a Python package directory with no __init__.py",
+                )
+            )
+    return findings
+
+
+def _check_domain_services_location(project: ProjectLayout) -> list[Finding]:
+    findings: list[Finding] = []
+    for context, module in project.iter_modules():
+        domain_dir = project.module_domain_dir(context, module)
+        services_file = domain_dir / "services.py"
+        if services_file.exists():
+            findings.append(
+                Finding(
+                    "ARCH-054",
+                    str(services_file.relative_to(project.root)),
+                    None,
+                    f"{module} has a domain/services.py file; use domain/services/ instead"
+                    " (one file per service, named after the aggregate when there's only one)",
+                )
+            )
+            continue
+        services_dir = domain_dir / "services"
+        if not services_dir.is_dir():
+            continue
+        service_files = sorted(p for p in services_dir.glob("*.py") if p.stem != "__init__")
+        if len(service_files) != 1:
+            continue
+        aggregate_name = _aggregate_class_name(domain_dir / "model")
+        if aggregate_name is None:
+            continue
+        expected = _snake(aggregate_name)
+        if service_files[0].stem != expected:
+            findings.append(
+                Finding(
+                    "ARCH-054",
+                    str(service_files[0].relative_to(project.root)),
+                    None,
+                    f"{module}'s only domain service is {service_files[0].name}, expected "
+                    f"{expected}.py (named after the aggregate)",
+                )
+            )
+    return findings
+
+
 # ARCH-037: "each context exposes its wired services through
 # entrypoints/providers.py ... entrypoints import services only from
 # providers.py" has two halves. This check proves only the structural half --
@@ -227,7 +304,14 @@ def _check_providers_present(project: ProjectLayout) -> list[Finding]:
 
 
 class StructureCheck:
-    rule_ids: tuple[str, ...] = ("ARCH-037", "ARCH-047", "ARCH-048", "ARCH-051")
+    rule_ids: tuple[str, ...] = (
+        "ARCH-037",
+        "ARCH-047",
+        "ARCH-048",
+        "ARCH-051",
+        "ARCH-054",
+        "ARCH-055",
+    )
 
     def run(self, project: ProjectLayout, catalog: Catalog) -> list[CheckReport]:
         if not project.is_scannable():
@@ -239,6 +323,8 @@ class StructureCheck:
                 *_check_no_legacy_adapters_layer(project),
             ],
             "ARCH-051": _check_repositories_are_not_queries(project),
+            "ARCH-054": _check_domain_services_location(project),
+            "ARCH-055": _check_init_files_present(project),
         }
         reports = [
             CheckReport(
