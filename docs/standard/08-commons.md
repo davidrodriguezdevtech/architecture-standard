@@ -14,7 +14,9 @@ everything above one aggregate lives in it. There is no `shared_kernel/` and no
 Neither portion carries a top-level `commons/__init__.py`. A regular package on either
 side would shadow the other outright rather than merge with it, so both are namespace
 portions and `src/commons/` is the one directory under `src/` that MUST NOT have an
-`__init__.py` (ARCH-055).
+`__init__.py` (ARCH-055). `commons/adapters/` — the project's own carve-out described in
+8.3 — repeats the same merge one level down, and is the second and only other such
+directory (ARCH-055).
 
 ## 8.1 `arch-commons` - a separately versioned package
 
@@ -38,8 +40,9 @@ a version and upgrade deliberately.
 
 **Contributing upward.** A technical primitive that a project invents locally, and
 that a second project would want, does not get copied - it is proposed upstream into
-`arch-commons`. Until it is accepted it lives in that project's own `commons/`,
-clearly marked.
+`arch-commons`. A framework-bound one lives, until accepted (or if it never is - some
+adapters are tuned to one project's concurrency model and are not generic enough to
+upstream), in that project's own `commons/adapters/` (8.3), clearly marked.
 
 Rules: ARCH-015 (`commons.types` imports nothing from contexts, application, adapters,
 or the project's own commons modules), ARCH-016 (`commons.types` has no business
@@ -77,3 +80,36 @@ visible instead of accumulating by accident.
 
 Generic subdomains (notifications, identity) are other bounded contexts, not shared
 code - consumed via the Section 3 mechanisms.
+
+## 8.3 The project's own `commons/adapters/`
+
+A framework-bound technical adapter used by more than one context - a UnitOfWork
+variant, a shared cache client, anything that would belong in `arch-commons`'
+`commons.adapters` but is not (yet) proposed upstream, or is specific enough to this
+project that upstreaming never applies - lives in `src/commons/adapters/`, this
+project's own mirror of `arch-commons`' `commons.adapters` portion. It merges with
+that portion at import time exactly the way `commons/` merges with `commons.types` and
+`commons.adapters` as a whole: neither side carries a `commons/adapters/__init__.py`
+(a regular package on either side would shadow the other), so `commons/adapters/` is
+the second directory under `src/` that MUST NOT have one (ARCH-055) - every directory
+nested inside it does, as normal.
+
+`commons/adapters/` follows **adapters/-layer discipline throughout**, not the domain
+discipline the rest of `commons/` is held to:
+
+| | rest of `commons/` (`ids.py`, `geo.py`, `services.py`, ...) | `commons/adapters/` |
+|---|---|---|
+| Framework imports | forbidden (ARCH-003) | allowed |
+| `*Service`/`*Repository` names | banned (ARCH-047) | normal |
+| Mutable state | forbidden outside `services.py`'s own narrow carve-out | expected |
+| Business meaning | expected | **forbidden** - same as `commons.adapters` upstream |
+
+It holds one thing only: a technical adapter implementation, typically subclassing a
+`commons.types` ABC exactly like its upstream counterparts do. It never holds a port
+(a port lives in `commons/types/`, upstream, per the three-homes rule, ARCH-042), an
+aggregate, or business logic of any kind (ARCH-047).
+
+`bootstrap/` constructs instances of adapters defined here (or anywhere else) and
+wires them into services; it does not define adapter classes itself (ARCH-059) - a
+class implementing a port belongs in an adapters/ directory, not the composition
+root, whether or not it happens to work either way.

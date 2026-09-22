@@ -122,6 +122,22 @@ class ProjectLayout:
         """
         return self.src / "commons"
 
+    def bootstrap_dir(self) -> Path:
+        """The Composition Root (ARCH-017): the one module allowed to import
+        across every layer to wire singletons and construct services. It
+        constructs instances of adapters defined elsewhere; it does not
+        define adapter classes itself (ARCH-059).
+        """
+        return self.src / "bootstrap"
+
+    def commons_adapters_dir(self) -> Path:
+        """This project's own carve-out for framework-bound technical adapters
+        shared across contexts (ARCH-047), held to adapters/-layer discipline
+        rather than the domain discipline the rest of ``commons/`` follows --
+        the project-owned mirror of ``arch-commons``' own ``commons.adapters``.
+        """
+        return self.commons_dir() / "adapters"
+
     def read_dir(self, context: str) -> Path:
         return self.src / context / "read"
 

@@ -31,7 +31,7 @@ arch_standard_version:
 arch_commons_version:
   type: str
   help: "arch-commons version to pin as a dependency"
-  default: "0.3.0"
+  default: "0.4.0"
 
 template_version:
   type: str

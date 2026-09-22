@@ -64,10 +64,18 @@ project/
 │   │   │                             #   aggregate. No __init__.py (ARCH-055).
 │   │   ├── ids.py                    #   ID types referenced across aggregates
 │   │   ├── geo.py                    #   transversal VOs / enums / catalogues
-│   │   └── services.py               #   domain services spanning aggregates (rare)
+│   │   ├── services.py               #   domain services spanning aggregates (rare)
+│   │   └── adapters/                 #   framework-bound technical adapters shared
+│   │       │                         #   across contexts, not (yet) proposed
+│   │       │                         #   upstream into arch-commons (Section 8.3).
+│   │       │                         #   No __init__.py either (ARCH-055) - merges
+│   │       │                         #   with arch-commons' own commons/adapters/.
+│   │       └── <adapter>.py
 │   └── bootstrap/                    # Composition Root: config, singletons, DI container,
 │                                     #   service/UoW factories, router registration,
-│                                     #   consumer startup
+│                                     #   consumer startup - constructs adapters
+│                                     #   defined elsewhere, does not define them
+│                                     #   (ARCH-059)
 └── tests/                            # mirrors src/'s shape 1:1 (Section 11.3):
     └── <context>/<aggregate_module>/<layer>/test_<unit>.py
 ```
@@ -134,7 +142,7 @@ and those ID types live in `commons/ids.py`. (ARCH-046)
 | A listing/search/filter/sort/pagination query over ONE aggregate module's own data | a Finder ABC + DTOs in `<module>/application/<aggregate>_finder.py`, implemented in `<module>/adapters/<aggregate>_finder.py` - not `<context>/read/` |
 | A projection, report, dashboard, or any read spanning 2+ aggregate modules | `<context>/read/` |
 | A dependency-free technical primitive | the `arch-commons` package, `commons.types` (propose upstream) |
-| A shared framework-bound technical implementation | the `arch-commons` package, `commons.adapters` (propose upstream) |
+| A shared framework-bound technical implementation | propose upstream into the `arch-commons` package, `commons.adapters`; until accepted, or if project-specific, `src/commons/adapters/` (Section 8.3) |
 | A domain concept shared by 2+ contexts, with business policy | `src/commons/<concept>.py` |
 | Wiring / config / DI | `bootstrap/` |
 
@@ -147,8 +155,10 @@ rules in Section 3.6, not by a coordinating layer.
 There is no context-level code area at all. Anything above one aggregate - whether it
 crosses two aggregates of one context or two contexts - goes to `src/commons/`, which
 is strictly limited to the things in the table above: ID types, value objects, enums
-and reference catalogues, and domain services spanning aggregates. It never holds an
-aggregate root, a repository, or an application service. (ARCH-047)
+and reference catalogues, domain services spanning aggregates, and - held to
+adapters/-layer discipline instead, in `commons/adapters/` - framework-bound technical
+adapters shared across contexts (Section 8.3). It never holds an aggregate root, a
+repository, or an application service. (ARCH-047)
 
 One boundary is deliberately traded away here. A context-scoped shared area would
 confine sharing to one context; `commons/` is visible to all of them, so two contexts

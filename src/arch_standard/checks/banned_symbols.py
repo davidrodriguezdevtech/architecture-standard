@@ -71,8 +71,15 @@ def _domain_files(project: ProjectLayout) -> list[Path]:
     for context, module in project.iter_modules():
         files.extend(iter_python_files(project.module_domain_dir(context, module)))
     # commons/ holds value objects and enumerations that any context's domain may
-    # import, so it is held to the same banned-symbol discipline as domain/ itself.
-    files.extend(iter_python_files(project.commons_dir()))
+    # import, so it is held to the same banned-symbol discipline as domain/ itself --
+    # except commons/adapters/ (ARCH-047), this project's own carve-out for
+    # framework-bound technical adapters shared across contexts, which follows
+    # adapters/-layer discipline instead, exactly like arch-commons' own
+    # commons.adapters portion.
+    commons_adapters = project.commons_adapters_dir()
+    files.extend(
+        p for p in iter_python_files(project.commons_dir()) if commons_adapters not in p.parents
+    )
     return files
 
 

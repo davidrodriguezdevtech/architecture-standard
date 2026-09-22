@@ -96,7 +96,14 @@ def _check_commons_is_limited(project: ProjectLayout) -> list[Finding]:
     findings: list[Finding] = []
     commons = project.commons_dir()
     services_path = commons / "services.py"
+    commons_adapters = project.commons_adapters_dir()
     for path in iter_python_files(commons):
+        # commons/adapters/ is the documented home for framework-bound technical
+        # adapters shared across contexts (ARCH-047) -- it follows adapters/-layer
+        # discipline, not the domain discipline the rest of commons/ is held to, so
+        # neither the name-suffix ban nor the no-mutation check applies there.
+        if commons_adapters in path.parents:
+            continue
         rel = str(path.relative_to(project.root))
         # C2: commons/services.py is the documented home for domain services
         # spanning aggregates, so it is exempt from the *Service name-suffix ban
@@ -214,31 +221,40 @@ def _check_init_files_present(project: ProjectLayout) -> list[Finding]:
     anything else the tree grows. src/ itself is the source root, not a
     package, and is exempt.
 
-    src/commons/ is the one inverted case: it is a PEP 420 namespace portion
-    that merges with the installed arch-commons distribution, so an __init__.py
+    src/commons/ is one inverted case: it is a PEP 420 namespace portion that
+    merges with the installed arch-commons distribution, so an __init__.py
     there would shadow commons.types/commons.adapters outright instead of
-    merging with them. It is reported when it HAS one. Directories nested under
-    it follow the normal rule.
+    merging with them. It is reported when it HAS one. src/commons/adapters/,
+    if present, is the second inverted case for the same reason one level
+    down: it merges with arch-commons' own commons/adapters/ portion, which
+    ships without an __init__.py precisely so a project can contribute its
+    own framework-bound adapters alongside it (ARCH-047). Directories nested
+    under commons/ otherwise -- including inside commons/adapters/ itself --
+    follow the normal rule.
     """
     findings: list[Finding] = []
     src = project.src
     if not src.is_dir():
         return findings
     commons = project.commons_dir()
-    if (commons / "__init__.py").exists():
-        findings.append(
-            Finding(
-                "ARCH-055",
-                str((commons / "__init__.py").relative_to(project.root)),
-                None,
-                "commons/ is a PEP 420 namespace portion and must not have an "
-                "__init__.py; it would shadow the installed arch-commons package",
+    commons_adapters = project.commons_adapters_dir()
+    for namespace_portion in (commons, commons_adapters):
+        init_file = namespace_portion / "__init__.py"
+        if init_file.exists():
+            findings.append(
+                Finding(
+                    "ARCH-055",
+                    str(init_file.relative_to(project.root)),
+                    None,
+                    f"{namespace_portion.relative_to(src)}/ is a PEP 420 namespace "
+                    "portion and must not have an __init__.py; it would shadow the "
+                    "matching portion the installed arch-commons package ships",
+                )
             )
-        )
     for path in sorted(p for p in src.rglob("*") if p.is_dir()):
         if path.name == "__pycache__" or path.name.startswith("."):
             continue
-        if path == commons:
+        if path in (commons, commons_adapters):
             continue
         has_py = any(p.suffix == ".py" for p in path.rglob("*.py") if "__pycache__" not in p.parts)
         if not has_py:
@@ -345,6 +361,61 @@ def _check_entrypoint_single_aggregate(project: ProjectLayout) -> list[Finding]:
     return findings
 
 
+def _check_bootstrap_no_adapters(project: ProjectLayout) -> list[Finding]:
+    """bootstrap/ wires adapters, it does not define them (ARCH-059).
+
+    A class defined under bootstrap/ that directly subclasses a name imported
+    from commons.types or commons.adapters is adapter-shaped code sitting in
+    the composition root instead of an adapters/ directory. A base class
+    reached by indirection through another project module is not resolved --
+    this stays a direct-import check, not a full type-hierarchy walk.
+    """
+    findings: list[Finding] = []
+    bootstrap = project.bootstrap_dir()
+    if not bootstrap.is_dir():
+        return findings
+    for path in sorted(bootstrap.rglob("*.py")):
+        if path.stem == "__init__" or "__pycache__" in path.parts:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        commons_names: set[str] = set()
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module
+                and (
+                    node.module in ("commons.types", "commons.adapters")
+                    or node.module.startswith(("commons.types.", "commons.adapters."))
+                )
+            ):
+                commons_names.update(alias.asname or alias.name for alias in node.names)
+        if not commons_names:
+            continue
+        rel = str(path.relative_to(project.root))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            for base in node.bases:
+                name = (
+                    base.id
+                    if isinstance(base, ast.Name)
+                    else base.attr
+                    if isinstance(base, ast.Attribute)
+                    else None
+                )
+                if name in commons_names:
+                    findings.append(
+                        Finding(
+                            "ARCH-059",
+                            rel,
+                            node.lineno,
+                            f"{node.name} subclasses {name} (commons.types/commons.adapters) "
+                            "in bootstrap/; adapters are wired here, not defined",
+                        )
+                    )
+    return findings
+
+
 class StructureCheck:
     rule_ids: tuple[str, ...] = (
         "ARCH-047",
@@ -353,6 +424,7 @@ class StructureCheck:
         "ARCH-054",
         "ARCH-055",
         "ARCH-056",
+        "ARCH-059",
     )
 
     def run(self, project: ProjectLayout, catalog: Catalog) -> list[CheckReport]:
@@ -365,6 +437,7 @@ class StructureCheck:
                 *_check_no_legacy_adapters_layer(project),
             ],
             "ARCH-051": _check_repositories_are_not_queries(project),
+            "ARCH-059": _check_bootstrap_no_adapters(project),
             "ARCH-054": _check_domain_services_location(project),
             "ARCH-055": _check_init_files_present(project),
             "ARCH-056": _check_entrypoint_single_aggregate(project),

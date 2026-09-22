@@ -45,6 +45,66 @@ For each existing project:
    `test_*.py` files whose imports point at one source directory.
 3. Re-run `uv run arch-standard check .` to confirm ARCH-058 passes.
 
+**Added: `commons/adapters/`, the project's own carve-out for framework-bound
+technical adapters shared across contexts (ARCH-047, ARCH-059).** A technical
+adapter that would belong in `arch-commons`' `commons.adapters` but is not (yet)
+proposed upstream, or is specific enough to one project that upstreaming never
+applies (a request-scoped `UnitOfWork` tuned to one project's concurrency model, for
+instance), now has a documented home: `src/commons/adapters/`, this project's own
+mirror of `arch-commons`' `commons.adapters` portion (Section 8.3). It merges with
+that portion at import time exactly the way `commons/` merges with `commons.types`
+and `commons.adapters` as a whole, so `commons/adapters/` is the second directory
+under `src/` that MUST NOT have an `__init__.py` (ARCH-055) -- which required
+removing `commons/adapters/__init__.py` from `arch-commons` itself, since a regular
+package on either side would keep shadowing the other rather than merging with it
+(verified empirically: with `arch-commons`' `__init__.py` in place, a project's own
+`commons/adapters/<name>.py` is not importable at all, not even silently broken --
+`ModuleNotFoundError`). `commons/adapters/` follows adapters/-layer discipline
+throughout: framework imports are allowed (ARCH-003 does not apply there), the
+`*Service`/`*Repository` name-suffix ban does not apply (ARCH-047), and mutation is
+expected. It never holds a port (that stays upstream, in `commons/types/`, per the
+three-homes rule, ARCH-042), an aggregate, or business logic.
+
+**Added: bootstrap/ wires adapters, it does not define them (ARCH-059, SHOULD).** A
+class defined under `bootstrap/` that directly subclasses a name imported from
+`commons.types` or `commons.adapters` is adapter-shaped code sitting in the
+composition root instead of an adapters/ directory -- it runs correctly either way,
+which is exactly why this needed a checked rule rather than relying on every future
+PR noticing. This closes the gap that let a real UnitOfWork implementation end up in
+`bootstrap/unit_of_work.py`, working, but invisible to every context that could
+otherwise import it from `commons/adapters/`.
+
+### Added
+- ARCH-059 (SHOULD) -- bootstrap/ wires adapters, it does not define them
+
+### Changed
+- ARCH-047: gains the `commons/adapters/` carve-out (framework-bound technical
+  adapters shared across contexts), alongside the existing `commons/services.py`
+  carve-out; the name-suffix ban and mutation check do not apply inside it
+- ARCH-003: gains a second exception -- `commons/adapters/`, when it exists, follows
+  adapters/-layer discipline throughout and is exempt from the framework-import ban
+  entirely, not just the scalar-validator allowlist
+- ARCH-055: gains a second inverted case -- `commons/adapters/`, mirroring
+  `commons/` itself, MUST NOT have an `__init__.py`
+
+No rule `level` changed; no rule `id` was removed.
+
+#### Migration notes (commons/adapters/)
+
+For each existing project with a framework-bound technical adapter, shared across
+contexts, sitting somewhere other than its documented home (most commonly
+`bootstrap/`, since `bootstrap/` can import anything and the code runs fine there):
+
+1. Upgrade to `arch-commons` 0.4.0 or later (the version that first ships
+   `commons/adapters/` without its own `__init__.py`).
+2. Move the adapter to `src/commons/adapters/<name>.py`. Do not add an
+   `__init__.py` to `src/commons/adapters/` itself; do add one to any directory
+   nested under it, as normal (ARCH-055).
+3. Update every import site from the old location to
+   `commons.adapters.<name>`.
+4. Re-run `uv run arch-standard check .` to confirm ARCH-003, ARCH-047, ARCH-055
+   and ARCH-059 all pass.
+
 **Added: a narrow, explicit exception to ARCH-003 for a framework's own scalar
 format validators.** Domain (and a project's own `commons/`) MAY import
 `pydantic.EmailStr`, `pydantic.TypeAdapter` and `pydantic.ValidationError` by name,

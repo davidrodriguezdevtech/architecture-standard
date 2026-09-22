@@ -108,3 +108,38 @@ def test_given_domain_imports_emailstr_and_basemodel_together__when_checked__the
     ]
     assert report.outcome is Outcome.FAIL
     assert any("BaseModel" in f.message and "EmailStr" not in f.message for f in report.findings)
+
+
+def test_given_a_framework_import_in_commons_adapters__when_checked__then_arch_003_passes(
+    tmp_path: Path,
+) -> None:
+    """commons/adapters/ (ARCH-047) follows adapters/-layer discipline, not domain
+    discipline -- a framework import there is exactly what it is for, unlike the
+    rest of commons/, which ARCH-003 holds to the same rule as domain/."""
+    adapters = tmp_path / "src" / "commons" / "adapters"
+    adapters.mkdir(parents=True)
+    (adapters / "unit_of_work.py").write_text(
+        "from sqlalchemy.orm import Session\n", encoding="utf-8"
+    )
+    (tmp_path / "src" / "sales" / "entrypoints").mkdir(parents=True)
+    layout = ProjectLayout.detect(tmp_path)
+    report = {r.rule_id: r for r in BannedSymbolsCheck().run(layout, Catalog.load(RULES))}[
+        "ARCH-003"
+    ]
+    assert report.outcome is Outcome.PASS
+
+
+def test_given_a_framework_import_directly_in_commons__when_checked__then_arch_003_still_fails(
+    tmp_path: Path,
+) -> None:
+    """The exemption is narrowly commons/adapters/ -- a framework import directly
+    in commons/ (not nested under adapters/) is still held to domain discipline."""
+    commons = tmp_path / "src" / "commons"
+    commons.mkdir(parents=True)
+    (commons / "geo.py").write_text("from sqlalchemy.orm import Session\n", encoding="utf-8")
+    (tmp_path / "src" / "sales" / "entrypoints").mkdir(parents=True)
+    layout = ProjectLayout.detect(tmp_path)
+    report = {r.rule_id: r for r in BannedSymbolsCheck().run(layout, Catalog.load(RULES))}[
+        "ARCH-003"
+    ]
+    assert report.outcome is Outcome.FAIL
