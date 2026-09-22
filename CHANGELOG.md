@@ -6,7 +6,21 @@ what kind of change requires which version bump; `arch-standard release-check`
 enforces it in CI on every push and pull request, `arch-standard changelog`
 renders these entries.
 
-## 0.3.0
+## 0.4.0
+
+**Renumbered from 0.3.0.** Everything below this line was developed and consumed,
+across several sessions, under the version number `0.3.0` -- but that number was
+never actually released (no tag, `master` sat frozen at `0.2.0` the whole time), and
+at least one of those sessions amended already-in-progress catalog content without
+bumping the number, so `0.3.0` came to mean different things depending on when a
+consumer built its wheel. Several projects had already pinned `0.3.0` in
+`.arch-standard` against one of those intermediate states. Renumbering the whole
+accumulated set to `0.4.0` makes every one of those pins unambiguous again: a
+project still pinned to `0.3.0` keeps whatever it already has, and picking up
+anything below requires deliberately moving the pin to `0.4.0`. Nothing below this
+line was rewritten for the renumber -- it is exactly what was already recorded
+under `0.3.0`, all classified `minor` by the compatibility policy, unified under
+one version because none of it was ever actually released separately.
 
 **Added: `tests/` must have the same directory shape as `src/` (ARCH-058, SHOULD).**
 A test file whose imports resolve to exactly one `src/` directory now lives at the
