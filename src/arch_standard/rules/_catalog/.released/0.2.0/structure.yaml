@@ -1,0 +1,231 @@
+rules:
+  - id: ARCH-046
+    name: Aggregate module isolation
+    level: MUST
+    automation: full
+    tier: core
+    category: structure
+    description: >
+      An aggregate module does not import another aggregate module's application/ or
+      adapters/ package. References between aggregates are by ID, and those ID
+      types live in the context's shared/ids.py.
+    rationale: >
+      Aggregate modules are consistency boundaries. Reaching into a sibling's service or
+      repository re-couples them and makes the one-transaction-one-aggregate rule
+      unenforceable.
+    correct: |
+      # sales/orders/domain/model/aggregate.py
+      from sales.shared.ids import UserId
+      class Order:
+          customer_id: UserId
+    incorrect: |
+      # sales/orders/application/order.py
+      from sales.users.application.user import UserService
+    validation:
+      tool: import-linter
+      detail: forbidden contract between sibling modules' application and adapters
+    related: [ARCH-020, ARCH-021]
+  - id: ARCH-047
+    name: Context shared area is strictly limited
+    level: MUST
+    automation: partial
+    category: structure
+    description: >
+      <context>/shared/ contains only ID types, policy-free value objects used by two or
+      more aggregates of that context, and domain services spanning them. Those spanning
+      services live specifically in shared/services.py — the one file in shared/ exempt
+      from the *Service/*Repository name-suffix ban, since it is the standard's own
+      documented home for them. Every other file in shared/ keeps the full name-suffix
+      ban, and shared/services.py classes still may not mutate their own state.
+    rationale: >
+      It is the only context-level code area, so without a narrow admission test it
+      becomes the junk drawer that couples every aggregate module together. Naming the
+      one legitimate exception explicitly (rather than banning *Service outright) keeps
+      the carve-out narrow instead of inviting every file in shared/ to claim it.
+    correct: |
+      # sales/shared/ids.py
+      @dataclass(frozen=True)
+      class UserId:
+          value: str
+
+      # sales/shared/services.py — the documented carve-out
+      class PricingService:
+          def quote(self, order: Order) -> Money: ...
+    incorrect: |
+      # sales/shared/user_service.py — *Service outside services.py is still banned
+      class UserService: ...
+
+      # sales/shared/services.py — mutation is still banned even here
+      class PricingService:
+          def bump(self) -> None:
+              self.calls += 1
+    validation:
+      tool: ast-checker
+      detail: >-
+        no class named *Service/*Repository outside shared/services.py; no aggregate
+        roots; shared/services.py classes must not mutate their own state
+  - id: ARCH-048
+    name: No context-level application package
+    level: MUST
+    automation: full
+    category: structure
+    description: >
+      A context has no application/ package of its own. Application services live in
+      aggregate modules, one per aggregate.
+    rationale: >
+      DDD has no "application service of the context"; application services are per use
+      case and belong with the model they coordinate. A context-level one becomes a
+      coordination layer that hides non-atomic multi-aggregate flow.
+    correct: "sales/orders/application/order.py"
+    incorrect: "sales/application/sales_service.py"
+    validation:
+      tool: ast-checker
+      detail: >-
+        filesystem check for <context>/application, plus any aggregate-module layer
+        directory still carrying the pre-0.2.0 layer name (infrastructure), which is
+        reported with the rename to adapters
+  - id: ARCH-049
+    name: One aggregate root per aggregate module
+    level: MUST
+    automation: partial
+    category: structure
+    description: >
+      An aggregate module's domain/model/ declares exactly one aggregate root, in
+      aggregate.py.
+    rationale: >
+      The 1:1 mapping is what makes "where does this go?" answerable without judgement,
+      and a fixed filename means there is no decision to make about what to call it
+      either - the tree looks the same in every module.
+    correct: "sales/users/domain/model/aggregate.py declaring class User"
+    incorrect: "sales/users/domain/model/aggregate.py declaring class User and class Order"
+    validation:
+      tool: ast-checker
+      detail: exactly one non-reserved module in domain/model, named aggregate.py
+  - id: ARCH-050
+    name: Declared context dependency graph
+    level: MUST
+    automation: full
+    category: structure
+    description: >
+      Every cross-context dependency is declared in contexts.toml, and the declared graph
+      is acyclic.
+    rationale: >
+      Contexts never import each other, so no import analysis can see a runtime cycle
+      wired through the composition root. Declaring the graph is the only way to check it,
+      and it turns adding an edge into a reviewable diff.
+    correct: |
+      # contexts.toml
+      [contexts.sales]
+      depends_on = ["billing"]
+    incorrect: |
+      [contexts.sales]
+      depends_on = ["billing"]
+      [contexts.billing]
+      depends_on = ["sales"]
+    validation:
+      tool: schema
+      detail: parse contexts.toml, topological sort
+  - id: ARCH-052
+    name: Read layer does not import the write side
+    level: MUST
+    automation: full
+    category: structure
+    description: >
+      <context>/read/ imports no aggregate module's domain/ or application/ package.
+    rationale: >
+      The read layer exists to answer queries the write model is not shaped for. Importing
+      the write side re-couples them and pulls invariant-carrying objects into query paths.
+    correct: |
+      # sales/read/customer_overview.py
+      @dataclass(frozen=True)
+      class CustomerOverview:
+          user_id: str
+    incorrect: |
+      # sales/read/customer_overview.py
+      from sales.users.domain.model.aggregate import User
+    validation:
+      tool: import-linter
+      detail: forbidden contract read -> modules' domain/application
+  - id: ARCH-054
+    name: Domain services for an aggregate live in a services/ directory
+    level: SHOULD
+    automation: partial
+    category: structure
+    description: >
+      An aggregate module's domain services live in domain/services/, one file per
+      service - not a single domain/services.py file. A single service is named after
+      the aggregate (order.py for the Order aggregate); 2+ services each get a
+      descriptive name instead. This does not apply to <context>/shared/services.py
+      (ARCH-047), the separate context-level home for services spanning aggregates.
+    rationale: >
+      A single services.py invites every future domain service for this aggregate to
+      pile into one file. A directory gives each service its own file from the start,
+      the same way domain/model/ already gives each concept its own file, with no
+      restructuring needed when a second service arrives. Naming the lone service
+      after the aggregate (rather than a generic "service") makes it identifiable
+      without opening it, the same reason domain/model/ports.py or events.py are
+      named for what they hold, not for their role alone.
+    correct: |
+      # sales/orders/domain/services/order.py — file named for the aggregate,
+      # since this is the Order module's only domain service
+      class PricingCalculator: ...
+    incorrect: |
+      # sales/orders/domain/services.py — must be a directory, not a file
+      class PricingCalculator: ...
+    validation:
+      tool: ast-checker
+      detail: >-
+        domain/services.py must not exist as a file; when domain/services/ has
+        exactly one file, its name must match the aggregate's own name
+  - id: ARCH-055
+    name: Every Python package directory has an __init__.py
+    level: SHOULD
+    automation: full
+    category: structure
+    description: >
+      Every directory under src/ that contains a .py file (directly or in a
+      subdirectory) has an __init__.py, including empty ones. Implicit namespace
+      packages (PEP 420) are not used.
+    rationale: >
+      An explicit __init__.py marks a directory as a package on purpose, rather than
+      by the accident of holding a .py file; it also avoids the edge cases implicit
+      namespace packages create for some tooling and IDEs. A missing one is easy to
+      overlook when scaffolding a module by hand.
+    correct: |
+      sales/orders/domain/model/__init__.py   # empty, present
+      sales/orders/domain/model/aggregate.py
+    incorrect: |
+      sales/orders/domain/model/aggregate.py  # no __init__.py alongside it
+    validation:
+      tool: ast-checker
+      detail: filesystem check - every directory under src/ holding a .py file has __init__.py
+  - id: ARCH-056
+    name: An entrypoint file serves at most one aggregate module
+    level: SHOULD
+    automation: partial
+    category: structure
+    description: >
+      entrypoints/ groups by transport kind (web/, events/, crons/), and within each
+      kind, one file per aggregate module (or per concern, for events/crons where a
+      single file's job doesn't map cleanly to one aggregate name). A file that
+      imports from two different aggregate modules' packages under the same context
+      is doing more than one aggregate's job.
+    rationale: >
+      Web routes typically split naturally, one file per resource. Event consumers
+      and cron jobs are better named for what they do than forced into an
+      aggregate-name pattern, but the ownership rule still holds: a handler that
+      reaches into two aggregates hides a cross-aggregate flow inside transport
+      code instead of an explicit part of the design (Section 3.6), and is
+      untestable without two aggregates' worth of setup.
+    correct: |
+      # sales/entrypoints/web/order.py
+      from sales.orders.application.order import OrderService
+    incorrect: |
+      # sales/entrypoints/web/order.py
+      from sales.orders.application.order import OrderService
+      from sales.customers.application.customer import CustomerService
+    validation:
+      tool: ast-checker
+      detail: >-
+        an entrypoints/ file importing from 2+ aggregate modules' packages in the
+        same context is flagged; only applies to contexts with 2+ modules

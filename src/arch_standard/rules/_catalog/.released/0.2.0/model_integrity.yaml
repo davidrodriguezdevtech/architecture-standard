@@ -1,0 +1,290 @@
+rules:
+  - id: ARCH-018
+    name: No setters that permit invalid aggregate/entity state
+    level: SHOULD
+    automation: partial
+    category: model_integrity
+    description: >
+      Aggregate and entity classes expose no public attribute setter or
+      property setter that can move the object into a state violating its
+      invariants; mutation happens only through business-named methods that
+      validate.
+    rationale: >
+      Setter-driven aggregates allow illegal transitions and bypass the
+      invariant checks that intention-revealing methods enforce.
+    correct: |
+      class Order:
+          def add_line(self, line: OrderLine) -> None:
+              self._guard_not_shipped()
+              self._lines.append(line)
+    incorrect: |
+      class Order:
+          @status.setter
+          def status(self, value: str) -> None:
+              self._status = value
+    validation:
+      tool: ast-checker
+      detail: flag public setters or assignable public attributes on domain model classes
+    related: [ARCH-031]
+  - id: ARCH-019
+    name: Internal aggregate collections are not exposed mutable
+    level: SHOULD
+    automation: partial
+    category: model_integrity
+    description: >
+      A property or accessor on an aggregate that surfaces an internal list,
+      dict, or set returns a copy or an immutable view, never the backing
+      collection.
+    rationale: >
+      Handing out the live collection lets callers mutate aggregate state
+      without passing through invariant-checking methods.
+    correct: |
+      class Order:
+          @property
+          def lines(self) -> tuple[OrderLine, ...]:
+              return tuple(self._lines)
+    incorrect: |
+      class Order:
+          @property
+          def lines(self) -> list[OrderLine]:
+              return self._lines
+    validation:
+      tool: ast-checker
+      detail: flag accessors returning a bare internal mutable container
+  - id: ARCH-020
+    name: Inter-aggregate references are by ID, not object
+    level: SHOULD
+    automation: partial
+    category: model_integrity
+    description: >
+      An aggregate root holds another aggregate's identifier (for example
+      CustomerId), not a reference to the other aggregate instance.
+    rationale: >
+      Object references across aggregates build large graphs, blur the
+      consistency boundary, and make the context hard to extract.
+    correct: |
+      @dataclass
+      class Order:
+          customer_id: CustomerId
+    incorrect: |
+      @dataclass
+      class Order:
+          customer: Customer
+    validation:
+      tool: review
+      detail: PR checklist; does any aggregate field hold another aggregate instance?
+  - id: ARCH-021
+    name: One transaction modifies one aggregate (UoW boundary)
+    level: MUST*
+    automation: partial
+    category: model_integrity
+    description: >
+      A single unit-of-work block loads and mutates exactly one aggregate
+      instance; touching a second aggregate in the same transaction requires a
+      documented ADR justification.
+    rationale: >
+      One aggregate per transaction keeps the Unit of Work portable to stores
+      without multi-item transactions and keeps the extraction path open.
+    correct: |
+      with uow:
+          order = orders.get(order_id)
+          order.cancel()
+          uow.commit()
+    incorrect: |
+      with uow:
+          order.cancel()
+          invoice.void()          # second aggregate, same transaction
+          uow.commit()
+    validation:
+      tool: review
+      detail: PR checklist plus ADR waiver expiry check over docs/adr/
+    related: [ARCH-033]
+  - id: ARCH-022
+    name: Repositories operate at root level and return aggregates, not rows/DTOs
+    level: MUST
+    automation: partial
+    category: model_integrity
+    description: >
+      Repository port methods are named at aggregate-root level (get, add, save,
+      next_identity, specification queries) and return aggregate instances,
+      never ORM rows, tuples, or DTOs, and never a find_x_with_y() -> DTO
+      business query.
+    rationale: >
+      A repository that returns rows or answers business questions leaks
+      persistence and grows into an unbounded business service.
+    correct: |
+      class OrderRepository(ABC):
+          @abstractmethod
+          def get(self, order_id: OrderId) -> Order: ...
+          @abstractmethod
+          def add(self, order: Order) -> None: ...
+    incorrect: |
+      class OrderRepository(ABC):
+          @abstractmethod
+          def find_orders_with_overdue_invoices(self) -> list[OrderRow]: ...
+    validation:
+      tool: review
+      detail: PR checklist; do repo methods return aggregates and stay at root level?
+    related: [ARCH-029]
+  - id: ARCH-023
+    name: Domain events are immutable and past-tense
+    level: MUST
+    automation: full
+    tier: core
+    category: model_integrity
+    description: >
+      Every class defined in a context's domain/model/events.py is a frozen
+      dataclass and is named in the past tense (e.g. OrderPlaced).
+    rationale: >
+      A past fact does not change, so the object is immutable; the past-tense
+      name signals it is a fact, not a command.
+    correct: |
+      @dataclass(frozen=True)
+      class OrderPlaced:
+          order_id: OrderId
+          occurred_at: datetime
+    incorrect: |
+      class PlaceOrderEvent:
+          def apply(self) -> None: ...
+    validation:
+      tool: ast-checker
+      detail: frozen dataclass plus past-tense name regex
+  - id: ARCH-028
+    name: No Active Record
+    level: MUST
+    automation: partial
+    category: model_integrity
+    description: >
+      An aggregate class has no persistence base class, ORM decorator, or ORM
+      import and no save()/delete() method; translation between the aggregate
+      and its stored form lives entirely in adapters/.
+    rationale: >
+      An Active Record aggregate entangles invariants with the database and
+      cannot be unit-tested without it.
+    correct: |
+      # sales/orders/domain/model/aggregate.py
+      @dataclass
+      class Order: ...
+      # sales/orders/adapters/mapping.py
+      map_imperatively(Order, order_table)
+    incorrect: |
+      # sales/orders/domain/model/aggregate.py
+      class Order(Base):
+          __tablename__ = "orders"
+          def save(self) -> None: self._session.add(self)
+    validation:
+      tool: ruff
+      detail: banned-api; no ORM base or import in domain/, plus ast check for save/delete on model classes
+    related: [ARCH-001, ARCH-033]
+  - id: ARCH-031
+    name: Value Objects are immutable and validate on construction
+    level: MUST
+    automation: partial
+    tier: core
+    category: model_integrity
+    description: >
+      Every value object class is a frozen dataclass with no setters, validates
+      its invariants in __post_init__, and returns new instances from its
+      methods rather than mutating self.
+    rationale: >
+      A value object is defined by its values; mutability or unvalidated
+      construction lets invalid values propagate through the model.
+    correct: |
+      @dataclass(frozen=True)
+      class Money:
+          amount: Decimal
+          currency: str
+          def __post_init__(self) -> None:
+              if self.amount.as_tuple().exponent < -2:
+                  raise InvalidMoney(self.amount)
+    incorrect: |
+      class Money:
+          def __init__(self, amount: Decimal, currency: str) -> None:
+              self.amount = amount
+          def add(self, other: "Money") -> None:
+              self.amount += other.amount
+    validation:
+      tool: ast-checker
+      detail: value_objects.py classes must be frozen dataclasses with __post_init__
+    related: [ARCH-018]
+  - id: ARCH-032
+    name: The domain raises only exceptions derived from commons DomainError
+    level: SHOULD
+    automation: partial
+    category: model_integrity
+    description: >
+      Code under domain/ raises only exception types defined in
+      domain/model/exceptions.py, each subclassing
+      commons.types.errors.DomainError, never a bare ValueError, KeyError, or
+      library exception.
+    rationale: >
+      A consistent domain exception hierarchy lets the application and
+      entrypoints map failures predictably and keeps library exceptions from
+      carrying business meaning.
+    correct: |
+      # sales/orders/domain/model/exceptions.py
+      class OrderAlreadyShipped(DomainError): ...
+      # sales/orders/domain/model/aggregate.py
+      raise OrderAlreadyShipped(self.id)
+    incorrect: |
+      # sales/orders/domain/model/aggregate.py
+      raise ValueError("order already shipped")
+    validation:
+      tool: review
+      detail: PR checklist plus ast scan for raise of non-DomainError types in domain/
+  - id: ARCH-033
+    name: Every use-case write goes through a Unit of Work
+    level: MUST
+    automation: partial
+    tier: core
+    category: model_integrity
+    description: >
+      Every application service method that changes state opens a UnitOfWork
+      block and commits through it; the service never calls commit on a
+      repository or a session directly.
+    rationale: >
+      A single transaction boundary per use case is also the point where domain
+      events are collected for publication.
+    correct: |
+      def cancel_order(self, command: CancelOrder) -> None:
+          with self._uow:
+              order = self._orders.get(command.order_id)
+              order.cancel()
+              self._uow.commit()
+    incorrect: |
+      def cancel_order(self, command: CancelOrder) -> None:
+          order = self._orders.get(command.order_id)
+          order.cancel()
+          self._orders.session.commit()
+    validation:
+      tool: ast-checker
+      detail: state-changing service methods must contain a `with uow:` and uow.commit()
+    related: [ARCH-021]
+  - id: ARCH-051
+    name: Repositories are not query interfaces
+    level: MUST
+    automation: partial
+    tier: core
+    category: model_integrity
+    description: >
+      Repositories persist and retrieve aggregate roots. They are not general-purpose
+      query interfaces: projection-oriented, reporting, search, dashboard, and
+      cross-aggregate reads belong to the context's read/ layer.
+    rationale: >
+      A repository that grows report queries stops being a collection of roots, drags
+      query pressure into the write model, and starts returning DTOs instead of
+      aggregates.
+    correct: |
+      class OrderRepository(ABC):
+          @abstractmethod
+          def get(self, order_id: OrderId) -> Order: ...
+          @abstractmethod
+          def add(self, order: Order) -> None: ...
+    incorrect: |
+      class OrderRepository(ABC):
+          @abstractmethod
+          def find_premium_customers_with_overdue_invoices(self) -> list[ReportRow]: ...
+    validation:
+      tool: ast-checker
+      detail: repository methods returning non-aggregate collections
+    related: [ARCH-022, ARCH-052]
