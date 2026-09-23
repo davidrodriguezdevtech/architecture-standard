@@ -81,6 +81,21 @@ visible instead of accumulating by accident.
 Generic subdomains (notifications, identity) are other bounded contexts, not shared
 code - consumed via the Section 3 mechanisms.
 
+**Value converters are a narrow exception to "no frameworks here."** A shared value
+converter - a class that translates one value to and from its stored primitive, such
+as a SQLAlchemy `TypeDecorator` mapping a `StrEnum` column to plain text - is used by
+2+ aggregate modules' `adapters/mapping.py`, so by the "needed above one aggregate?"
+test it belongs in `src/commons/`. It is not a `commons/adapters/` candidate: it
+implements no port and subclasses no `commons.types` ABC (ARCH-008 - see 8.3), it
+just happens to need the framework's own column-TYPE machinery to do its one job.
+ARCH-003 carries a narrow, explicit allowlist for exactly this - the ORM's
+`TypeDecorator`/`TypeEngine`/`Dialect` and built-in column-type primitives, imported
+by name, never `Column`, `Table`, `Session`, or any other modeling/I/O construct.
+Everything else about `commons/` discipline still applies to the file it lives in:
+no business logic, no mutable state, no `*Service`/`*Repository` name (ARCH-047) -
+only the framework-import ban is narrowly lifted, and only for the classes on that
+allowlist.
+
 ## 8.3 The project's own `commons/adapters/`
 
 A framework-bound technical adapter used by more than one context - a UnitOfWork
@@ -104,10 +119,18 @@ discipline the rest of `commons/` is held to:
 | Mutable state | forbidden outside `services.py`'s own narrow carve-out | expected |
 | Business meaning | expected | **forbidden** - same as `commons.adapters` upstream |
 
-It holds one thing only: a technical adapter implementation, typically subclassing a
-`commons.types` ABC exactly like its upstream counterparts do. It never holds a port
-(a port lives in `commons/types/`, upstream, per the three-homes rule, ARCH-042), an
-aggregate, or business logic of any kind (ARCH-047).
+It holds one thing only: a technical adapter implementation that **implements a port**
+(ARCH-008), typically subclassing a `commons.types` ABC exactly like its upstream
+counterparts do (`SqlAlchemyUnitOfWork` implementing `UnitOfWork`, and so on). It
+never holds a port itself (a port lives in `commons/types/`, upstream, per the
+three-homes rule, ARCH-042), an aggregate, or business logic of any kind (ARCH-047).
+
+A framework-bound helper that does **not** implement a port - a value converter used
+by `adapters/mapping.py` across aggregate modules, for instance - is not a
+`commons/adapters/` candidate just because it is framework-bound. It goes in a plain
+`commons/<concept>.py` instead, under ARCH-003's narrow value-converter exception
+(8.2). "Framework-bound" and "implements a port" are independent axes; only their
+conjunction belongs here.
 
 `bootstrap/` constructs instances of adapters defined here (or anywhere else) and
 wires them into services; it does not define adapter classes itself (ARCH-059) - a

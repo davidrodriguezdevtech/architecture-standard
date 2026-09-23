@@ -1,0 +1,345 @@
+rules:
+  - id: ARCH-046
+    name: Aggregate module isolation
+    level: MUST
+    automation: full
+    tier: core
+    category: structure
+    description: >
+      An aggregate module does not import another aggregate module's application/ or
+      adapters/ package. References between aggregates are by ID, and those ID
+      types live in commons/ids.py.
+    rationale: >
+      Aggregate modules are consistency boundaries. Reaching into a sibling's service or
+      repository re-couples them and makes the one-transaction-one-aggregate rule
+      unenforceable.
+    correct: |
+      # sales/orders/domain/model/aggregate.py
+      from commons.ids import UserId
+      class Order:
+          customer_id: UserId
+    incorrect: |
+      # sales/orders/application/order.py
+      from sales.users.application.user import UserService
+    validation:
+      tool: import-linter
+      detail: forbidden contract between sibling modules' application and adapters
+    related: [ARCH-020, ARCH-021]
+  - id: ARCH-047
+    name: The commons area is strictly limited
+    level: MUST
+    automation: partial
+    category: structure
+    description: >
+      src/commons/ holds only ID types, value objects, enumerations and reference
+      catalogues, and domain services spanning aggregates — plus one further carve-out,
+      commons/adapters/: framework-bound technical adapters used by more than one
+      context, not (yet) proposed upstream into arch-commons (Section 8.1), or specific
+      enough to this project that upstreaming never applies. Domain services spanning
+      aggregates live specifically in commons/services.py — the one top-level file in
+      commons/ exempt from the *Service/*Repository name-suffix ban, since it is the
+      standard's own documented home for them; commons/services.py classes still may
+      not mutate their own state. commons/adapters/, by contrast, follows adapters/
+      -layer discipline throughout, exactly like arch-commons' own commons.adapters or
+      any context's own adapters/: framework imports are allowed (ARCH-003 does not
+      apply there), the name-suffix ban does not apply, and mutation is expected. Every
+      other file directly in commons/ keeps the full name-suffix ban and framework-free
+      discipline. commons/ never holds an aggregate root, a repository, or an
+      application service, and commons/adapters/ never holds anything but a technical
+      adapter implementation — no business logic, no aggregate, no port definition (a
+      port lives in commons/types/, upstream, per the three-homes rule, ARCH-042).
+    rationale: >
+      commons/ is visible to every context, so without a narrow admission test it
+      becomes the junk drawer that couples the whole project together. Unlike
+      commons/types/ (ARCH-016) it may carry business meaning — that is what it is for —
+      but business meaning is not licence to put behaviour-owning objects there. Naming
+      each legitimate exception explicitly (rather than banning *Service or framework
+      imports outright everywhere in commons/) keeps every carve-out narrow instead of
+      inviting the rest of commons/ to claim it. commons/adapters/ specifically exists
+      because "propose it upstream into arch-commons" is the right long-term answer for
+      a genuinely reusable technical primitive, but it is not a place to put code while
+      a PR is pending, and some adapters (a request-scoped UnitOfWork tuned to one
+      project's concurrency model, say) may never be generic enough to upstream at all.
+      Without a documented, checked home, that code drifts into bootstrap/ instead —
+      technically working, since bootstrap/ can import anything, but invisible to every
+      context that could reuse it and indistinguishable from actual wiring code.
+    correct: |
+      # commons/ids.py
+      @dataclass(frozen=True)
+      class UserId:
+          value: str
+
+      # commons/geo.py — a transversal value object with real business meaning
+      @dataclass(frozen=True)
+      class Location:
+          country: Country
+          department: Department
+          municipality: Municipality
+
+      # commons/services.py — the documented carve-out
+      class PricingService:
+          def quote(self, order: Order) -> Money: ...
+
+      # commons/adapters/unit_of_work.py — a project-owned technical adapter,
+      # shared by every context, not (yet) proposed upstream
+      class ScopedSqlAlchemyUnitOfWork(SqlAlchemyUnitOfWork):
+          def __enter__(self) -> ScopedSqlAlchemyUnitOfWork: ...
+    incorrect: |
+      # commons/user_service.py — *Service outside services.py is still banned
+      class UserService: ...
+
+      # commons/order.py — an aggregate root never lives in commons/
+      class Order: ...
+
+      # commons/services.py — mutation is still banned even here
+      class PricingService:
+          def bump(self) -> None:
+              self.calls += 1
+
+      # bootstrap/unit_of_work.py — a reusable, cross-context technical adapter
+      # defined in the composition root instead of commons/adapters/ (ARCH-059)
+      class ScopedSqlAlchemyUnitOfWork(SqlAlchemyUnitOfWork): ...
+    validation:
+      tool: ast-checker
+      detail: >-
+        no class named *Service/*Repository outside commons/services.py or
+        commons/adapters/; no aggregate roots outside commons/adapters/;
+        commons/services.py classes must not mutate their own state;
+        commons/adapters/ is skipped entirely by both checks
+    related: [ARCH-003, ARCH-034, ARCH-042, ARCH-055, ARCH-059]
+  - id: ARCH-048
+    name: No context-level application package
+    level: MUST
+    automation: full
+    category: structure
+    description: >
+      A context has no application/ package of its own. Application services live in
+      aggregate modules, one per aggregate.
+    rationale: >
+      DDD has no "application service of the context"; application services are per use
+      case and belong with the model they coordinate. A context-level one becomes a
+      coordination layer that hides non-atomic multi-aggregate flow.
+    correct: "sales/orders/application/order.py"
+    incorrect: "sales/application/sales_service.py"
+    validation:
+      tool: ast-checker
+      detail: >-
+        filesystem check for <context>/application, plus any aggregate-module layer
+        directory still carrying the pre-0.2.0 layer name (infrastructure), which is
+        reported with the rename to adapters
+  - id: ARCH-049
+    name: One aggregate root per aggregate module
+    level: MUST
+    automation: partial
+    category: structure
+    description: >
+      An aggregate module's domain/model/ declares exactly one aggregate root, in
+      aggregate.py.
+    rationale: >
+      The 1:1 mapping is what makes "where does this go?" answerable without judgement,
+      and a fixed filename means there is no decision to make about what to call it
+      either - the tree looks the same in every module.
+    correct: "sales/users/domain/model/aggregate.py declaring class User"
+    incorrect: "sales/users/domain/model/aggregate.py declaring class User and class Order"
+    validation:
+      tool: ast-checker
+      detail: exactly one non-reserved module in domain/model, named aggregate.py
+  - id: ARCH-050
+    name: Declared context dependency graph
+    level: MUST
+    automation: full
+    category: structure
+    description: >
+      Every cross-context dependency is declared in contexts.toml, and the declared graph
+      is acyclic.
+    rationale: >
+      Contexts never import each other, so no import analysis can see a runtime cycle
+      wired through the composition root. Declaring the graph is the only way to check it,
+      and it turns adding an edge into a reviewable diff.
+    correct: |
+      # contexts.toml
+      [contexts.sales]
+      depends_on = ["billing"]
+    incorrect: |
+      [contexts.sales]
+      depends_on = ["billing"]
+      [contexts.billing]
+      depends_on = ["sales"]
+    validation:
+      tool: schema
+      detail: parse contexts.toml, topological sort
+  - id: ARCH-052
+    name: Read layer does not import the write side
+    level: MUST
+    automation: full
+    category: structure
+    description: >
+      <context>/read/ imports no aggregate module's domain/ or application/ package.
+    rationale: >
+      The read layer exists to answer queries the write model is not shaped for. Importing
+      the write side re-couples them and pulls invariant-carrying objects into query paths.
+    correct: |
+      # sales/read/customer_overview.py
+      @dataclass(frozen=True)
+      class CustomerOverview:
+          user_id: str
+    incorrect: |
+      # sales/read/customer_overview.py
+      from sales.users.domain.model.aggregate import User
+    validation:
+      tool: import-linter
+      detail: forbidden contract read -> modules' domain/application
+  - id: ARCH-054
+    name: Domain services for an aggregate live in a services/ directory
+    level: SHOULD
+    automation: partial
+    category: structure
+    description: >
+      An aggregate module's domain services live in domain/services/, one file per
+      service - not a single domain/services.py file. A single service is named after
+      the aggregate (order.py for the Order aggregate); 2+ services each get a
+      descriptive name instead. This does not apply to commons/services.py
+      (ARCH-047), the separate project-level home for services spanning aggregates.
+    rationale: >
+      A single services.py invites every future domain service for this aggregate to
+      pile into one file. A directory gives each service its own file from the start,
+      the same way domain/model/ already gives each concept its own file, with no
+      restructuring needed when a second service arrives. Naming the lone service
+      after the aggregate (rather than a generic "service") makes it identifiable
+      without opening it, the same reason domain/model/ports.py or events.py are
+      named for what they hold, not for their role alone.
+    correct: |
+      # sales/orders/domain/services/order.py — file named for the aggregate,
+      # since this is the Order module's only domain service
+      class PricingCalculator: ...
+    incorrect: |
+      # sales/orders/domain/services.py — must be a directory, not a file
+      class PricingCalculator: ...
+    validation:
+      tool: ast-checker
+      detail: >-
+        domain/services.py must not exist as a file; when domain/services/ has
+        exactly one file, its name must match the aggregate's own name
+  - id: ARCH-055
+    name: Every Python package directory has an __init__.py
+    level: MUST
+    automation: full
+    category: structure
+    description: >
+      Every directory under src/ that contains a .py file (directly or in a
+      subdirectory) has an __init__.py, including empty ones. Implicit namespace
+      packages (PEP 420) are not used. The exceptions are src/commons/ itself and,
+      if it exists, src/commons/adapters/ — neither MUST have one: each is a PEP 420
+      namespace portion that merges with the matching portion the installed
+      arch-commons distribution ships (commons/ with commons.types/commons.adapters
+      as a whole; commons/adapters/ with arch-commons' own commons/adapters/
+      specifically, ARCH-047). Every other directory nested under src/commons/,
+      including subdirectories of commons/adapters/ itself, follows the normal rule
+      and does have an __init__.py.
+    rationale: >
+      An explicit __init__.py marks a directory as a package on purpose, rather than
+      by the accident of holding a .py file; it also avoids the edge cases implicit
+      namespace packages create for some tooling and IDEs. A missing one is easy to
+      overlook when scaffolding a module by hand. commons/ and commons/adapters/ are
+      the deliberate exceptions: arch-commons ships commons.types and commons.adapters
+      while the project supplies its own commons.<module> portions and, when it has
+      one, its own framework-bound adapters alongside arch-commons' commons.adapters
+      -- and a regular package on either side of either merge point would shadow the
+      other outright rather than merge with it.
+    correct: |
+      sales/orders/domain/model/__init__.py   # empty, present
+      sales/orders/domain/model/aggregate.py
+
+      commons/geo.py                          # no commons/__init__.py -- namespace portion
+      commons/ids/__init__.py                 # nested dirs still have one
+      commons/adapters/unit_of_work.py        # no commons/adapters/__init__.py either
+    incorrect: |
+      sales/orders/domain/model/aggregate.py  # no __init__.py alongside it
+
+      commons/__init__.py                     # shadows the installed arch-commons
+      commons/adapters/__init__.py            # shadows arch-commons' own commons/adapters/
+    validation:
+      tool: ast-checker
+      detail: >-
+        filesystem check - every directory under src/ holding a .py file has
+        __init__.py, except src/commons/ and, if it exists, src/commons/adapters/,
+        neither of which may have one
+  - id: ARCH-056
+    name: An entrypoint file serves at most one aggregate module
+    level: SHOULD
+    automation: partial
+    category: structure
+    description: >
+      entrypoints/ groups by transport kind (web/, events/, crons/), and within each
+      kind, one file per aggregate module (or per concern, for events/crons where a
+      single file's job doesn't map cleanly to one aggregate name). A file that
+      imports from two different aggregate modules' packages under the same context
+      is doing more than one aggregate's job.
+    rationale: >
+      Web routes typically split naturally, one file per resource. Event consumers
+      and cron jobs are better named for what they do than forced into an
+      aggregate-name pattern, but the ownership rule still holds: a handler that
+      reaches into two aggregates hides a cross-aggregate flow inside transport
+      code instead of an explicit part of the design (Section 3.6), and is
+      untestable without two aggregates' worth of setup.
+    correct: |
+      # sales/entrypoints/web/order.py
+      from sales.orders.application.order import OrderService
+    incorrect: |
+      # sales/entrypoints/web/order.py
+      from sales.orders.application.order import OrderService
+      from sales.customers.application.customer import CustomerService
+    validation:
+      tool: ast-checker
+      detail: >-
+        an entrypoints/ file importing from 2+ aggregate modules' packages in the
+        same context is flagged; only applies to contexts with 2+ modules
+  - id: ARCH-059
+    name: bootstrap/ wires adapters, it does not define them
+    level: SHOULD
+    automation: full
+    category: structure
+    description: >
+      A class defined inside bootstrap/ MUST NOT directly subclass a port or adapter
+      imported from commons.types or commons.adapters. Implementing a port is
+      adapter-shaped code, and an adapter has a documented home already: a context's
+      own <module>/adapters/ if it serves one aggregate module, or the project's own
+      commons/adapters/ (ARCH-047) if it is framework-bound and shared across
+      contexts. bootstrap/ constructs instances of
+      adapters defined elsewhere and wires them into services; it does not define
+      the classes themselves.
+    rationale: >
+      bootstrap/ can import anything (it is the one module ARCH-017 allows to reach
+      across every layer), so nothing stops a class implementing a port from being
+      defined there by accident -- it will even run correctly. What is lost is
+      reuse and legibility: an adapter sitting in bootstrap/ is invisible to every
+      context that could import it from commons/adapters/, and a reader cannot tell
+      wiring code from adapter code without reading every class body. A documented,
+      checked home removes the judgment call: a technical adapter used by more than
+      one context is proposed upstream into arch-commons (Section 8.1) or, until
+      that lands or if it never will, placed in commons/adapters/ -- never left in
+      the composition root because that is where it happened to be written first.
+    correct: |
+      # commons/adapters/unit_of_work.py
+      class ScopedSqlAlchemyUnitOfWork(SqlAlchemyUnitOfWork): ...
+
+      # bootstrap/__init__.py
+      from commons.adapters.unit_of_work import ScopedSqlAlchemyUnitOfWork
+
+      def build_container() -> Container:
+          uow = ScopedSqlAlchemyUnitOfWork(session_factory)
+          ...
+    incorrect: |
+      # bootstrap/unit_of_work.py
+      from commons.adapters.sqlalchemy_unit_of_work import SqlAlchemyUnitOfWork
+
+      class ScopedSqlAlchemyUnitOfWork(SqlAlchemyUnitOfWork): ...  # ARCH-059: this
+                                                                    # is an adapter,
+                                                                    # not wiring
+    validation:
+      tool: ast-checker
+      detail: >-
+        a class defined under bootstrap/ is flagged when any base class is a name
+        imported directly from commons.types or commons.adapters; a base class
+        defined by indirection through another project module is not resolved
+    related: [ARCH-017, ARCH-047]

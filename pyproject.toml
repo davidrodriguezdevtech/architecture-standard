@@ -1,6 +1,6 @@
 [project]
 name = "arch-standard"
-version = "1.0.0"
+version = "1.0.1"
 description = "Architecture Standard v1 — rule catalog, validator, and doc generator"
 requires-python = ">=3.12"
 dependencies = [

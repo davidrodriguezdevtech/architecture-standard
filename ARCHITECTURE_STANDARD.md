@@ -192,6 +192,10 @@ project/
 │   │   ├── ids.py                    #   ID types referenced across aggregates
 │   │   ├── geo.py                    #   transversal VOs / enums / catalogues
 │   │   ├── services.py               #   domain services spanning aggregates (rare)
+│   │   ├── db.py                     #   shared value converters (e.g. a SQLAlchemy
+│   │   │                             #   TypeDecorator) - framework-bound but not a
+│   │   │                             #   port implementation, so NOT commons/adapters/
+│   │   │                             #   (ARCH-008); narrow ARCH-003 exception (8.2)
 │   │   └── adapters/                 #   framework-bound technical adapters shared
 │   │       │                         #   across contexts, not (yet) proposed
 │   │       │                         #   upstream into arch-commons (Section 8.3).
@@ -269,7 +273,8 @@ and those ID types live in `commons/ids.py`. (ARCH-046)
 | A listing/search/filter/sort/pagination query over ONE aggregate module's own data | a Finder ABC + DTOs in `<module>/application/<aggregate>_finder.py`, implemented in `<module>/adapters/<aggregate>_finder.py` - not `<context>/read/` |
 | A projection, report, dashboard, or any read spanning 2+ aggregate modules | `<context>/read/` |
 | A dependency-free technical primitive | the `arch-commons` package, `commons.types` (propose upstream) |
-| A shared framework-bound technical implementation | propose upstream into the `arch-commons` package, `commons.adapters`; until accepted, or if project-specific, `src/commons/adapters/` (Section 8.3) |
+| A shared framework-bound technical adapter implementing a `commons.types` port | propose upstream into the `arch-commons` package, `commons.adapters`; until accepted, or if project-specific, `src/commons/adapters/` (Section 8.3) |
+| A shared framework-bound value converter used by 2+ aggregate modules' `adapters/mapping.py`, implementing no port (e.g. a SQLAlchemy `TypeDecorator`) | `src/commons/<concept>.py`, under ARCH-003's narrow column-TYPE exception (Section 8.2) - not `commons/adapters/`, which is for port-implementing adapters (ARCH-008) |
 | A domain concept shared by 2+ contexts, with business policy | `src/commons/<concept>.py` |
 | Wiring / config / DI | `bootstrap/` |
 
@@ -989,6 +994,21 @@ visible instead of accumulating by accident.
 Generic subdomains (notifications, identity) are other bounded contexts, not shared
 code - consumed via the Section 3 mechanisms.
 
+**Value converters are a narrow exception to "no frameworks here."** A shared value
+converter - a class that translates one value to and from its stored primitive, such
+as a SQLAlchemy `TypeDecorator` mapping a `StrEnum` column to plain text - is used by
+2+ aggregate modules' `adapters/mapping.py`, so by the "needed above one aggregate?"
+test it belongs in `src/commons/`. It is not a `commons/adapters/` candidate: it
+implements no port and subclasses no `commons.types` ABC (ARCH-008 - see 8.3), it
+just happens to need the framework's own column-TYPE machinery to do its one job.
+ARCH-003 carries a narrow, explicit allowlist for exactly this - the ORM's
+`TypeDecorator`/`TypeEngine`/`Dialect` and built-in column-type primitives, imported
+by name, never `Column`, `Table`, `Session`, or any other modeling/I/O construct.
+Everything else about `commons/` discipline still applies to the file it lives in:
+no business logic, no mutable state, no `*Service`/`*Repository` name (ARCH-047) -
+only the framework-import ban is narrowly lifted, and only for the classes on that
+allowlist.
+
 ## 8.3 The project's own `commons/adapters/`
 
 A framework-bound technical adapter used by more than one context - a UnitOfWork
@@ -1012,10 +1032,18 @@ discipline the rest of `commons/` is held to:
 | Mutable state | forbidden outside `services.py`'s own narrow carve-out | expected |
 | Business meaning | expected | **forbidden** - same as `commons.adapters` upstream |
 
-It holds one thing only: a technical adapter implementation, typically subclassing a
-`commons.types` ABC exactly like its upstream counterparts do. It never holds a port
-(a port lives in `commons/types/`, upstream, per the three-homes rule, ARCH-042), an
-aggregate, or business logic of any kind (ARCH-047).
+It holds one thing only: a technical adapter implementation that **implements a port**
+(ARCH-008), typically subclassing a `commons.types` ABC exactly like its upstream
+counterparts do (`SqlAlchemyUnitOfWork` implementing `UnitOfWork`, and so on). It
+never holds a port itself (a port lives in `commons/types/`, upstream, per the
+three-homes rule, ARCH-042), an aggregate, or business logic of any kind (ARCH-047).
+
+A framework-bound helper that does **not** implement a port - a value converter used
+by `adapters/mapping.py` across aggregate modules, for instance - is not a
+`commons/adapters/` candidate just because it is framework-bound. It goes in a plain
+`commons/<concept>.py` instead, under ARCH-003's narrow value-converter exception
+(8.2). "Framework-bound" and "implements a port" are independent axes; only their
+conjunction belongs here.
 
 `bootstrap/` constructs instances of adapters defined here (or anywhere else) and
 wires them into services; it does not define adapter classes itself (ARCH-059) - a
@@ -1186,9 +1214,9 @@ Binding from day one. `arch-standard check --core` runs exactly these.
 
 #### ARCH-003 — Domain does not depend on frameworks
 - **Level:** MUST · **Automation:** full · **Tier:** core · **Category:** dependencies
-- **Validation:** `ast-checker` — forbidden imports in domain/ and commons/, excluding commons/adapters/; `from pydantic import <name>` is permitted only for names on the scalar-validator allowlist, `import pydantic` (bare) is never permitted
-- **Description:** No module under a context's domain/ package (or a project's commons/, held to the same discipline) imports a web framework, an ORM, a DI container, or pydantic -- with two narrow, explicit exceptions. The first: a framework's own format-only scalar validators, imported by name. Today that allowlist is exactly `pydantic.EmailStr`, `pydantic.TypeAdapter` and `pydantic.ValidationError`, used only to validate a single field's string format in `__post_init__`, never to define a model, a schema, or anything with I/O. `import pydantic` (the bare form) stays banned even though names on the allowlist exist, because the bare form reaches `pydantic.BaseModel` through the module object; the same import line naming both an allowed and a banned symbol still fails. The second: a project's own `commons/adapters/`, when it exists (ARCH-047) -- it follows adapters/-layer discipline throughout, exactly like arch-commons' own `commons.adapters` or any context's own `adapters/`, so this rule does not apply to it at all, not even the scalar-validator allowlist (there is no reason to allowlist anything -- the whole module is exempt).
-- **Rationale:** A framework-free domain stays unit-testable without a runtime and keeps vendor choices out of the business core -- reimplementing a well-known format (email, URL, phone) with a hand-rolled regex is not what that principle protects, and it trades one duplicated, under-tested validator per aggregate for one call into a library that already gets it right. The line stays exactly where the principle needs it: the domain may borrow a framework's scalar TYPE validator, never its MODELING machinery (no `BaseModel`, no `Field`, no framework runtime or I/O reaching the domain through the back door).
+- **Validation:** `ast-checker` — forbidden imports in domain/ and commons/, excluding commons/adapters/; `from pydantic import <name>` and `from sqlalchemy import <name>` are each permitted only for names on their own allowlist (scalar validators for pydantic; `TypeDecorator`/`TypeEngine`/`Dialect`/column-type primitives for sqlalchemy), `import pydantic` / `import sqlalchemy` (bare) are never permitted
+- **Description:** No module under a context's domain/ package (or a project's commons/, held to the same discipline) imports a web framework, an ORM, a DI container, or pydantic -- with three narrow, explicit exceptions. The first: a framework's own format-only scalar validators, imported by name. Today that allowlist is exactly `pydantic.EmailStr`, `pydantic.TypeAdapter` and `pydantic.ValidationError`, used only to validate a single field's string format in `__post_init__`, never to define a model, a schema, or anything with I/O. `import pydantic` (the bare form) stays banned even though names on the allowlist exist, because the bare form reaches `pydantic.BaseModel` through the module object; the same import line naming both an allowed and a banned symbol still fails. The second: a project's own `commons/adapters/`, when it exists (ARCH-047) -- it follows adapters/-layer discipline throughout, exactly like arch-commons' own `commons.adapters` or any context's own `adapters/`, so this rule does not apply to it at all, not even the scalar-validator allowlist (there is no reason to allowlist anything -- the whole module is exempt). The third: an ORM's own column-TYPE machinery, imported by name, used only to define a value converter -- a class subclassing `sqlalchemy.types.TypeDecorator` (or `TypeEngine`) that converts one value to and from its stored primitive in `process_bind_param`/ `process_result_value`, never a class that maps, queries, or persists anything itself. Today that allowlist is exactly `sqlalchemy.types.TypeDecorator`, `sqlalchemy.types.TypeEngine`, `sqlalchemy.Dialect`, and the built-in column-type primitives (`String`, `Text`, `Unicode`, `UnicodeText`, `Integer`, `BigInteger`, `SmallInteger`, `Numeric`, `Float`, `Boolean`, `Date`, `DateTime`, `Time`, `Interval`, `LargeBinary`, `JSON`) used as `impl`. `Column`, `Table`, `MetaData`, `relationship`, `mapped_column`, `Session`, `Engine`, `ForeignKey`, and any other ORM modeling/I/O construct stay banned -- this exception is scoped exactly like the pydantic one: the domain (or commons) may borrow the framework's scalar TYPE machinery, never anything that touches a schema, a query, or a connection. This converter itself carries no business logic (ARCH-047) and is not exempted from any other rule in this section -- unlike the `commons/adapters/` exception, only the framework-import ban is lifted, and only for the classes on this allowlist.
+- **Rationale:** A framework-free domain stays unit-testable without a runtime and keeps vendor choices out of the business core -- reimplementing a well-known format (email, URL, phone) with a hand-rolled regex is not what that principle protects, and it trades one duplicated, under-tested validator per aggregate for one call into a library that already gets it right. The same reasoning covers a column converter: `EnumAsString(TypeDecorator)` is a value-format concern (how one column's primitive maps to one domain type), not modeling machinery, and it is typically shared by 2+ aggregate modules' `adapters/mapping.py` -- forcing it into `commons/adapters/` would mislabel it as a port-implementing adapter (ARCH-008 -- it implements no port and subclasses no `commons.types` ABC), and duplicating it per aggregate module would let the same enum-to-column-length mapping drift. The line stays exactly where the principle needs it: the domain or commons may borrow a framework's scalar TYPE machinery, never its MODELING machinery (no `BaseModel`, no `Field`, no `Table`, no `Session`, no framework runtime or I/O reaching the domain through the back door).
 - **Correct:**
   ```
   # sales/orders/domain/model/value_objects.py
@@ -1206,6 +1234,18 @@ Binding from day one. `arch-standard check --core` runs exactly these.
                   _EMAIL.validate_python(self.email)
               except ValidationError as exc:
                   raise InvalidOrder(f"Email is not valid: {self.email}") from exc
+  
+  # commons/db.py -- shared by 2+ aggregate modules' adapters/mapping.py;
+  # implements no port, so commons/adapters/ is the wrong home (ARCH-008)
+  from sqlalchemy import Dialect, String
+  from sqlalchemy.types import TypeDecorator
+  
+  class EnumAsString(TypeDecorator[Any]):
+      impl = String
+      cache_ok = True
+  
+      def process_bind_param(self, value: StrEnum | None, dialect: Dialect) -> str | None:
+          return None if value is None else value.value
   ```
 - **Incorrect:**
   ```
@@ -1216,6 +1256,9 @@ Binding from day one. `arch-standard check --core` runs exactly these.
   # sales/orders/domain/model/value_objects.py
   import pydantic                        # bare import -- reaches BaseModel too,
                                           # banned even though EmailStr exists
+  
+  # commons/db.py
+  from sqlalchemy import Column, Table   # modeling machinery, not a column TYPE
   ```
 - **Related:** ARCH-047
 

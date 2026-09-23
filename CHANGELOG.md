@@ -6,6 +6,48 @@ what kind of change requires which version bump; `arch-standard release-check`
 enforces it in CI on every push and pull request, `arch-standard changelog`
 renders these entries.
 
+## 1.0.1
+
+**A third ARCH-003 exception: shared value converters in `commons/`, not
+`commons/adapters/`.** A consuming project (Florecer) hit a real gap: `EnumAsString`,
+a SQLAlchemy `TypeDecorator` shared by two aggregate modules' `adapters/mapping.py`,
+had nowhere correct to live. Section 2.3's decision table routed "a shared
+framework-bound technical implementation" to `commons/adapters/` — but `EnumAsString`
+implements no port and subclasses no `commons.types` ABC, so filing it there
+mislabels it as a port-implementing adapter, contradicting ARCH-008's own definition
+of "adapter" and 8.3's "one thing only" scope. The only other option, a plain
+`commons/<module>.py`, was blocked outright by ARCH-003 (no framework imports outside
+`commons/adapters/`). The project worked around it with a local ADR waiver; this
+release closes the gap in the standard itself instead.
+
+ARCH-003 now carries a third narrow, explicit exception, alongside the existing
+`commons/adapters/` carve-out and the pydantic scalar-validator allowlist: an ORM's
+own column-TYPE machinery, imported by name, for defining a value converter (a
+`TypeDecorator`/`TypeEngine` subclass converting one value to/from its stored
+primitive). The allowlist covers `TypeDecorator`, `TypeEngine`, `Dialect`, and the
+built-in column-type primitives (`String`, `Integer`, `Numeric`, `DateTime`, ...).
+`Column`, `Table`, `MetaData`, `relationship`, `mapped_column`, `Session`, `Engine`,
+and every other ORM modeling/I/O construct stay banned — the exception lifts only the
+framework-import ban, and only for classes on this allowlist; every other `commons/`
+constraint (no business logic, no mutable state, no `*Service`/`*Repository` name)
+still applies to the file the converter lives in.
+
+Section 2.3's table now has two rows where it had one: a shared, framework-bound
+adapter that *implements a port* still goes to `commons/adapters/`; a shared,
+framework-bound *value converter* that implements no port goes to a plain
+`commons/<concept>.py` instead. Section 8.2 documents the new exception; 8.3 is
+reworded to make the port-implementing requirement explicit instead of "typically."
+
+This is a patch: no rule's level or binding behavior changed, and no
+previously-compliant project is newly out of compliance. It only widens what a
+project may correctly do — a `commons/<module>.py` importing the classes on the new
+allowlist now passes ARCH-003 as designed, instead of being forced into
+`commons/adapters/` or a local waiver.
+
+### Changed
+- ARCH-003: description, rationale, and examples extended with the value-converter
+  exception; `validation.detail` updated to mention both frameworks' allowlists.
+
 ## 1.0.0
 
 **The first real release.** Every version before this one was informal: `0.2.0` was
