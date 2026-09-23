@@ -110,6 +110,57 @@ def test_given_domain_imports_emailstr_and_basemodel_together__when_checked__the
     assert any("BaseModel" in f.message and "EmailStr" not in f.message for f in report.findings)
 
 
+def test_given_domain_imports_typedecorator_by_name__when_checked__then_arch_003_passes(
+    tmp_path: Path,
+) -> None:
+    layout = _domain_file(
+        tmp_path,
+        "from sqlalchemy import Dialect, String\nfrom sqlalchemy.types import TypeDecorator\n",
+    )
+    report = {r.rule_id: r for r in BannedSymbolsCheck().run(layout, Catalog.load(RULES))}[
+        "ARCH-003"
+    ]
+    assert report.outcome is Outcome.PASS
+
+
+def test_given_domain_imports_column_and_table__when_checked__then_arch_003_fails(
+    tmp_path: Path,
+) -> None:
+    """The allowlist is by name, not by module: Column/Table (modeling machinery)
+    stay banned even though TypeDecorator is allowed."""
+    layout = _domain_file(tmp_path, "from sqlalchemy import Column, Table\n")
+    report = {r.rule_id: r for r in BannedSymbolsCheck().run(layout, Catalog.load(RULES))}[
+        "ARCH-003"
+    ]
+    assert report.outcome is Outcome.FAIL
+    assert any("Column" in f.message and "Table" in f.message for f in report.findings)
+
+
+def test_given_domain_bare_imports_sqlalchemy__when_checked__then_arch_003_fails(
+    tmp_path: Path,
+) -> None:
+    """`import sqlalchemy` stays banned even though TypeDecorator is allowed by
+    name -- the bare form would let code reach Column/Table through the module
+    object."""
+    layout = _domain_file(tmp_path, "import sqlalchemy\n")
+    report = {r.rule_id: r for r in BannedSymbolsCheck().run(layout, Catalog.load(RULES))}[
+        "ARCH-003"
+    ]
+    assert report.outcome is Outcome.FAIL
+
+
+def test_given_domain_imports_typedecorator_and_column_together__when_checked__then_arch_003_fails(
+    tmp_path: Path,
+) -> None:
+    """One allowed name alongside one banned name on the same import still fails."""
+    layout = _domain_file(tmp_path, "from sqlalchemy import Column, TypeDecorator\n")
+    report = {r.rule_id: r for r in BannedSymbolsCheck().run(layout, Catalog.load(RULES))}[
+        "ARCH-003"
+    ]
+    assert report.outcome is Outcome.FAIL
+    assert any("Column" in f.message and "TypeDecorator" not in f.message for f in report.findings)
+
+
 def test_given_a_framework_import_in_commons_adapters__when_checked__then_arch_003_passes(
     tmp_path: Path,
 ) -> None:
@@ -143,3 +194,25 @@ def test_given_a_framework_import_directly_in_commons__when_checked__then_arch_0
         "ARCH-003"
     ]
     assert report.outcome is Outcome.FAIL
+
+
+def test_given_a_value_converter_directly_in_commons__when_checked__then_arch_003_passes(
+    tmp_path: Path,
+) -> None:
+    """A value converter (TypeDecorator subclass) belongs in a plain commons/<module>,
+    not commons/adapters/ -- it implements no port and subclasses no commons.types
+    ABC (ARCH-008), so filing it under commons/adapters/ would mislabel it as a
+    port-implementing adapter. The column-TYPE allowlist lets it live where it
+    actually belongs without tripping ARCH-003."""
+    commons = tmp_path / "src" / "commons"
+    commons.mkdir(parents=True)
+    (commons / "db.py").write_text(
+        "from sqlalchemy import Dialect, String\nfrom sqlalchemy.types import TypeDecorator\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "src" / "sales" / "entrypoints").mkdir(parents=True)
+    layout = ProjectLayout.detect(tmp_path)
+    report = {r.rule_id: r for r in BannedSymbolsCheck().run(layout, Catalog.load(RULES))}[
+        "ARCH-003"
+    ]
+    assert report.outcome is Outcome.PASS

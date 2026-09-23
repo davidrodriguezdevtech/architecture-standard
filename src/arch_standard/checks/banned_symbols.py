@@ -43,16 +43,45 @@ DEFAULT_BANNED_CALLS = frozenset(
 # flagging them by bare name false-positives ARCH-028 (a MUST) on compliant
 # domain code. Narrowed to the one name that unambiguously means "ORM base".
 _ORM_BASES = {"DeclarativeBase"}
-# I5: ARCH-003 bans frameworks wholesale, with one narrow, explicit exception -- a
-# framework's own format-only SCALAR validators, imported by name. This is not a
-# blanket pydantic allowance: `import pydantic` (bare, below) stays banned even
-# though EmailStr is on this list, because the bare form would let code reach
-# BaseModel/Field through the module object; and any name not listed here --
-# BaseModel, Field, field_validator, dataclasses, RootModel, ... -- stays banned
-# too. See ARCH-003's rule text for the rationale and the line this exception
-# does not cross.
+# I5: ARCH-003 bans frameworks wholesale, with narrow, explicit exceptions, one per
+# framework -- never a blanket per-framework allowance: the bare `import pydantic` /
+# `import sqlalchemy` forms (below) stay banned even though names on these lists
+# exist, because the bare form would let code reach BaseModel/Field or Column/Table
+# through the module object; and any name not listed here stays banned too. See
+# ARCH-003's rule text for the rationale and the line each exception does not cross.
+#
+# pydantic: a framework's own format-only SCALAR validators, imported by name --
+# BaseModel, Field, field_validator, dataclasses, RootModel, ... stay banned.
+#
+# sqlalchemy: the column-TYPE machinery needed to define a value converter (a
+# `TypeDecorator`/`TypeEngine` subclass converting one value to/from its stored
+# primitive) -- Column, Table, MetaData, relationship, mapped_column, Session,
+# Engine, ForeignKey, and every other modeling/I/O construct stay banned.
 DOMAIN_ALLOWED_SYMBOLS: dict[str, frozenset[str]] = {
     "pydantic": frozenset({"EmailStr", "TypeAdapter", "ValidationError"}),
+    "sqlalchemy": frozenset(
+        {
+            "TypeDecorator",
+            "TypeEngine",
+            "Dialect",
+            "String",
+            "Text",
+            "Unicode",
+            "UnicodeText",
+            "Integer",
+            "BigInteger",
+            "SmallInteger",
+            "Numeric",
+            "Float",
+            "Boolean",
+            "Date",
+            "DateTime",
+            "Time",
+            "Interval",
+            "LargeBinary",
+            "JSON",
+        }
+    ),
 }
 DEFAULT_BANNED_LOGGING = frozenset({"logging", "structlog", "loguru"})
 _LOG_METHODS = frozenset({"debug", "info", "warning", "warn", "error", "exception", "critical"})

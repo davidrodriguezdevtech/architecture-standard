@@ -65,6 +65,10 @@ project/
 │   │   ├── ids.py                    #   ID types referenced across aggregates
 │   │   ├── geo.py                    #   transversal VOs / enums / catalogues
 │   │   ├── services.py               #   domain services spanning aggregates (rare)
+│   │   ├── db.py                     #   shared value converters (e.g. a SQLAlchemy
+│   │   │                             #   TypeDecorator) - framework-bound but not a
+│   │   │                             #   port implementation, so NOT commons/adapters/
+│   │   │                             #   (ARCH-008); narrow ARCH-003 exception (8.2)
 │   │   └── adapters/                 #   framework-bound technical adapters shared
 │   │       │                         #   across contexts, not (yet) proposed
 │   │       │                         #   upstream into arch-commons (Section 8.3).
@@ -142,7 +146,8 @@ and those ID types live in `commons/ids.py`. (ARCH-046)
 | A listing/search/filter/sort/pagination query over ONE aggregate module's own data | a Finder ABC + DTOs in `<module>/application/<aggregate>_finder.py`, implemented in `<module>/adapters/<aggregate>_finder.py` - not `<context>/read/` |
 | A projection, report, dashboard, or any read spanning 2+ aggregate modules | `<context>/read/` |
 | A dependency-free technical primitive | the `arch-commons` package, `commons.types` (propose upstream) |
-| A shared framework-bound technical implementation | propose upstream into the `arch-commons` package, `commons.adapters`; until accepted, or if project-specific, `src/commons/adapters/` (Section 8.3) |
+| A shared framework-bound technical adapter implementing a `commons.types` port | propose upstream into the `arch-commons` package, `commons.adapters`; until accepted, or if project-specific, `src/commons/adapters/` (Section 8.3) |
+| A shared framework-bound value converter used by 2+ aggregate modules' `adapters/mapping.py`, implementing no port (e.g. a SQLAlchemy `TypeDecorator`) | `src/commons/<concept>.py`, under ARCH-003's narrow column-TYPE exception (Section 8.2) - not `commons/adapters/`, which is for port-implementing adapters (ARCH-008) |
 | A domain concept shared by 2+ contexts, with business policy | `src/commons/<concept>.py` |
 | Wiring / config / DI | `bootstrap/` |
 
