@@ -1,0 +1,535 @@
+rules:
+  - id: ARCH-001
+    name: Domain does not depend on adapters
+    level: MUST
+    automation: full
+    tier: core
+    category: dependencies
+    description: >
+      No module under a context's domain/ package may import from that
+      context's adapters/ package or from commons/adapters/.
+    rationale: >
+      Inverting this dependency (DIP) lets the core be tested without a
+      database and lets the store be swapped without touching business rules.
+    correct: |
+      # sales/orders/domain/model/ports.py
+      class OrderRepository(ABC):
+          @abstractmethod
+          def get(self, order_id: OrderId) -> Order: ...
+    incorrect: |
+      # sales/orders/domain/model/aggregate.py
+      from sales.orders.adapters.postgres_order_repository import PostgresOrderRepository
+    validation:
+      tool: import-linter
+      detail: layered contract; domain is the innermost layer
+    related: [ARCH-008]
+  - id: ARCH-002
+    name: Domain does not depend on application
+    level: MUST
+    automation: full
+    tier: core
+    category: dependencies
+    description: >
+      No module under a context's domain/ package imports from that context's
+      application/ package.
+    rationale: >
+      The domain is the innermost layer; use-case orchestration depends on it,
+      never the reverse.
+    correct: |
+      # sales/orders/application/order.py
+      from sales.orders.domain.model.aggregate import Order
+    incorrect: |
+      # sales/orders/domain/model/aggregate.py
+      from sales.orders.application.order import OrderService
+    validation:
+      tool: import-linter
+      detail: layered contract
+  - id: ARCH-003
+    name: Domain does not depend on frameworks
+    level: MUST
+    automation: full
+    tier: core
+    category: dependencies
+    description: >
+      No module under a context's domain/ package (or a project's commons/, held to
+      the same discipline) imports a web framework, an ORM, a DI container, or
+      pydantic -- with two narrow, explicit exceptions. The first: a framework's own
+      format-only scalar validators, imported by name. Today that allowlist is exactly
+      `pydantic.EmailStr`, `pydantic.TypeAdapter` and `pydantic.ValidationError`,
+      used only to validate a single field's string format in `__post_init__`, never
+      to define a model, a schema, or anything with I/O. `import pydantic` (the bare
+      form) stays banned even though names on the allowlist exist, because the bare
+      form reaches `pydantic.BaseModel` through the module object; the same import
+      line naming both an allowed and a banned symbol still fails. The second: a
+      project's own `commons/adapters/`, when it exists (ARCH-047) -- it follows
+      adapters/-layer discipline throughout, exactly like arch-commons' own
+      `commons.adapters` or any context's own `adapters/`, so this rule does not apply
+      to it at all, not even the scalar-validator allowlist (there is no reason to
+      allowlist anything -- the whole module is exempt).
+    rationale: >
+      A framework-free domain stays unit-testable without a runtime and keeps vendor
+      choices out of the business core -- reimplementing a well-known format (email,
+      URL, phone) with a hand-rolled regex is not what that principle protects, and
+      it trades one duplicated, under-tested validator per aggregate for one call
+      into a library that already gets it right. The line stays exactly where the
+      principle needs it: the domain may borrow a framework's scalar TYPE validator,
+      never its MODELING machinery (no `BaseModel`, no `Field`, no framework runtime
+      or I/O reaching the domain through the back door).
+    correct: |
+      # sales/orders/domain/model/value_objects.py
+      from pydantic import EmailStr, TypeAdapter, ValidationError
+
+      _EMAIL = TypeAdapter(EmailStr)
+
+      @dataclass(frozen=True)
+      class ContactInfo:
+          email: EmailStr
+
+          def __post_init__(self) -> None:
+              if self.email:
+                  try:
+                      _EMAIL.validate_python(self.email)
+                  except ValidationError as exc:
+                      raise InvalidOrder(f"Email is not valid: {self.email}") from exc
+    incorrect: |
+      # sales/orders/domain/model/aggregate.py
+      from pydantic import BaseModel        # modeling machinery, not a scalar validator
+      from sqlalchemy.orm import Mapped
+
+      # sales/orders/domain/model/value_objects.py
+      import pydantic                        # bare import -- reaches BaseModel too,
+                                              # banned even though EmailStr exists
+    validation:
+      tool: ast-checker
+      detail: >-
+        forbidden imports in domain/ and commons/, excluding commons/adapters/;
+        `from pydantic import <name>` is permitted only for names on the
+        scalar-validator allowlist, `import pydantic` (bare) is never permitted
+    related: [ARCH-047]
+  - id: ARCH-004
+    name: Domain performs no I/O
+    level: MUST
+    automation: partial
+    category: dependencies
+    description: >
+      No module under a context's domain/ package calls the wall clock, a
+      random source, the network, or the disk; time and identity arrive through
+      the Clock and IdGenerator ports.
+    rationale: >
+      A domain that reads datetime.now() or a socket is non-deterministic and
+      cannot be tested in microseconds.
+    correct: |
+      # sales/orders/domain/model/aggregate.py
+      @classmethod
+      def place(cls, clock: Clock, ids: IdGenerator) -> "Order":
+          return cls(id=ids.next_identity(), placed_at=clock.now())
+    incorrect: |
+      # sales/orders/domain/model/aggregate.py
+      from datetime import datetime
+      placed_at = datetime.now()
+    validation:
+      tool: ruff
+      detail: flake8-tidy-imports banned-api (datetime.now, uuid4, open, socket) in domain/
+  - id: ARCH-005
+    name: Application does not depend on adapters
+    level: MUST
+    automation: full
+    tier: core
+    category: dependencies
+    description: >
+      No module under a context's application/ package imports from that
+      context's adapters/ package or from commons/adapters/.
+    rationale: >
+      Orchestration names ports only; the concrete adapter is injected by the
+      composition root and is never imported by the use case.
+    correct: |
+      # sales/orders/application/order.py
+      def __init__(self, orders: OrderRepository, uow: UnitOfWork) -> None: ...
+    incorrect: |
+      # sales/orders/application/order.py
+      from sales.orders.adapters.order_repository import SqlAlchemyOrderRepository
+    validation:
+      tool: import-linter
+      detail: layered contract
+  - id: ARCH-006
+    name: Application does not depend on entrypoints
+    level: MUST
+    automation: full
+    tier: core
+    category: dependencies
+    description: >
+      No module under a context's application/ package imports from that
+      context's entrypoints/ package.
+    rationale: >
+      Entrypoints are inbound adapters that call the application; the
+      dependency arrow never points back out to transport code.
+    correct: |
+      # sales/entrypoints/web/order.py
+      from sales.orders.application.order import OrderService
+    incorrect: |
+      # sales/orders/application/order.py
+      from sales.entrypoints.web.order import parse_body
+    validation:
+      tool: import-linter
+      detail: layered contract
+  - id: ARCH-007
+    name: Application does not construct concrete adapters
+    level: MUST
+    automation: partial
+    category: dependencies
+    description: >
+      No module under a context's application/ package instantiates an
+      adapter class such as SqlAlchemyOrderRepository(...) or
+      HttpCreditGateway(...).
+    rationale: >
+      Constructing an adapter couples the use case to one technology choice and
+      defeats dependency injection.
+    correct: |
+      # bootstrap/__init__.py
+      orders = SqlAlchemyOrderRepository(uow)
+      return OrderService(uow=uow, orders=orders)
+    incorrect: |
+      # sales/orders/application/order.py
+      self._orders = SqlAlchemyOrderRepository(SqlAlchemyUnitOfWork())
+    validation:
+      tool: grimp
+      detail: >-
+        import-graph assert; catches adapter classes imported from the adapters/ package,
+        not an adapter class defined and instantiated within application/ itself
+    related: [ARCH-005]
+  - id: ARCH-008
+    name: Adapters implement ports; the core imports abstractions only
+    level: MUST
+    automation: partial
+    tier: core
+    category: dependencies
+    description: >
+      Every concrete adapter in a context's adapters/ package implements an
+      abc.ABC declared in domain/model/ports.py or a colocated application
+      abc.ABC; domain/ and application/ import only those abstractions.
+    rationale: >
+      The core names the contract it needs and adapters plug in behind
+      it, so the store can be replaced without editing business rules.
+    correct: |
+      # sales/orders/adapters/order_repository.py
+      class SqlAlchemyOrderRepository(OrderRepository):  # explicit, not duck-typed
+          def get(self, order_id: OrderId) -> Order: ...
+    incorrect: |
+      # sales/orders/domain/services/order.py
+      from sales.orders.adapters.order_repository import SqlAlchemyOrderRepository
+    validation:
+      tool: import-linter
+      detail: >-
+        layered contract (import half); an adapter that doesn't inherit the port
+        fails mypy and, if instantiated, raises TypeError for any unimplemented
+        @abstractmethod -- both checked, not just reviewed
+    related: [ARCH-001, ARCH-042]
+  - id: ARCH-009
+    name: Entrypoints obtain wired services from the composition root; never construct or call outbound adapters directly
+    level: MUST
+    automation: partial
+    category: dependencies
+    description: >
+      No module under a context's entrypoints/ package constructs an
+      outbound adapter, imports bootstrap/, or calls persistence, sessions,
+      or HTTP clients directly. It exposes its own small getter for the one
+      service it needs, set once at startup by the composition root
+      (main.py, the only module allowed to import bootstrap/ -- ARCH-017),
+      and calls only that service.
+    rationale: >
+      An entrypoint that news up a repository or calls session.execute is
+      untestable without transport and leaks wiring across the boundary.
+    correct: |
+      # sales/entrypoints/web/order.py
+      _service: OrderService | None = None
+
+      def configure(service: OrderService) -> None:
+          global _service
+          _service = service
+
+      def get_order_service() -> OrderService:
+          assert _service is not None, "configure() was not called at startup"
+          return _service
+
+      def create_order(body: CreateOrderBody, service: OrderService = Depends(get_order_service)):
+          service.create_order(command)
+
+      # sales/main.py -- the only module that imports bootstrap (ARCH-017)
+      container = build_container()
+      order.configure(container.order_service)
+    incorrect: |
+      # sales/entrypoints/web/order.py
+      repo = SqlAlchemyOrderRepository(SqlAlchemyUnitOfWork())
+      repo.save(order)
+    validation:
+      tool: import-linter
+      detail: forbidden contract (import half); entrypoints calling persistence/session/http-client directly is a runtime fact the import graph cannot see
+  - id: ARCH-010
+    name: Entrypoints contain no business logic
+    level: SHOULD
+    automation: partial
+    category: dependencies
+    description: >
+      A module under a context's entrypoints/ package does not branch on
+      business meaning; it translates the stimulus into a command, calls one
+      service method, and maps the result or exception back to the transport.
+    rationale: >
+      Business rules in a controller are hidden from domain tests and cannot be
+      reused by another entrypoint.
+    correct: |
+      # sales/entrypoints/web/order.py
+      cmd = CreateOrder(customer_id=body.customer_id, lines=body.lines)
+      return _to_response(service.create_order(cmd))
+    incorrect: |
+      # sales/entrypoints/web/order.py
+      if order.total > customer.credit_limit:
+          raise HTTPException(402)
+    validation:
+      tool: review
+      detail: PR checklist; does the handler decide anything about business meaning?
+  - id: ARCH-011
+    name: Entrypoints call application services, not other entrypoints
+    level: MUST
+    automation: full
+    category: dependencies
+    description: >
+      No module under a context's entrypoints/ package imports or calls
+      another entrypoint module.
+    rationale: >
+      Chaining entrypoints hides a use case behind transport translation and
+      duplicates orchestration.
+    correct: |
+      # sales/entrypoints/cli.py
+      from sales.orders.application.order import OrderService
+      # cli.py gets its own OrderService via its own configure()/getter,
+      # set by main.py at startup -- never by importing web/order.py
+    incorrect: |
+      # sales/entrypoints/cli.py
+      from sales.entrypoints.web.order import create_order_handler
+    validation:
+      tool: import-linter
+      detail: >-
+        forbidden contract; entrypoints/**/*.py -/-> entrypoints/**/*.py
+        (recursive - covers web/, events/, crons/)
+  - id: ARCH-012
+    name: A context imports nothing from another context
+    level: MUST
+    automation: full
+    tier: core
+    category: dependencies
+    description: >
+      A bounded context imports nothing from another bounded context (its
+      domain/, application/, or adapters/ packages).
+    rationale: >
+      Keeps contexts substitutable and independently deployable; a change
+      inside one context cannot break another; the contract between teams stays
+      explicit.
+    correct: |
+      # sales needs a credit check
+      # sales/orders/domain/model/ports.py declares CreditCheckPort (consumer-driven)
+      # bootstrap/ wires an adapter backed by billing's application service
+    incorrect: |
+      from billing.invoices.domain.model.aggregate import Invoice   # in sales/orders/
+    validation:
+      tool: import-linter
+      detail: independence contract
+    related: [ARCH-013, ARCH-025, ARCH-045]
+  - id: ARCH-013
+    name: No dependency cycles between contexts
+    level: SHOULD
+    automation: full
+    category: dependencies
+    description: >
+      The import graph over the top-level context packages is acyclic; no two
+      contexts import each other, directly or transitively.
+    rationale: >
+      A cycle fuses two contexts into one unit that cannot be reasoned about,
+      tested, or extracted separately.
+    correct: |
+      # sales declares a consumer-driven port; bootstrap wires a billing adapter
+      # billing does not import sales
+    incorrect: |
+      # sales/orders/adapters/credit_gateway.py imports billing.invoices.application...
+      # billing/invoices/adapters/order_gateway.py imports sales.orders.application...
+    validation:
+      tool: grimp
+      detail: import-graph cycle detection across top-level context packages
+    related: [ARCH-012]
+  - id: ARCH-014
+    name: commons imports nothing from any context
+    level: MUST
+    automation: full
+    category: dependencies
+    description: >
+      No module under src/commons/ imports from any src/<context> package. A commons
+      module may import other commons modules, including commons.types from the
+      installed arch-commons package. When a context concept is needed in commons, the
+      concept is promoted into commons rather than imported down from the context.
+    rationale: >
+      commons/ is upstream of every context; importing a context would invert the
+      governance direction, couple all consumers and create a cycle. Keeping the
+      dependency one-way is what lets any context use commons freely without asking
+      which other context it might drag in.
+    correct: |
+      # commons/geo.py
+      from commons.types.errors import DomainError
+    incorrect: |
+      # commons/geo.py
+      from sales.orders.domain.model.aggregate import Order
+    validation:
+      tool: import-linter
+      detail: forbidden contract; commons -/-> contexts
+  - id: ARCH-015
+    name: commons/types imports nothing from contexts, application, adapters, or project commons modules
+    level: MUST
+    automation: full
+    category: dependencies
+    description: >
+      No module under commons/types/ imports from any context package, from any
+      application/ or adapters/ package, or from a project-local commons module. The
+      dependency inside commons/ is one-way: a project's commons.<module> may import
+      commons.types, never the reverse.
+    rationale: >
+      commons/types is the dependency-free base importable by everyone including
+      domain/; any upward import would create a cycle. It also ships from the
+      installed arch-commons distribution, which cannot see a consuming project's
+      own commons modules -- such an import would simply not resolve anywhere else.
+    correct: |
+      # commons/types/clock.py
+      from abc import ABC, abstractmethod
+    incorrect: |
+      # commons/types/ids.py
+      from sales.orders.domain.model.aggregate import OrderId
+    validation:
+      tool: import-linter
+      detail: forbidden contract; commons.types -/-> everything above it
+    related: [ARCH-035]
+  - id: ARCH-016
+    name: commons/types contains no business logic
+    level: MUST
+    automation: manual
+    category: dependencies
+    description: >
+      Modules under commons/types/ hold only dependency-free technical primitives and
+      ports, with no rule a business person would recognise. This applies to
+      commons/types/ and commons/adapters/ -- the portions shipped by the installed
+      arch-commons package -- and not to a project's own commons.<module> portions,
+      which exist precisely to hold the project's transversal domain concepts.
+    rationale: >
+      arch-commons is installed by many projects, so a business policy placed there is
+      invisible to the context that owns it and silently shared with every unrelated
+      project that upgrades. A project's own commons module has neither problem: it
+      ships with that project alone.
+    correct: |
+      # commons/types/pagination.py
+      @dataclass(frozen=True)
+      class Page:
+          items: tuple[object, ...]
+          total: int
+    incorrect: |
+      # commons/types/pricing.py  (shipped by arch-commons)
+      VAT_RATE = Decimal("0.21")  # a tax rule belongs to a context, or to the
+                                  # project's own commons/pricing.py -- never here
+    validation:
+      tool: review
+      detail: PR checklist; would you mention this when describing the business?
+  - id: ARCH-017
+    name: Nothing imports bootstrap
+    level: MUST
+    automation: full
+    category: dependencies
+    description: >
+      No module outside bootstrap/ imports from bootstrap/, with main.py the
+      only exception.
+    rationale: >
+      bootstrap/ is the composition root; importing it from a context pulls
+      wiring and config into business code and creates a god-module dependency.
+    correct: |
+      # main.py
+      from bootstrap.container import build_container
+    incorrect: |
+      # sales/orders/application/order.py
+      from bootstrap.container import build_container
+    validation:
+      tool: import-linter
+      detail: forbidden contract; * -/-> bootstrap (allow main.py)
+  - id: ARCH-034
+    name: commons/adapters is not imported by domain or application
+    level: MUST
+    automation: full
+    category: dependencies
+    description: >
+      No module under any context's domain/ or application/ package imports
+      from commons/adapters/.
+    rationale: >
+      commons/adapters holds framework-bound implementations; only
+      adapters/, entrypoints/, bootstrap/, and tests may touch them.
+    correct: |
+      # sales/orders/adapters/unit_of_work.py
+      from commons.adapters.unit_of_work import SqlAlchemyUnitOfWork
+    incorrect: |
+      # sales/orders/application/order.py
+      from commons.adapters.unit_of_work import SqlAlchemyUnitOfWork
+    validation:
+      tool: import-linter
+      detail: forbidden contract; domain|application -/-> commons.adapters
+  - id: ARCH-035
+    name: commons/types does not import any framework
+    level: MUST
+    automation: full
+    category: dependencies
+    description: >
+      No module under commons/types/ imports a web framework, an ORM, a DI
+      container, pydantic, or any other third-party runtime library.
+    rationale: >
+      commons/types must stay importable with zero third-party dependencies so
+      the domain that depends on it stays pure.
+    correct: |
+      # commons/types/event_bus.py
+      from abc import ABC, abstractmethod
+      from collections.abc import Iterable
+    incorrect: |
+      # commons/types/unit_of_work.py
+      from sqlalchemy.orm import Session
+    validation:
+      tool: import-linter
+      detail: forbidden contract; commons.types -/-> (sqlalchemy, fastapi, pydantic, ...)
+    related: [ARCH-015]
+  - id: ARCH-057
+    name: HTTP entrypoints centralize response shaping in the composition root
+    level: SHOULD
+    automation: manual
+    category: dependencies
+    description: >
+      A web entrypoint context applies cross-cutting response shaping --
+      a uniform success/error envelope, standard error formatting -- through
+      one mechanism registered once by the composition root (e.g. ASGI
+      middleware set up in main.py), not by each handler building it by
+      hand. The envelope's exact shape is a project decision, not something
+      this rule mandates; what MUST be centralized is the mechanism.
+    rationale: >
+      Repeating envelope or error-formatting logic in every handler drifts
+      inconsistent over time and puts a transport-format decision inside
+      business-translation code; one composition-root-registered wrapper
+      keeps the shape uniform and handlers focused on stimulus -> command ->
+      service call (ARCH-010).
+    correct: |
+      # bootstrap/envelope.py
+      class EnvelopeMiddleware(BaseHTTPMiddleware):
+          async def dispatch(self, request, call_next):
+              response = await call_next(request)
+              ...  # reshape into {"payload": ..., "errors": ...}
+
+      # main.py -- registered once
+      app.add_middleware(EnvelopeMiddleware)
+
+      # sales/entrypoints/web/order.py -- handler returns its plain model
+      def create_order(...) -> OrderResponse: ...
+    incorrect: |
+      # sales/entrypoints/web/order.py
+      def create_order(...) -> dict:
+          return {"payload": OrderResponse(...).model_dump(), "errors": None}
+    validation:
+      tool: review
+      detail: PR checklist; does any handler build the envelope/error shape itself instead of returning its plain model?
+    related: [ARCH-009, ARCH-010]
